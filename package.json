@@ -1,0 +1,19 @@
+{
+  "name": "coding-dev-lab",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n BE,FE -c blue,green \"pnpm run dev:be\" \"pnpm run dev:fe\"",
+    "dev:be": "pnpm --dir be start:dev",
+    "dev:fe": "pnpm --dir FE dev",
+    "build": "pnpm run build:be && pnpm run build:fe",
+    "build:be": "pnpm --dir be build",
+    "build:fe": "pnpm --dir FE build",
+    "start": "concurrently -n BE,FE -c blue,green \"pnpm run start:be\" \"pnpm run start:fe\"",
+    "start:be": "pnpm --dir be start:prod",
+    "start:fe": "pnpm --dir FE start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

@@ -4,7 +4,6 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { verifyToken } from '@clerk/backend';
 import type { AuthenticatedRequest, UserRole } from './auth.types.js';
 
@@ -32,8 +31,6 @@ function getRoles(claims: Record<string, unknown>): UserRole[] {
 
 @Injectable()
 export class ClerkAuthGuard implements CanActivate {
-  constructor(private readonly config: ConfigService) {}
-
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const authorization = request.headers.authorization;
@@ -46,11 +43,9 @@ export class ClerkAuthGuard implements CanActivate {
     }
 
     try {
-      const authorizedParties = this.config.get<string>(
-        'CLERK_AUTHORIZED_PARTIES',
-      );
+      const authorizedParties = process.env.CLERK_AUTHORIZED_PARTIES;
       const claims = await verifyToken(token, {
-        secretKey: this.config.getOrThrow<string>('CLERK_SECRET_KEY'),
+        secretKey: process.env.CLERK_SECRET_KEY ?? '',
         ...(authorizedParties
           ? {
               authorizedParties: authorizedParties

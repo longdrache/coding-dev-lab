@@ -13,11 +13,11 @@ export interface CreateSubmissionInput {
   memory_limit?: number;
 }
 
+const JUDGE0_URL = process.env.JUDGE0_URL || 'http://localhost:2358';
+
 @Injectable()
 export class Judge0Service {
-  private readonly baseUrl = (
-    process.env.JUDGE0_URL ?? 'http://localhost:2358'
-  ).replace(/\/$/, '');
+  private readonly baseUrl = JUDGE0_URL;
 
   async createSubmission(input: CreateSubmissionInput) {
     return this.request('/submissions?base64_encoded=false&wait=false', {

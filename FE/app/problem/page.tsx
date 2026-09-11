@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 
 import CodeEditor from "@/app/ui/editer";
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_URL = process.env.NEST_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const languages = [
   { id: 71, name: "Python 3", starter: 'print("Hello, world!")' },

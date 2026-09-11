@@ -111,3 +111,9 @@ pnpm dev
 ```
 
 Frontend mặc định chạy tại `http://localhost:3000`. Nếu backend chạy ở cổng khác, đặt `NEXT_PUBLIC_API_URL`, ví dụ `http://localhost:3001`.
+
+For a production or CI build, configure `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+in the deployment environment. The `FE/.env` file is intentionally ignored
+by Git and is only for local development. If deploying on Vercel, set the
+frontend project root to `FE` and add the variable under Project Settings,
+then redeploy.

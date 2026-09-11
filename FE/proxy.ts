@@ -7,7 +7,6 @@ export default clerkMiddleware(async (auth, request) => {
   const pathname = request.nextUrl.pathname;
 
   if (publicPaths.has(pathname)) {
-    console.log("Public path accessed:", pathname);
     return NextResponse.next();
   }
 

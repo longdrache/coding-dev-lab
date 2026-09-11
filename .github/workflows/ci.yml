@@ -12,6 +12,11 @@ jobs:
   frontend:
     name: Frontend checks
     runs-on: ubuntu-latest
+    env:
+      # NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${{ secrets.NEXT_PUBLIC_CLERK_SIGN_IN_URL }}
+      # NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: ${{ secrets.NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL }}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      # NEST_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
     defaults:
       run:
         working-directory: FE
@@ -50,7 +55,10 @@ jobs:
       run:
         working-directory: be
     env:
+      PORT: 4000
       JUDGE0_URL: http://localhost:2358
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      CLERK_AUTHORIZED_PARTIES: ${{ secrets.CLERK_AUTHORIZED_PARTIES }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

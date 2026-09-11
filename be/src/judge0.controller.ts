@@ -5,11 +5,17 @@ import {
   Get,
   Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { Judge0Service } from './judge0.service.js';
 import type { CreateSubmissionInput } from './judge0.service.js';
+import { ClerkAuthGuard } from './auth/clerk-auth.guard.js';
+import { Roles } from './auth/roles.decorator.js';
+import { RolesGuard } from './auth/roles.guard.js';
 
 @Controller('api/submissions')
+@UseGuards(ClerkAuthGuard, RolesGuard)
+@Roles('user', 'admin')
 export class Judge0Controller {
   constructor(private readonly judge0Service: Judge0Service) {}
 

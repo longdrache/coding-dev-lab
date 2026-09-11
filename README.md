@@ -60,6 +60,38 @@ Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) chạy trên m�
 
 ## ▶️ Chạy local
 
+### Clerk authentication
+
+Create a Clerk application, then configure these environment variables:
+
+```env
+# FE/.env.local
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+NEXT_PUBLIC_API_URL=http://localhost:4000
+
+# be/.env
+CLERK_SECRET_KEY=sk_test_...
+CLERK_AUTHORIZED_PARTIES=http://localhost:3000
+```
+
+The backend needs its own `CLERK_SECRET_KEY`; the frontend publishable key
+cannot verify tokens. Copy the secret from the Clerk Dashboard into `be/.env`
+and restart the backend after changing it.
+
+The frontend sends the Clerk session token as a Bearer token. The backend
+verifies its signature and protects `/api/submissions`. Authenticated users
+default to the `user` role. To enable admin routes, add a `role` claim to the
+Clerk Session Token template, for example:
+
+```json
+{
+	"role": "{{user.public_metadata.role}}"
+}
+```
+
+Set `publicMetadata.role` to `admin` for administrators. The example
+`GET /api/admin/health` endpoint then requires the `admin` role.
+
 ### Backend
 
 ```bash

@@ -16,7 +16,7 @@ export interface CreateSubmissionInput {
 @Injectable()
 export class Judge0Service {
   private readonly baseUrl = (
-    process.env.JUDGE0_URL ?? 'http://192.168.1.231:2358'
+    process.env.JUDGE0_URL ?? 'http://localhost:2358'
   ).replace(/\/$/, '');
 
   async createSubmission(input: CreateSubmissionInput) {

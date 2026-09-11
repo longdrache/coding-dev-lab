@@ -1,5 +1,5 @@
 allowBuilds:
-  '@clerk/shared': set this to true or false
+  '@clerk/shared': true
   bufferutil: true
   core-js: true
   unrs-resolver: true

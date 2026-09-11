@@ -2,6 +2,7 @@
   "name": "coding-dev-lab",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.15.0",
   "scripts": {
     "dev": "concurrently -n BE,FE -c blue,green \"pnpm run dev:be\" \"pnpm run dev:fe\"",
     "dev:be": "pnpm --dir be start:dev",

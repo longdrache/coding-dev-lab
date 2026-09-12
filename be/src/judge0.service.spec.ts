@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Judge0Service } from './judge0.service.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Judge0Service } from './judge0.service.ts';
 
 describe('Judge0Service', () => {
+  beforeEach(() => {
+    vi.stubEnv('JUDGE0_URL', 'http://localhost:2358');
+  });
+
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });

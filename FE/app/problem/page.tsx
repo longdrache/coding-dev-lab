@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import CodeEditor from "@/app/ui/editer";
-const API_URL = process.env.NEST_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const languages = [
   { id: 71, name: "Python 3", starter: 'print("Hello, world!")' },
@@ -26,7 +28,8 @@ type Submission = {
 };
 
 export default function ProblemPage() {
-  const { getToken } = useAuth();
+  const router = useRouter();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const [languageId, setLanguageId] = useState(languages[0].id);
   const [sourceCode, setSourceCode] = useState(languages[0].starter);
   const [stdin, setStdin] = useState("");
@@ -34,6 +37,12 @@ export default function ProblemPage() {
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      router.replace("/sign-in?redirect_url=/problem");
+    }
+  }, [isLoaded, isSignedIn, router]);
 
   useEffect(() => {
     if (
@@ -116,6 +125,24 @@ export default function ProblemPage() {
   const isRunning =
     submission?.status?.id !== undefined && submission.status.id <= 2;
 
+  if (!isLoaded || !isSignedIn) {
+    return (
+      <main className="min-h-screen bg-[#f5f1e8] px-5 py-8 sm:px-10">
+        <div className="mx-auto max-w-6xl animate-pulse">
+          <div className="mb-8 h-12 w-72 bg-[#17211b]/10" />
+          <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+            <div className="h-[60vh] bg-[#202a24]/15" />
+            <div className="space-y-5">
+              <div className="h-12 bg-[#17211b]/10" />
+              <div className="h-28 bg-[#17211b]/10" />
+              <div className="h-12 bg-[#d65a3a]/20" />
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#f5f1e8] px-5 py-8 text-[#17211b] sm:px-10">
       <div className="mx-auto max-w-6xl">
@@ -128,6 +155,12 @@ export default function ProblemPage() {
               Run your idea.
             </h1>
           </div>
+          <Link
+            href="/"
+            className="border border-[#17211b]/20 px-4 py-2 text-sm font-semibold transition hover:border-[#d65a3a] hover:text-[#d65a3a]"
+          >
+            ← Trang chủ
+          </Link>
         </header>
 
         <div className="grid gap-5 lg:grid-cols-[1fr_280px]">

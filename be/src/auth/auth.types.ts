@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders } from 'node:http';
 
-export type UserRole = 'user' | 'admin';
+export type UserRole = 'user' | 'vip' | 'admin';
 
 export interface AuthenticatedUser {
   userId: string;

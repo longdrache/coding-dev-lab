@@ -80,7 +80,7 @@ and restart the backend after changing it.
 
 The frontend sends the Clerk session token as a Bearer token. The backend
 verifies its signature and protects `/api/submissions`. Authenticated users
-default to the `user` role. To enable admin routes, add a `role` claim to the
+default to the `user` role. To enable VIP or admin routes, add a `role` claim to the
 Clerk Session Token template, for example:
 
 ```json
@@ -89,8 +89,13 @@ Clerk Session Token template, for example:
 }
 ```
 
-Set `publicMetadata.role` to `admin` for administrators. The example
-`GET /api/admin/health` endpoint then requires the `admin` role.
+Set `publicMetadata.role` to `vip` after a successful upgrade, or `admin` for
+administrators. The example `GET /api/vip/health` endpoint accepts `vip` and
+`admin`; `GET /api/admin/health` still requires `admin`.
+
+Do not let the browser set its own role. A payment webhook or admin-only
+backend action must update Clerk `publicMetadata.role` after payment
+verification, then the user must refresh their Clerk session token.
 
 ### Backend
 

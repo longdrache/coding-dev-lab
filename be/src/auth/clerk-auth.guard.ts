@@ -4,8 +4,8 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { verifyToken } from '@clerk/backend';
-import type { AuthenticatedRequest, UserRole } from './auth.types.js';
+import { createClerkClient, verifyToken } from '@clerk/backend';
+import type { AuthenticatedRequest, UserRole } from './auth.types.ts';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -25,7 +25,8 @@ function getRoles(claims: Record<string, unknown>): UserRole[] {
       : [];
 
   return values.filter(
-    (role): role is UserRole => role === 'user' || role === 'admin',
+    (role): role is UserRole =>
+      role === 'user' || role === 'vip' || role === 'admin',
   );
 }
 
@@ -55,11 +56,33 @@ export class ClerkAuthGuard implements CanActivate {
           : {}),
       });
       const claimRecord = asRecord(claims);
-      const roles = getRoles(claimRecord);
+      let roles = getRoles(claimRecord);
+      const userId = String(claimRecord.sub);
+
+      // Nếu trong JWT Session claims chưa có role (do chưa cấu hình Session Token template trong Clerk Dashboard),
+      // truy vấn trực tiếp Clerk API để lấy role từ publicMetadata của user:
+      if (roles.length === 0) {
+        try {
+          const clerk = createClerkClient({
+            secretKey: process.env.CLERK_SECRET_KEY ?? '',
+          });
+          const clerkUser = await clerk.users.getUser(userId);
+          const metaRole = clerkUser.publicMetadata?.role;
+          if (
+            typeof metaRole === 'string' &&
+            (metaRole === 'vip' || metaRole === 'admin' || metaRole === 'user')
+          ) {
+            roles = [metaRole];
+          }
+        } catch (fetchUserErr) {
+          console.error('Không thể lấy metadata từ Clerk API:', fetchUserErr);
+        }
+      }
+
       if (roles.length === 0) roles.push('user');
 
       request.user = {
-        userId: String(claimRecord.sub),
+        userId,
         sessionId:
           typeof claimRecord.sid === 'string' ? claimRecord.sid : undefined,
         role: roles[0],
@@ -67,9 +90,9 @@ export class ClerkAuthGuard implements CanActivate {
         claims: claimRecord,
       };
       return true;
-    } catch {
+    } catch (e) {
       throw new UnauthorizedException(
-        'Clerk token không hợp lệ hoặc đã hết hạn',
+        e instanceof Error ? e.message : 'Xác thực thất bại',
       );
     }
   }

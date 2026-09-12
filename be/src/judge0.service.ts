@@ -12,12 +12,17 @@ export interface CreateSubmissionInput {
   cpu_time_limit?: number;
   memory_limit?: number;
 }
-
-const JUDGE0_URL = process.env.JUDGE0_URL || 'http://localhost:2358';
+import dotenv from 'dotenv';
+dotenv.config();
 
 @Injectable()
 export class Judge0Service {
-  private readonly baseUrl = JUDGE0_URL;
+  private get baseUrl() {
+    return (process.env.JUDGE0_URL || 'http://localhost:2358').replace(
+      /\/$/,
+      '',
+    );
+  }
 
   async createSubmission(input: CreateSubmissionInput) {
     return this.request('/submissions?base64_encoded=false&wait=false', {

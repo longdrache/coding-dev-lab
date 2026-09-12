@@ -27,6 +27,12 @@ export default function Home() {
               <Link href="/problem" className="transition hover:text-[#f5f1e8]">
                 Problem Lab
               </Link>
+              <Link href="/premium" className="transition hover:text-[#f5f1e8]">
+                Premium
+              </Link>
+              <Link href="/vip" className="transition hover:text-[#f5f1e8]">
+                Vip
+              </Link>
               <div
                 className="flex min-h-10 min-w-32 items-center justify-end"
                 aria-busy={!isLoaded}
@@ -124,9 +130,14 @@ export default function Home() {
         <SignedIn>
           <section className="-mx-6 min-h-screen bg-[#1b1b1b] px-6 pb-16 text-[#f0f0f0] sm:-mx-10 sm:px-10 lg:-mx-14 lg:px-14">
             <div className="mx-auto max-w-6xl">
-              <div className="flex items-center gap-7 border-b border-white/10 py-4 text-sm text-white/60">
-                <span className="text-2xl text-[#f5b900]">◈</span>
-                <Link href="/problem" className="hover:text-white">
+              <nav className="flex items-center gap-7 border-b border-white/10 py-4 text-sm text-white/60">
+                <Link
+                  href="/"
+                  className="text-2xl text-[#f5b900] transition hover:opacity-80"
+                >
+                  ◈
+                </Link>
+                <Link href="/problem" className="transition hover:text-white">
                   Problems
                 </Link>
                 <span className="hidden hover:text-white sm:inline">
@@ -138,14 +149,27 @@ export default function Home() {
                 <span className="hidden hover:text-white sm:inline">
                   Interview
                 </span>
-                <span className="hidden text-[#f5b900] sm:inline">Store⌄</span>
+                <Link
+                  href="/premium"
+                  className="font-medium text-[#f5b900] transition hover:brightness-125"
+                >
+                  Premium
+                </Link>
+                {user?.publicMetadata?.role === "vip" && (
+                  <Link
+                    href="/vip"
+                    className="rounded border border-[#f5b900]/40 bg-[#f5b900]/10 px-2 py-0.5 text-xs font-semibold text-[#f5b900] transition hover:bg-[#f5b900]/20"
+                  >
+                    VIP
+                  </Link>
+                )}
                 <div className="ml-auto flex items-center gap-4">
                   <span className="hidden text-xs text-white/40 md:inline">
                     {user?.firstName ?? "Coder"}&apos;s feed
                   </span>
                   <UserButton />
                 </div>
-              </div>
+              </nav>
 
               <div className="grid gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_280px]">
                 <div className="min-w-0">

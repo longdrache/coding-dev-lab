@@ -57,6 +57,7 @@ jobs:
       JUDGE0_URL: http://localhost:2358
       CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
       CLERK_AUTHORIZED_PARTIES: ${{ secrets.CLERK_AUTHORIZED_PARTIES }}
+      CLERK_JWT_KEY: ${{ secrets.CLERK_JWT_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

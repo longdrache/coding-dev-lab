@@ -4,8 +4,12 @@
 @import "@clerk/ui/themes/shadcn.css";
 
 @custom-variant dark (&:is(.dark *));
-
+@theme {
+ 
+}
 @theme inline {
+ --color-accent-400: rgb(52 211 153);
+ --color-cyanx-400:#22d3ee;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -40,6 +44,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-line:oklch(0.9 0.02 267.22);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

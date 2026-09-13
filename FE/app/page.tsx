@@ -10,17 +10,39 @@ import {
   useAuth,
   useUser,
 } from "@clerk/nextjs";
+import NavBar from "@/app/ui/Navbar";
+import { ArrowRight, Terminal } from "lucide-react";
+import { useState, useEffect } from "react";
+import { codeLines } from "@/app/data/code";
 
 export default function Home() {
-  const { isLoaded } = useAuth();
   const { user } = useUser();
+  const [visibleLines, setVisibleLines] = useState(0);
+  const [showCursor, setShowCursor] = useState(true);
+
+  useEffect(() => {
+    if (visibleLines < codeLines.length) {
+      const timer = setTimeout(() => {
+        setVisibleLines((prev) => prev + 1);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [visibleLines]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setShowCursor((prev) => !prev);
+    }, 600);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#17211b] text-[#f5f1e8]">
-      <div className="mx-auto max-w-7xl px-6 pb-7 sm:px-10 lg:px-14">
+    <main className="min-h-screen overflow-hidden">
+      <div className="mx-auto  px-6 pb-7 sm:px-6 lg:px-8">
         <SignedOut>
-          <nav className="flex items-center justify-between border-b border-[#f5f1e8]/20 pb-5 pt-4">
-            <Link href="/" className="font-serif text-xl tracking-tight">
+          {/* <nav className="flex items-center justify-between border-b border-[#f5f1e8]/20 pb-5 pt-4"> */}
+          <NavBar />
+          {/* <Link href="/" className="font-serif text-xl tracking-tight">
               coding<span className="text-[#d65a3a]">.</span>lab
             </Link>
             <div className="flex items-center gap-6 text-sm text-[#f5f1e8]/65">
@@ -32,95 +54,119 @@ export default function Home() {
               </Link>
               <Link href="/vip" className="transition hover:text-[#f5f1e8]">
                 Vip
-              </Link>
-              <div
-                className="flex min-h-10 min-w-32 items-center justify-end"
-                aria-busy={!isLoaded}
-              >
-                {!isLoaded && (
-                  <div
-                    aria-label="Loading account"
-                    className="flex h-10 w-32 items-center justify-end gap-2"
-                  >
-                    <span className="h-10 w-16 animate-pulse border border-white/10 bg-white/10" />
-                    <span className="h-10 w-12 animate-pulse bg-[#d65a3a]/35" />
-                  </div>
-                )}
-                {isLoaded && (
-                  <>
-                    <SignedOut>
-                      <div className="flex items-center gap-2">
-                        <SignInButton mode="modal">
-                          <button className="border border-[#f5f1e8]/30 px-3 py-2 text-[#f5f1e8] transition hover:border-[#f5f1e8]">
-                            Sign in
-                          </button>
-                        </SignInButton>
-                        <SignUpButton mode="modal">
-                          <button className="bg-[#d65a3a] px-3 py-2 text-white transition hover:bg-[#ed704e]">
-                            Join
-                          </button>
-                        </SignUpButton>
-                      </div>
-                    </SignedOut>
-                    <SignedIn>
-                      <UserButton />
-                    </SignedIn>
-                  </>
-                )}
-              </div>
-            </div>
-          </nav>
+              </Link> */}
+
+          {/* </div> */}
+          {/* </nav> */}
         </SignedOut>
 
         <SignedOut>
           <section className="relative grid min-h-[72vh] items-center gap-12 py-20 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="relative z-10 max-w-3xl">
-              <p className="mb-6 text-xs font-bold uppercase tracking-[0.28em] text-[#d65a3a]">
-                A quiet place to practice
-              </p>
-              <h1 className="max-w-3xl font-serif text-6xl leading-[0.94] tracking-tight sm:text-8xl">
-                Think clearly.
-                <br />
-                <span className="text-[#d65a3a]">Ship code.</span>
-              </h1>
-              <p className="mt-8 max-w-xl text-lg leading-8 text-[#f5f1e8]/65">
-                Write, run, and refine small ideas in a focused coding
-                workspace. No setup ceremony. Just an editor and a real
-                execution loop.
-              </p>
-              <div className="mt-10 flex flex-wrap items-center gap-4">
-                <Link
-                  href="/problem"
-                  className="bg-[#d65a3a] px-6 py-4 font-bold text-white transition hover:bg-[#ed704e]"
+              {/* Minimalist Top Eyebrow Tag */}
+              <div className="flex justify-center mb-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100/90 border border-zinc-200/80 text-[11px] font-mono text-zinc-600">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span>Local Native Engine</span>
+                  <span className="text-zinc-300">/</span>
+                  <span>
+                    TypeScript 3.7 • Python 3.8 • Go 1.23 • Swift 5.2•C#•C
+                    C++•••{" "}
+                  </span>
+                </div>
+              </div>
+              <div className="text-center max-w-3xl mx-auto mb-12 md:mb-16">
+                <h1 className="text-4xl sm:text-5xl md:text-6xl  tracking-tight text-zinc-950 leading-[1.12] mb-6">
+                  Rèn tư duy giải thuật.{" "}
+                  <span className="block   font-normal text-zinc-500 text-3xl sm:text-4xl md:text-5xl mt-1">
+                    Tối giản, thuần khiết &amp; tức thì.
+                  </span>
+                </h1>
+                <p className="text-base sm:text-lg text-zinc-600 leading-relaxed max-w-2xl mx-auto">
+                  Hệ thống chấm mã nguồn độc lập chạy trực tiếp trong vài
+                  mili-giây. Tuyển chọn bài toán cấu trúc dữ liệu và giải thuật
+                  cốt lõi, không rườm rà, tập trung 100% vào năng lực kỹ thuật.
+                </p>
+                <div
+                  className="rise mt-8 px-25 flex items-center gap-5 font-mono text-[12px] text-ink-muted"
+                  style={{ animationDelay: "0.36s" }}
                 >
-                  Open the problem lab <span aria-hidden="true">↗</span>
-                </Link>
-                <span className="text-sm text-[#f5f1e8]/45">
-                  Python · JavaScript · C++
-                </span>
+                  <span>
+                    <span className="text-ink font-semibold">12.000+</span> học
+                    viên
+                  </span>
+                  <span className="size-1 rounded-full bg-line"></span>
+                  <span>
+                    <span className="text-ink font-semibold">480</span> bài tập
+                    chọn lọc
+                  </span>
+                  <span className="size-1 rounded-full bg-line"></span>
+                  <span>
+                    <span className="text-ink font-semibold">14</span> lộ trình
+                    hướng dẫn
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="relative mx-auto w-full max-w-md lg:justify-self-end">
-              <div className="absolute -right-5 -top-5 h-32 w-32 border border-[#d65a3a]/60" />
-              <div className="relative border border-[#f5f1e8]/20 bg-[#202a24] p-5 shadow-[12px_12px_0_#d65a3a]">
-                <div className="mb-8 flex items-center justify-between text-xs text-[#f5f1e8]/45">
-                  <span>today / scratch.py</span>
-                  <span className="text-[#d65a3a]">● ready</span>
-                </div>
-                <pre className="font-mono text-sm leading-8 text-[#f5f1e8]/80">
-                  <span className="text-[#d65a3a]">def</span> make_progress():
-                  {"\n"}
-                  {"  "}idea ={" "}
-                  <span className="text-[#e6bd72]">
-                    &quot;start small&quot;
-                  </span>
-                  {"\n"}
-                  {"  "}return idea{"\n\n"}
-                  <span className="text-[#d65a3a]">print</span>(make_progress())
-                </pre>
-                <div className="mt-10 border-t border-[#f5f1e8]/10 pt-4 text-xs text-[#f5f1e8]/40">
-                  execution / 0.018s
+            <div className="relative mx-auto w-full rounded-md bg-black max-w-md lg:justify-self-end">
+              {/* Right: Code terminal */}
+
+              <div
+                className="relative animate-fade-up bg-ink-800/50"
+                style={{ animationDelay: "0.3s", opacity: 1 }}
+              >
+                {/* <div className="absolute inset-0 bg-gradient-to-br from-accent-500/20 to-cyanx-500/20 rounded-2xl blur-3xl" /> */}
+                <div className="relative glass-card overflow-hidden glow-border">
+                  {/* Terminal header */}
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-white/5 bg-ink-800/50">
+                    <div className="flex gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-red-400/80" />
+                      <div className="w-3 h-3 rounded-full bg-yellow-400/80" />
+                      <div className="w-3 h-3 rounded-full bg-green-400/80" />
+                    </div>
+                    <div className="flex items-center gap-2 ml-3 text-xs text-gray-500">
+                      <Terminal className="w-3.5 h-3.5" />
+                      <span>solution.js</span>
+                    </div>
+                    <div className="ml-auto text-xs text-accent-400 font-mono">
+                      ● Đang chạy
+                    </div>
+                  </div>
+
+                  {/* Code area */}
+                  <div className="p-5 font-mono text-sm leading-relaxed min-h-[320px]">
+                    {codeLines.slice(0, visibleLines).map((line, i) => (
+                      <div
+                        key={i}
+                        className="flex animate-fade-in"
+                        style={{ animationDuration: "0.3s" }}
+                      >
+                        <span className="text-gray-600 select-none w-8 text-right pr-3 flex-shrink-0">
+                          {i + 1}
+                        </span>
+                        <span className={line.color}>
+                          {line.text || "\u00A0"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Output bar */}
+                  {visibleLines >= codeLines.length && (
+                    <div
+                      className="border-t border-white/5 bg-ink-800/50 px-5 py-3 animate-fade-in"
+                      style={{ animationDelay: "0.5s", opacity: 1 }}
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">Output</span>
+                        <span className="text-accent-400 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-accent-400 text-green animate-pulse" />
+                          24 — Test passed
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

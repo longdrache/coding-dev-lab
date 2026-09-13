@@ -38,8 +38,76 @@ export class PremiumService {
     });
   }
 
-  async setUserToVip(userId: string, plan: PremiumPlan = 'monthly') {
-    return this.setUserRole(userId, 'vip', plan);
+  async setUserToVip(
+    userId: string,
+    plan: PremiumPlan = 'monthly',
+    extraMetadata?: {
+      stripeCustomerId?: string;
+      stripeSubscriptionId?: string;
+      expiresAt?: string;
+    },
+  ) {
+    let expiresAt = extraMetadata?.expiresAt;
+    if (!expiresAt) {
+      const durationDays = plan === 'yearly' ? 365 : 30;
+      expiresAt = new Date(
+        Date.now() + durationDays * 24 * 60 * 60 * 1000,
+      ).toISOString();
+    }
+
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) {
+      throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
+    }
+
+    const clerk = createClerkClient({
+      secretKey: clerkSecretKey,
+    });
+
+    return clerk.users.updateUserMetadata(userId, {
+      publicMetadata: {
+        role: 'vip',
+        premiumPlan: plan,
+        expiresAt,
+      },
+    });
+  }
+
+  async removeVip(userId: string) {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) {
+      throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
+    }
+
+    const clerk = createClerkClient({
+      secretKey: clerkSecretKey,
+    });
+
+    return clerk.users.updateUserMetadata(userId, {
+      publicMetadata: {
+        role: 'user',
+        premiumPlan: null,
+        expiresAt: null,
+        stripeSubscriptionId: null,
+      },
+    });
+  }
+
+  async findUserIdByStripeCustomerId(
+    customerId: string,
+  ): Promise<string | undefined> {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) return undefined;
+    const clerk = createClerkClient({ secretKey: clerkSecretKey });
+    try {
+      const users = await clerk.users.getUserList({ limit: 100 });
+      const user = users.data.find(
+        (u) => u.publicMetadata?.stripeCustomerId === customerId,
+      );
+      return user?.id;
+    } catch {
+      return undefined;
+    }
   }
 
   async createCheckout(userId: string, plan: PremiumPlan) {
@@ -52,6 +120,9 @@ export class PremiumService {
       mode: 'subscription',
       client_reference_id: userId,
       metadata: { userId, plan },
+      subscription_data: {
+        metadata: { userId, plan },
+      },
       line_items: [
         {
           quantity: 1,

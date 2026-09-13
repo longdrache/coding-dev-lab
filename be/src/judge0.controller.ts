@@ -15,7 +15,7 @@ import { RolesGuard } from './auth/roles.guard.ts';
 
 @Controller('api/submissions')
 @UseGuards(ClerkAuthGuard, RolesGuard)
-@Roles('user', 'admin')
+@Roles('user', 'admin', 'vip')
 export class Judge0Controller {
   constructor(private readonly judge0Service: Judge0Service) {}
 

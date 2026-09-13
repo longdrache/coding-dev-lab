@@ -149,12 +149,14 @@ export default function Home() {
                 <span className="hidden hover:text-white sm:inline">
                   Interview
                 </span>
-                <Link
-                  href="/premium"
-                  className="font-medium text-[#f5b900] transition hover:brightness-125"
-                >
-                  Premium
-                </Link>
+                {user?.publicMetadata?.role !== "vip" && (
+                  <Link
+                    href="/premium"
+                    className="font-medium text-[#f5b900] transition hover:brightness-125"
+                  >
+                    Premium
+                  </Link>
+                )}
                 {user?.publicMetadata?.role === "vip" && (
                   <Link
                     href="/vip"

@@ -4,6 +4,8 @@ import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { CheckCircle2Icon, InfoIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -37,6 +39,7 @@ export default function PremiumPage() {
         body: JSON.stringify({ plan }),
       });
       const result = await response.json();
+      console.log(result);
       if (!response.ok || !result.url) {
         throw new Error(result.message ?? "Không thể tạo phiên thanh toán.");
       }
@@ -69,6 +72,16 @@ export default function PremiumPage() {
               ← Trang chủ
             </Link>
           </div>
+          {/* <div className="fixed top-6 right-6 z-50 grid w-full max-w-sm items-start gap-3">
+            <Alert>
+              <CheckCircle2Icon />
+              <AlertTitle>Payment successful</AlertTitle>
+              <AlertDescription>
+                Your payment of $29.99 has been processed. A receipt has been
+                sent to your email address.
+              </AlertDescription>
+            </Alert>
+          </div> */}
         </nav>
 
         <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#d65a3a]">

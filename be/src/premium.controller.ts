@@ -49,6 +49,24 @@ export class PremiumController {
     };
   }
 
+  @Post('cancel-vip')
+  @UseGuards(ClerkAuthGuard)
+  async cancelVip(
+    @Req() request: AuthenticatedRequest,
+    @Body('userId') targetUserId?: string,
+  ) {
+    const userId = targetUserId ?? request.user?.userId;
+    if (!userId) throw new BadRequestException('Không xác định được user');
+
+    await this.premiumService.removeVip(userId);
+    return {
+      ok: true,
+      message: `Đã hủy quyền VIP của user ${userId}`,
+      userId,
+      role: 'user',
+    };
+  }
+
   @Post('webhook')
   handleWebhook(
     @Req() request: RawBodyRequest,

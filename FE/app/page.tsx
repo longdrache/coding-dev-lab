@@ -11,15 +11,15 @@ import {
   useUser,
 } from "@clerk/nextjs";
 import NavBar from "@/app/ui/Navbar";
-import { ArrowRight, Terminal } from "lucide-react";
+import { ArrowRight, Terminal, ChevronDown } from "lucide-react";
 import { useState, useEffect } from "react";
 import { codeLines } from "@/app/data/code";
-
+import { faqs } from "@/app/data/faq";
 export default function Home() {
   const { user } = useUser();
   const [visibleLines, setVisibleLines] = useState(0);
   const [showCursor, setShowCursor] = useState(true);
-
+  const [activeFaq, setActiveFaq] = useState(0);
   useEffect(() => {
     if (visibleLines < codeLines.length) {
       const timer = setTimeout(() => {
@@ -70,8 +70,8 @@ export default function Home() {
                   <span>Local Native Engine</span>
                   <span className="text-zinc-300">/</span>
                   <span>
-                    TypeScript 3.7 • Python 3.8 • Go 1.23 • Swift 5.2•C#•C
-                    C++•••{" "}
+                    TypeScript 3.7 • Python 3.8 • Go 1.23 • Swift 5.2 • C++ (GCC
+                    9.2.0)
                   </span>
                 </div>
               </div>
@@ -92,18 +92,17 @@ export default function Home() {
                   style={{ animationDelay: "0.36s" }}
                 >
                   <span>
-                    <span className="text-ink font-semibold">12.000+</span> học
-                    viên
+                    <span className="text-ink font-semibold"></span> Miễn phí
+                    100%
                   </span>
                   <span className="size-1 rounded-full bg-line"></span>
                   <span>
-                    <span className="text-ink font-semibold">480</span> bài tập
-                    chọn lọc
+                    <span className="text-ink font-semibold"></span> Mới ra mắt
                   </span>
                   <span className="size-1 rounded-full bg-line"></span>
                   <span>
-                    <span className="text-ink font-semibold">14</span> lộ trình
-                    hướng dẫn
+                    <span className="text-ink font-semibold"></span>Cập nhật
+                    liên tục
                   </span>
                 </div>
               </div>

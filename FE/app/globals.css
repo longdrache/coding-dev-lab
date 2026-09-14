@@ -4,12 +4,12 @@
 @import "@clerk/ui/themes/shadcn.css";
 
 @custom-variant dark (&:is(.dark *));
-@theme {
- 
-}
+
+@theme {}
+
 @theme inline {
- --color-accent-400: rgb(52 211 153);
- --color-cyanx-400:#22d3ee;
+  --color-accent-400: rgb(52 211 153);
+  --color-cyanx-400: #22d3ee;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -44,7 +44,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --color-line:oklch(0.9 0.02 267.22);
+  --color-line: oklch(0.9 0.02 267.22);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -87,6 +87,7 @@
   --sidebar-ring: oklch(0.708 0 0);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  --green: green;
 }
 
 .dark {
@@ -123,13 +124,70 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+.faq-section {
+  display: grid;
+  grid-template-columns: .8fr 1.2fr;
+  gap: 100px;
+  padding: 117px 0 124px;
+}
+
+.faq-title h2 {
+  font-size: 42px;
+}
+
+.faq-list {
+  border-top: 1px solid var(--line);
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--line);
+}
+
+.faq-item button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 22px 3px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.faq-item button svg {
+  color: #a4afa8;
+  transition: transform .2s;
+}
+
+.faq-item.is-active button {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.faq-item.is-active button svg {
+  transform: rotate(180deg);
+  color: var(--green);
+}
+
+.faq-item p {
+  color: #7b897f;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: -6px 38px 21px 3px;
+  max-width: 580px;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   html {
     @apply font-sans;
   }

@@ -53,7 +53,7 @@ export default function PricingCards() {
           ? checkoutError.message
           : "Không thể bắt đầu thanh toán.",
       );
-      setLoadingPlan(undefined);
+      setLoadingPlan("");
     }
   }
 

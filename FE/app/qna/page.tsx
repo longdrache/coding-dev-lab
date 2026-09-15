@@ -3,15 +3,10 @@ import {
   Search,
   ChevronDown,
   ArrowLeft,
-  Terminal,
   HelpCircle,
   MessageSquare,
-  ShieldCheck,
   Send,
   CheckCircle2,
-  Sparkles,
-  BookOpen,
-  Cpu,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useMemo } from "react";
@@ -210,8 +205,8 @@ export default function Page() {
 
           {filteredFaqs.length === 0 && (
             <div className="p-8 text-center text-zinc-500 text-xs sm:text-sm">
-              Không tìm thấy câu hỏi phù hợp với từ khóa "{searchTerm}". Bạn có
-              thể gửi câu hỏi mới bên dưới!
+              {`Không tìm thấy câu hỏi phù hợp với từ khó  "${searchTerm}" Bạn có
+              thể gửi câu hỏi mới bên dưới!`}
             </div>
           )}
         </div>

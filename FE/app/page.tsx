@@ -1,25 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import {
-  SignInButton,
-  SignUpButton,
-  SignedIn,
-  SignedOut,
-  UserButton,
-  useAuth,
-  useUser,
-} from "@clerk/nextjs";
+import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/nextjs";
 import NavBar from "@/app/ui/Navbar";
-import { ArrowRight, Terminal, ChevronDown } from "lucide-react";
+import { Terminal } from "lucide-react";
 import { useState, useEffect } from "react";
 import { codeLines } from "@/app/data/code";
-import { faqs } from "@/app/data/faq";
 export default function Home() {
   const { user } = useUser();
   const [visibleLines, setVisibleLines] = useState(0);
-  const [showCursor, setShowCursor] = useState(true);
-  const [activeFaq, setActiveFaq] = useState(0);
   useEffect(() => {
     if (visibleLines < codeLines.length) {
       const timer = setTimeout(() => {
@@ -28,13 +17,6 @@ export default function Home() {
       return () => clearTimeout(timer);
     }
   }, [visibleLines]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setShowCursor((prev) => !prev);
-    }, 600);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <main className="min-h-screen overflow-hidden">

@@ -1,11 +1,10 @@
 import Link from "next/link";
 import Pricing from "@/app/ui/Pricing";
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 import { Metadata } from "next";
-const plans = [
-  { id: "monthly", label: "Monthly", price: "1vnd", detail: "per month" },
-  { id: "yearly", label: "Yearly", price: "2vnd", detail: "per year" },
-] as const;
+// const plans = [
+//   { id: "monthly", label: "Monthly", price: "1vnd", detail: "per month" },
+//   { id: "yearly", label: "Yearly", price: "2vnd", detail: "per year" },
+// ] as const;
 
 export const metadata: Metadata = {
   title: "Bảng giá",

@@ -188,7 +188,7 @@ export default function PricingCards() {
                   / tháng
                 </span>
                 <span className="text-xs line-through text-neutral-400">
-                  {formatPrice("12000")}
+                  {formatPrice(12000)}
                 </span>
               </div>
 

@@ -8,8 +8,8 @@ const plans: Record<
   PremiumPlan,
   { amount: number; interval: 'month' | 'year' }
 > = {
-  monthly: { amount: 100, interval: 'month' },
-  yearly: { amount: 200, interval: 'year' },
+  monthly: { amount: 1000, interval: 'month' },
+  yearly: { amount: 2000, interval: 'year' },
 };
 
 @Injectable()
@@ -127,10 +127,10 @@ export class PremiumService {
         {
           quantity: 1,
           price_data: {
-            currency: 'usd',
+            currency: 'vnd',
             unit_amount: selectedPlan.amount,
             recurring: { interval: selectedPlan.interval },
-            product_data: { name: `Coding Dev Lab VIP (${plan})` },
+            product_data: { name: `GoCode Premium (${plan})` },
           },
         },
       ],

@@ -8,6 +8,7 @@
 @theme {}
 
 @theme inline {
+  --color-accent-600: rgb(5 150 105);
   --color-accent-400: rgb(52 211 153);
   --color-cyanx-400: #22d3ee;
   --color-background: var(--background);
@@ -88,6 +89,10 @@
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --green: green;
+}
+
+.bg-gradient-to-r {
+  background-color: #10b981;
 }
 
 .dark {

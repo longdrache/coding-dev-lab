@@ -18,10 +18,10 @@ export const EXTENDED_FAQS: ComprehensiveFaq[] = [
   {
     id: "f2",
     category: "sandbox",
-    question: "Những ngôn ngữ nào được hỗ trợ theo chuẩn Judge0 Native?",
+    question: "Những ngôn ngữ nào được hỗ trợ",
     answer:
-      "Hiện tại hệ thống hỗ trợ trọn vẹn 9 môi trường thịnh hành nhất: C++ (G++ 12 - ID #54), C (GCC 12 - ID #50), Python 3.10 (ID #71), TypeScript 5.8 (ID #74), JavaScript Node 22 (ID #63), Go 1.19 (ID #95), PHP 8.2 (ID #68), Bash Shell 5.2 (ID #46) và SQL SQLite3 (ID #82). Tất cả đều tương thích chuẩn đầu vào và đầu ra của Judge0.",
-    tags: ["judge0", "cpp", "python", "typescript", "go", "php", "sql"],
+      "Hiện tại hệ thống hỗ trợ trọn vẹn 9 môi trường thịnh hành nhất: C++ (G++ 12), C, Python 3.10, TypeScript 5.8, JavaScript Node 22, Go 1.19, PHP 8.2, Bash Shell 5.2 và SQL SQLite3 ",
+    tags: ["cpp", "python", "typescript", "go", "php", "sql"],
   },
   {
     id: "f3",

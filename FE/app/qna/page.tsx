@@ -109,14 +109,14 @@ export default function Page() {
           </div>
           <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight text-zinc-950 leading-[1.15]">
             Trung tâm Hỏi Đáp.{" "}
-            <span className="block font-serif italic font-normal text-zinc-500 text-2xl sm:text-4xl mt-1">
+            <span className="block  italic font-normal text-zinc-500 text-2xl sm:text-4xl mt-1">
               Giải đáp mọi thắc mắc về hạ tầng &amp; học tập.
             </span>
           </h1>
           <p className="mt-4 text-base text-zinc-600 leading-relaxed">
             Tra cứu nhanh các thông số kỹ thuật về sandbox thực thi, các chuẩn
-            ngôn ngữ Judge0, định hướng lộ trình học tập và chuẩn bị phỏng vấn
-            công nghệ cao.
+            ngôn ngữ, định hướng lộ trình học tập và chuẩn bị phỏng vấn công
+            nghệ cao.
           </p>
         </div>
 
@@ -128,7 +128,7 @@ export default function Page() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm kiếm câu hỏi (ví dụ: Judge0, sandbox, c++, memory limit, leetcode, system design)..."
+              placeholder="Tìm kiếm câu hỏi (ví dụ: sandbox, c++, memory limit, GoCode, system design)..."
               className="w-full pl-9 pr-4 py-2.5 text-xs sm:text-sm bg-zinc-50/60 border border-zinc-200 rounded-lg text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-950 focus:bg-white"
             />
           </div>

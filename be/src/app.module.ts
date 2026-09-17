@@ -11,6 +11,8 @@ import { MailerModule } from '@nestjs-modules/mailer';
 import { ConfigModule } from '@nestjs/config';
 import { EmailController } from './email.controller.ts';
 import { EmailService } from './email.service.ts';
+import { EmployeesModule } from './employees/employees.module.js';
+import { PresenceModule } from './presence/presence.module.ts';
 @Module({
   imports: [
     ConfigModule.forRoot({ envFilePath: '.env', isGlobal: true }),
@@ -23,6 +25,8 @@ import { EmailService } from './email.service.ts';
         },
       },
     }),
+    EmployeesModule,
+    PresenceModule,
   ],
   controllers: [
     AppController,

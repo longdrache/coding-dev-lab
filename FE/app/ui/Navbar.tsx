@@ -10,6 +10,7 @@ import {
   useUser,
 } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
+import OnlineCounter from "./OnlineCounter";
 
 export default function NavBar() {
   const { isLoaded } = useAuth();
@@ -83,6 +84,7 @@ export default function NavBar() {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             <span>Engine &lt; 25ms</span>
           </div>
+          <OnlineCounter />
 
           <div
             className="flex min-h-10 min-w-32 items-center justify-end"

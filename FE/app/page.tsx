@@ -6,6 +6,9 @@ import NavBar from "@/app/ui/Navbar";
 import { Terminal } from "lucide-react";
 import { useState, useEffect } from "react";
 import { codeLines } from "@/app/data/code";
+import FeatureCard from "./ui/FeatureCard";
+import OnlineCounter from "./ui/OnlineCounter";
+import Reveal from "./ui/Reveal";
 export default function Home() {
   const { user } = useUser();
   const [visibleLines, setVisibleLines] = useState(0);
@@ -152,6 +155,48 @@ export default function Home() {
               </div>
             </div>
           </section>
+          <section
+            id="features"
+            className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
+          >
+            <Reveal className="text-center mb-12">
+              <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
+                Tại sao GoCode?
+              </h2>
+              <p className="mt-3 text-zinc-500">
+                Mọi thứ bạn cần để rèn luyện kỹ năng lập trình
+              </p>
+            </Reveal>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Reveal delay={0}>
+                <FeatureCard
+                  icon="Code2"
+                  accent="emerald"
+                  index="01"
+                  title="Trình soạn thảo tích hợp"
+                  description="Viết code ngay trên trình duyệt với editor hỗ trợ tô sáng cú pháp, đánh số dòng, tự động thụt lề và phím tắt."
+                />
+              </Reveal>
+              <Reveal delay={120}>
+                <FeatureCard
+                  icon="Brain"
+                  accent="violet"
+                  index="02"
+                  title="Kiểm thử tự động"
+                  description="Chạy code và nhận kết quả ngay lập tức. So sánh output kỳ vọng với kết quả thực tế từng test case, kèm thời gian chạy."
+                />
+              </Reveal>
+              <Reveal delay={240}>
+                <FeatureCard
+                  icon="Trophy"
+                  accent="amber"
+                  index="03"
+                  title="Theo dõi tiến độ"
+                  description="Tích lũy điểm số, mở khóa thành tựu, và theo dõi tiến độ qua biểu đồ trực quan theo độ khó và chủ đề."
+                />
+              </Reveal>
+            </div>
+          </section>
         </SignedOut>
 
         <SignedIn>
@@ -193,6 +238,7 @@ export default function Home() {
                   </Link>
                 )}
                 <div className="ml-auto flex items-center gap-4">
+                  <OnlineCounter className="!bg-white/5 !border-white/10 !text-white/60" />
                   <span className="hidden text-xs text-white/40 md:inline">
                     {user?.firstName ?? "Coder"}&apos;s feed
                   </span>
@@ -309,32 +355,6 @@ export default function Home() {
             </div>
           </section>
         </SignedIn>
-
-        <SignedOut>
-          <section className="grid gap-8 border-t border-[#f5f1e8]/20 py-10 text-sm sm:grid-cols-3">
-            <div>
-              <p className="mb-2 font-mono text-[#d65a3a]">01</p>
-              <h2 className="mb-2 font-semibold">Start without friction</h2>
-              <p className="text-[#f5f1e8]/50">
-                Open a problem and begin in seconds.
-              </p>
-            </div>
-            <div>
-              <p className="mb-2 font-mono text-[#d65a3a]">02</p>
-              <h2 className="mb-2 font-semibold">Run on demand</h2>
-              <p className="text-[#f5f1e8]/50">
-                Execute code against Judge0 and see the result.
-              </p>
-            </div>
-            <div>
-              <p className="mb-2 font-mono text-[#d65a3a]">03</p>
-              <h2 className="mb-2 font-semibold">Keep learning</h2>
-              <p className="text-[#f5f1e8]/50">
-                Use each run to make the next idea sharper.
-              </p>
-            </div>
-          </section>
-        </SignedOut>
       </div>
     </main>
   );

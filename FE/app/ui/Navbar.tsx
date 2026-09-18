@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { Menu, X, ArrowRight, ShieldAlert, Zap } from "lucide-react";
 import {
   SignInButton,
@@ -11,6 +12,8 @@ import {
 } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import OnlineCounter from "./OnlineCounter";
+import SectionLink from "./SectionLink";
+import Logo from "./Logo";
 
 export default function NavBar() {
   const { isLoaded } = useAuth();
@@ -18,70 +21,40 @@ export default function NavBar() {
     <header className="sticky top-0 z-50 w-full  backdrop-blur-md border-b border-zinc-200/80">
       <div className="mx-auto px-10 h-16 flex items-center justify-between">
         <div className="flex items-center gap-8">
-          <button
-            id="logo-button"
-            className="flex items-center gap-2.5 text-left group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 rounded-lg p-1"
-          >
-            <div className="w-7 h-7 rounded-md text-white flex items-center justify-center font-mono font-semibold text-xs tracking-tight">
-              <svg
-                viewBox="0 0 100 100"
-                className="w-full h-full rounded-lg -rotate-6"
-              >
-                <path
-                  d="M50 10 C55 8, 60 10, 62 15  L88 55C91 60, 90 66, 85 69
-         L40 92
-         C34 95, 27 92, 25 86
-         L10 35
-         C8 29, 12 23, 18 22
-         Z"
-                  fill="none"
-                  stroke="#EF4444"
-                  strokeWidth="8"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-            <span className="font-semibold tracking-tight text-zinc-950 text-base flex items-center gap-2">
-              GoCode
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
-                v1.0
-              </span>
-            </span>
-          </button>
+          <Logo withVersion />
 
           {/* Desktop Nav Links */}
           <nav className="hidden md:flex items-center gap-6 text-sm text-zinc-600">
-            <button
-              id="nav-tracks"
+            <Link
+              id="nav-problems"
+              href="/problem"
               className="hover:text-zinc-950 transition-colors py-1"
             >
-              Lộ trình
-            </button>
-            <button
-              id="nav-challenges"
+              Bài tập
+            </Link>
+            <SectionLink
+              id="nav-topics"
+              targetId="topics"
               className="hover:text-zinc-950 transition-colors py-1"
             >
-              Thử thách
-            </button>
-            <button
-              id="nav-playground"
+              Dạng bài
+            </SectionLink>
+            <Link
+              id="nav-qna"
+              href="/qna"
               className="hover:text-zinc-950 transition-colors py-1"
             >
-              Sân luyện
-            </button>
-            <button
-              id="nav-philosophy"
-              className="hover:text-zinc-950 transition-colors py-1"
-            >
-              Kiến trúc
-            </button>
+              Hỏi đáp
+            </Link>
           </nav>
         </div>
         {/* Right CTA / Quick Status */}
         <div className="hidden sm:flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 px-2.5 py-1 rounded-full bg-zinc-100/80 border border-zinc-200/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            <span className="relative flex w-1.5 h-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            </span>
             <span>Engine &lt; 25ms</span>
           </div>
           <OnlineCounter />

@@ -2,14 +2,13 @@
 import {
   Search,
   ChevronDown,
-  ArrowLeft,
   HelpCircle,
   MessageSquare,
   Send,
   CheckCircle2,
 } from "lucide-react";
-import Link from "next/link";
 import { useState, useMemo } from "react";
+import Logo from "@/app/ui/Logo";
 import { EXTENDED_FAQS } from "@/app/data/faq";
 
 export default function Page() {
@@ -84,13 +83,7 @@ export default function Page() {
       <div className="max-w-4xl mx-auto px-6">
         {/* Navigation Breadcrumbs & Back Button */}
         <div className="flex items-center justify-between gap-4 mb-8">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs font-mono text-zinc-600 hover:text-zinc-950 transition-colors py-1.5 px-3 rounded-lg bg-white border border-zinc-200 shadow-2xs hover:bg-zinc-50"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Về Trang chủ</span>
-          </Link>
+          <Logo />
 
           <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
             <span className="hover:text-zinc-800 cursor-pointer">

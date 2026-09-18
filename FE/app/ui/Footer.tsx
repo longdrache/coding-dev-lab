@@ -1,10 +1,7 @@
 "use client";
 import Link from "next/link";
+import SectionLink from "./SectionLink";
 export default function Footer() {
-  const onScrollToSection = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-  };
-
   return (
     <footer className="bg-white border-t border-zinc-200/80">
       <div className="max-w-6xl mx-auto px-6 py-10">
@@ -45,17 +42,17 @@ export default function Footer() {
           {/* Essential Navigation */}
           <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs font-medium text-zinc-600">
             <Link
-              href="/roadmap"
+              href="/problem"
               className="hover:text-zinc-950 transition-colors"
             >
-              Lộ trình
+              Bài tập
             </Link>
-            <Link
-              href="/challenges"
+            <SectionLink
+              targetId="topics"
               className="hover:text-zinc-950 transition-colors"
             >
-              Thử thách
-            </Link>
+              Dạng bài
+            </SectionLink>
             <Link href="/qna" className="hover:text-zinc-950 transition-colors">
               Hỏi đáp
             </Link>

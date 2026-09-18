@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Logo from "@/app/ui/Logo";
 import Pricing from "@/app/ui/Pricing";
 import { Metadata } from "next";
 // const plans = [
@@ -34,9 +35,7 @@ export default function PremiumPage() {
     <main className="min-h-screen  bg-[#1a1a1a] px-6 py-12 text-[#f5f1e8] sm:px-10">
       <div className="mx-auto max-w-5xl">
         <nav className="mb-10 flex items-center justify-between border-b border-white/10 pb-5">
-          <Link href="/" className="font-serif text-xl tracking-tight">
-            coding<span className="">.</span>lab
-          </Link>
+          <Logo theme="dark" />
           <div className="flex items-center gap-6 text-sm text-[#f5f1e8]/65">
             <Link href="/problem" className="transition hover:text-[#f5f1e8]">
               Problem Lab

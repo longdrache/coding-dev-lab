@@ -20,11 +20,7 @@ export function useDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isSignedIn) {
-      setData(null);
-      setLoading(false);
-      return;
-    }
+    if (!isSignedIn) return;
     let cancelled = false;
     async function load() {
       setLoading(true);
@@ -53,5 +49,8 @@ export function useDashboard() {
     };
   }, [getToken, isSignedIn]);
 
+  if (isSignedIn === false) {
+    return { data: null, loading: false } as const;
+  }
   return { data, loading };
 }

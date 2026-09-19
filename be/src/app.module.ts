@@ -8,8 +8,6 @@ import { RolesGuard } from './auth/roles.guard.ts';
 import { PremiumController } from './premium.controller.ts';
 import { PremiumService } from './premium.service.ts';
 import { ConfigModule } from '@nestjs/config';
-import { EmailController } from './email.controller.ts';
-import { EmailService } from './email.service.ts';
 import { EmployeesModule } from './employees/employees.module.js';
 import { PresenceModule } from './presence/presence.module.ts';
 import { ActivityModule } from './activity/activity.module.ts';
@@ -28,19 +26,7 @@ import { QnaModule } from './qna/qna.module.ts';
     SubmissionsModule,
     QnaModule,
   ],
-  controllers: [
-    AppController,
-    Judge0Controller,
-    PremiumController,
-    EmailController,
-  ],
-  providers: [
-    AppService,
-    Judge0Service,
-    ClerkAuthGuard,
-    RolesGuard,
-    PremiumService,
-    EmailService,
-  ],
+  controllers: [AppController, Judge0Controller, PremiumController],
+  providers: [AppService, Judge0Service, ClerkAuthGuard, RolesGuard, PremiumService],
 })
 export class AppModule {}

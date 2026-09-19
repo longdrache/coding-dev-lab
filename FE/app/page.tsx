@@ -283,7 +283,7 @@ export default function Home() {
                 <div className="ml-auto flex items-center gap-4">
                   <OnlineCounter />
                   <span className="hidden text-xs text-zinc-400 md:inline">
-                    {user?.firstName ?? "Coder"}&apos;s feed
+                    Xin chào, {user?.firstName ?? "Coder"}!
                   </span>
                   <UserButton />
                 </div>

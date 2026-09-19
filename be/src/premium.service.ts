@@ -7,12 +7,13 @@ import {
 import { createClerkClient } from '@clerk/backend';
 import Stripe from 'stripe';
 import 'dotenv/config';
-export type PremiumPlan = 'monthly' | 'yearly';
+export type PremiumPlan = 'daily' | 'monthly' | 'yearly';
 
 const plans: Record<
   PremiumPlan,
-  { amount: number; interval: 'month' | 'year' }
+  { amount: number; interval: 'day' | 'month' | 'year' }
 > = {
+  daily: { amount: 200, interval: 'day' },
   monthly: { amount: 1000, interval: 'month' },
   yearly: { amount: 2000, interval: 'year' },
 };
@@ -209,7 +210,8 @@ export class PremiumService implements OnModuleInit {
   ) {
     let expiresAt = extraMetadata?.expiresAt;
     if (!expiresAt) {
-      const durationDays = plan === 'yearly' ? 365 : 30;
+      const durationMap: Record<PremiumPlan, number> = { daily: 1, monthly: 30, yearly: 365 };
+      const durationDays = durationMap[plan] ?? 30;
       expiresAt = new Date(
         Date.now() + durationDays * 24 * 60 * 60 * 1000,
       ).toISOString();
@@ -294,7 +296,7 @@ export class PremiumService implements OnModuleInit {
           },
         },
       ],
-      success_url: `${frontendUrl}/vip?payment=success`,
+      success_url: `${frontendUrl}/premium/thank-you?plan=${plan}&payment=success`,
       cancel_url: `${frontendUrl}/premium?payment=cancelled`,
     });
   }

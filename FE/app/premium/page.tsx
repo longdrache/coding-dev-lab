@@ -37,7 +37,7 @@ export default function PremiumPage() {
     <main className="min-h-screen bg-[#1a1a1a] text-[#f5f1e8]">
       <PremiumGuard />
       <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#1a1a1a]/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6 sm:px-10">
+        <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-8">
             <Logo theme="dark" />
             <nav className="hidden items-center gap-6 text-sm text-white/60 md:flex">
@@ -61,7 +61,7 @@ export default function PremiumPage() {
           </Link>
         </div>
       </header>
-      <div className="mx-auto max-w-5xl px-6 py-12 sm:px-10">
+      <div className="mx-auto max-w-[1480px] px-4 sm:px-6 lg:px-8 py-12">
 
         <div
           id="plans-section"
@@ -85,8 +85,7 @@ export default function PremiumPage() {
           </h2>
 
           <p className="mt-2.5 text-xs sm:text-sm text-neutral-400 max-w-xl leading-relaxed">
-            20 bài Dễ/Trung bình, chấm Batch 10, streak & heatmap, lưu Neon — chọn
-            tháng linh hoạt hoặc năm tiết kiệm 10.000 ₫.
+            20 bài Dễ/Trung bình, chấm Batch 10, streak & heatmap, lưu Neon — thử 1 ngày chỉ 200 ₫, tháng linh hoạt 1.000 ₫ hoặc năm tiết kiệm 10.000 ₫.
           </p>
         </div>
         <Pricing />

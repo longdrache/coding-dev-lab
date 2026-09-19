@@ -17,6 +17,7 @@ export default function PricingCards() {
   const router = useRouter();
   const [loadingPlan, setLoadingPlan] = useState("");
   const [error, setError] = useState("");
+  const dailyPlan = pricingPlans.find((p) => p.id === "daily")!;
   const monthlyPlan = pricingPlans.find((p) => p.id === "monthly")!;
   const yearlyPlan = pricingPlans.find((p) => p.id === "yearly")!;
   const formatPrice = (vnd: number) => {
@@ -59,10 +60,62 @@ export default function PricingCards() {
   return (
     <section
       id="pricing-cards-container"
-      className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4"
+      className="mx-auto w-full max-w-[1480px] px-0 py-4"
     >
-      {/* 2 Plans Grid */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-8 items-stretch max-w-5xl mx-auto">
+      {/* 3 Plans Grid - full width */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8 items-stretch w-full">
+        {/* ================= GÓI THEO NGÀY (DAILY - 200₫) ================= */}
+        <div
+          id="daily-plan-card"
+          className="relative flex flex-col justify-between rounded-2xl p-6 sm:p-7 transition-all duration-300 cursor-pointer bg-neutral-900/50 border border-emerald-500/20 hover:border-emerald-500/40 opacity-90 hover:opacity-100"
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">{dailyPlan.nameVi}</h3>
+                <p className="mt-1 text-xs text-neutral-400">{dailyPlan.descriptionVi}</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-300">
+                {dailyPlan.badgeVi}
+              </span>
+            </div>
+            <div className="mt-6 border-y border-neutral-800 py-6">
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-extrabold tracking-tight text-emerald-400">
+                  {formatPrice(dailyPlan.totalBilledVND)}
+                </span>
+                <span className="text-sm font-medium text-neutral-400">/ ngày</span>
+              </div>
+              <p className="mt-2 text-xs text-neutral-400">Thanh toán {formatPrice(dailyPlan.totalBilledVND)} cho 24h. Tự hết hạn sau 1 ngày.</p>
+            </div>
+            <div className="mt-6">
+              <div className="text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-3">Đặc quyền bao gồm:</div>
+              <ul className="space-y-3 text-sm text-neutral-300">
+                {dailyPlan.features.map((feature) => (
+                  <li key={feature.id} className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-full bg-emerald-500/20 p-1 text-emerald-400">
+                      <Check className="h-3.5 w-3.5" />
+                    </div>
+                    <span>{feature.textVi}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div className="mt-8 pt-6 border-t border-neutral-800/80">
+            <button
+              id="select-daily-plan-btn"
+              type="button"
+              disabled={!!loadingPlan}
+              onClick={() => choosePlan(dailyPlan.id)}
+              className="w-full disabled:opacity-50 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-500 py-3.5 px-4 text-sm font-semibold text-white transition duration-200 flex items-center justify-center gap-2 group"
+            >
+              {loadingPlan === dailyPlan.id ? <span>Đang tiến hành thanh toán...</span> : <><span>{dailyPlan.ctaVi}</span><ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></>}
+            </button>
+            <p className="mt-2.5 text-center text-[11px] text-neutral-500">Dùng thử siêu rẻ • Không tự gia hạn</p>
+          </div>
+        </div>
+
         {/* ================= GÓI HÀNG THÁNG (MONTHLY PLAN) ================= */}
         <div
           id="monthly-plan-card"
@@ -270,18 +323,18 @@ export default function PricingCards() {
       </div>
 
       {/* Trust banner underneath cards */}
-      <div className="mt-10 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 max-w-4xl mx-auto flex flex-wrap items-center justify-around gap-4 text-xs text-neutral-400">
+      <div className="mt-10 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 max-w-6xl mx-auto flex flex-wrap items-center justify-around gap-4 text-xs text-neutral-400">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-emerald-400" />
-          <span>Mã hóa SSL 256-bit chuẩn ngân hàng</span>
+          <span>Thanh toán bằng Stripe</span>
         </div>
         <div className="flex items-center gap-2">
           <Zap className="h-4 w-4 text-[#ffa116]" />
-          <span>Nâng cấp hoặc hủy gói bất cứ lúc nào</span>
+          <span>Nâng cấp ngay</span>
         </div>
         <div className="flex items-center gap-2">
           <Coins className="h-4 w-4 text-amber-400" />
-          <span>Hỗ trợ xuất hóa đơn VAT / Doanh nghiệp</span>
+          <span>Tùy chọn gói mà bạn thích</span>
         </div>
       </div>
       {error && <p className="mt-6 text-sm text-red-300">{error}</p>}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { SignedIn, SignedOut, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import NavBar from "@/app/ui/Navbar";
-import { ArrowRight, Terminal } from "lucide-react";
+import { ArrowRight, Terminal, Crown } from "lucide-react";
 import { useState, useEffect } from "react";
 import { codeLines } from "@/app/data/code";
 import { recordLogin } from "@/app/problem/activity";
@@ -268,24 +268,41 @@ export default function Home() {
                 >
                   Hỏi đáp
                 </Link>
-                {user?.publicMetadata?.role !== "vip" ? (
+                {user?.publicMetadata?.role !== "vip" && (
                   <Link
                     href="/premium"
                     className="font-medium text-amber-600 transition hover:text-amber-700"
                   >
                     Premium
                   </Link>
-                ) : (
-                  <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                    VIP
-                  </span>
                 )}
-                <div className="ml-auto flex items-center gap-4">
+                <div className="ml-auto flex items-center gap-3">
                   <OnlineCounter />
+                  {user?.publicMetadata?.role === "vip" ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-gradient-to-r from-amber-400 to-orange-500 px-2.5 py-1 text-xs font-bold text-white shadow-sm shadow-amber-500/20">
+                      <Crown className="size-3.5 fill-white text-white" />
+                      VIP
+                    </span>
+                  ) : null}
                   <span className="hidden text-xs text-zinc-400 md:inline">
                     Xin chào, {user?.firstName ?? "Coder"}!
                   </span>
-                  <UserButton />
+                  <div className="relative">
+                    <div className={user?.publicMetadata?.role === "vip" ? "rounded-full p-[2px] bg-gradient-to-r from-amber-400 to-orange-500 shadow-sm" : ""}>
+                      <UserButton
+                        appearance={{
+                          elements: {
+                            avatarBox: user?.publicMetadata?.role === "vip" ? "ring-2 ring-white" : "",
+                          },
+                        }}
+                      />
+                    </div>
+                    {user?.publicMetadata?.role === "vip" && (
+                      <span className="pointer-events-none absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow ring-2 ring-white">
+                        <Crown className="size-3 fill-white" />
+                      </span>
+                    )}
+                  </div>
                 </div>
               </nav>
 

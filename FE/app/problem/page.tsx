@@ -38,7 +38,7 @@ function ProblemList() {
   const [difficulty, setDifficulty] = useState<"Tất cả" | Difficulty>("Tất cả");
   const solvedSlugs = useSolvedSlugs();
   const { problems: dbProblems, loading } = useProblems();
-  const problems = dbProblems ?? [];
+  const problems = useMemo(() => dbProblems ?? [], [dbProblems]);
 
   function updateTopic(next: string) {
     const params = new URLSearchParams(searchParams.toString());

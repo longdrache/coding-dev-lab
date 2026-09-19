@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { createClerkClient } from '@clerk/backend';
 import Stripe from 'stripe';
-
+import "dotenv/config"
 export type PremiumPlan = 'monthly' | 'yearly';
 
 const plans: Record<
@@ -14,7 +14,19 @@ const plans: Record<
 
 @Injectable()
 export class PremiumService {
-  private readonly stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '');
+  private stripeInstance?: Stripe;
+
+  private getStripe(): Stripe {
+    if (this.stripeInstance) return this.stripeInstance;
+    const key = (process.env.STRIPE_SECRET_KEY ?? '').trim();
+    if (!key) {
+      throw new BadRequestException(
+        'Chưa cấu hình STRIPE_SECRET_KEY – Vui lòng thêm biến môi trường trên Vercel (Settings → Environment Variables)',
+      );
+    }
+    this.stripeInstance = new Stripe(key);
+    return this.stripeInstance;
+  }
 
   async setUserRole(
     userId: string,
@@ -116,7 +128,7 @@ export class PremiumService {
       throw new BadRequestException('Gói premium không hợp lệ');
 
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-    return this.stripe.checkout.sessions.create({
+    return this.getStripe().checkout.sessions.create({
       mode: 'subscription',
       client_reference_id: userId,
       metadata: { userId, plan },
@@ -147,7 +159,7 @@ export class PremiumService {
 
     let event: Stripe.Event;
     try {
-      event = this.stripe.webhooks.constructEvent(
+      event = this.getStripe().webhooks.constructEvent(
         payload,
         signature,
         webhookSecret,

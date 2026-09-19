@@ -543,6 +543,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   }, [getToken, isSignedIn, slug]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchHistory updates history state after mount; intentional sync to external API
     fetchHistory();
   }, [fetchHistory]);
 

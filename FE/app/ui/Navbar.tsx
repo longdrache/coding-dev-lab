@@ -1,16 +1,7 @@
 "use client";
 import Link from "next/link";
-import { Menu, X, ArrowRight, ShieldAlert, Zap } from "lucide-react";
-import {
-  SignInButton,
-  SignUpButton,
-  SignedIn,
-  SignedOut,
-  UserButton,
-  useAuth,
-  useUser,
-} from "@clerk/nextjs";
-import { useEffect, useState } from "react";
+import { ArrowRight } from "lucide-react";
+import { SignInButton, SignUpButton, useAuth } from "@clerk/nextjs";
 import OnlineCounter from "./OnlineCounter";
 import SectionLink from "./SectionLink";
 import Logo from "./Logo";

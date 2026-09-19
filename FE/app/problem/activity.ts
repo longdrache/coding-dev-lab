@@ -117,10 +117,7 @@ export function useActivityMap(): Record<string, number> {
   const [map, setMap] = useState<Record<string, number>>(EMPTY_MAP);
 
   useEffect(() => {
-    if (!isSignedIn) {
-      setMap(EMPTY_MAP);
-      return;
-    }
+    if (!isSignedIn) return;
     let cancelled = false;
     async function load() {
       try {
@@ -141,5 +138,6 @@ export function useActivityMap(): Record<string, number> {
     };
   }, [getToken, isSignedIn]);
 
+  if (isSignedIn === false) return EMPTY_MAP;
   return map;
 }

@@ -284,6 +284,11 @@ export default function Page() {
                 />
               </div>
 
+              {submitError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {submitError}
+                </p>
+              )}
               <div className="flex justify-end">
                 <button
                   type="submit"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, type MouseEvent } from "react";
-import { ArrowRight, Brain, Code2, Trophy } from "lucide-react";
+import { Brain, Code2, Trophy } from "lucide-react";
 
 type Accent = "emerald" | "violet" | "amber";
 

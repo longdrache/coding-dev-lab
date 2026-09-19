@@ -1,4 +1,3 @@
-import OnlineCounter from "./OnlineCounter";
 import Reveal from "./Reveal";
 import { topics } from "@/app/data/topics";
 

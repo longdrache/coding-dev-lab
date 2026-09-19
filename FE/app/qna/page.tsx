@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import {
   Search,
   ChevronDown,
@@ -6,6 +7,7 @@ import {
   MessageSquare,
   Send,
   CheckCircle2,
+  ArrowLeft,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import Logo from "@/app/ui/Logo";
@@ -44,37 +46,31 @@ export default function Page() {
     setOpenFaqId(openFaqId === id ? null : id);
   };
 
-  const handleContactSubmit = async () => {
-    // e.preventDefault();
-    if (contactName.trim() && contactEmail.trim() && contactQuestion.trim()) {
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError(null);
+    if (!contactName.trim() || !contactEmail.trim() || !contactQuestion.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/api/qna`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: contactName.trim(),
+          email: contactEmail.trim(),
+          question: contactQuestion.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Gửi thất bại");
       setContactSubmitted(true);
-      try {
-        const res = await fetch(`${API_URL}/api/email`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: contactName,
-            email: contactEmail,
-            message: contactQuestion,
-          }),
-        });
-
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || "Gửi thất bại");
-        }
-        setTimeout(() => {
-          setContactName("");
-          setContactEmail("");
-          setContactQuestion("");
-        }, 3500);
-      } catch (error) {
-        setSubmitError(
-          error instanceof Error ? error.message : "Đã có lỗi xảy ra",
-        );
-      }
+      setTimeout(() => {
+        setContactName("");
+        setContactEmail("");
+        setContactQuestion("");
+        setContactSubmitted(false);
+      }, 4000);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Đã có lỗi xảy ra");
     }
   };
 
@@ -83,7 +79,16 @@ export default function Page() {
       <div className="max-w-4xl mx-auto px-6">
         {/* Navigation Breadcrumbs & Back Button */}
         <div className="flex items-center justify-between gap-4 mb-8">
-          <Logo />
+          <div className="flex items-center gap-4">
+            <Logo />
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-zinc-800 transition"
+            >
+              <ArrowLeft className="size-4" />
+              Trang chủ
+            </Link>
+          </div>
 
           <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
             <span className="hover:text-zinc-800 cursor-pointer">

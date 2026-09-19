@@ -207,8 +207,8 @@ export default function PricingCards() {
               <div className="text-xs font-semibold uppercase tracking-wider text-amber-400/90 mb-3 flex items-center justify-between">
                 <span>Đặc quyền vượt trội của gói Năm:</span>
                 <span className="flex items-center gap-1 text-[11px] text-amber-300 font-normal">
-                  <Coins className="h-3 w-3 text-amber-400" />
-                  +35 LeetCoins/tuần
+            
+                
                 </span>
               </div>
               <ul className="space-y-3.5 text-sm text-neutral-200">
@@ -258,7 +258,7 @@ export default function PricingCards() {
             <div className="mt-2.5 flex items-center justify-center gap-4 text-[11px] text-neutral-400">
               <span className="flex items-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-                Bảo đảm hoàn tiền trong 7 ngày
+                Bảo đảm đáng giá 
               </span>
               <span>•</span>
               <span className="flex items-center gap-1">

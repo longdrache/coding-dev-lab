@@ -18,10 +18,93 @@ model User {
   email     String   @unique
   name      String?
   nothing   String?
+  clerkId   String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Test {
   id String @id @default(uuid())
+}
+
+model ActivityDay {
+  id        String   @id @default(cuid())
+  clerkId   String
+  date      DateTime @db.Date
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clerkId, date])
+  @@index([clerkId])
+}
+
+model SolvedProblem {
+  id         String   @id @default(cuid())
+  clerkId    String
+  slug       String
+  difficulty String?
+  solvedAt   DateTime @default(now())
+
+  @@unique([clerkId, slug])
+  @@index([clerkId])
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  clerkId    String
+  badgeId    String
+  unlockedAt DateTime @default(now())
+
+  @@unique([clerkId, badgeId])
+  @@index([clerkId])
+}
+
+model Problem {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  difficulty  String
+  topic       String
+  description String   @db.Text
+  inputFormat String   @db.Text
+  outputFormat String  @db.Text
+  constraints Json
+  examples    Json
+  tests       Json
+  hiddenTests Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Submission {
+  id          String   @id @default(cuid())
+  clerkId     String
+  problemSlug String
+  languageId  Int
+  sourceCode  String   @db.Text
+  status      String?
+  statusId    Int?
+  passed      Boolean?
+  passedCount Int?
+  totalCount  Int?
+  time        String?
+  memory      Int?
+  createdAt   DateTime @default(now())
+
+  @@index([clerkId])
+  @@index([problemSlug])
+  @@index([clerkId, problemSlug])
+}
+
+model QnaQuestion {
+  id        String   @id @default(cuid())
+  clerkId   String?
+  name      String
+  email     String
+  question  String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([clerkId])
 }

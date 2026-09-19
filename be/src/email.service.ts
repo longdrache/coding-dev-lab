@@ -1,20 +1,13 @@
-import { MailerService } from '@nestjs-modules/mailer';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 @Injectable()
 export class EmailService {
-  constructor(private readonly mailService: MailerService) {}
+  private readonly logger = new Logger(EmailService.name);
 
   sendMail(email: string, name: string, message: string) {
-    try {
-      this.mailService.sendMail({
-        from: 'no-reply@gocode.com',
-        to: email,
-        subject: `Thac mac cua ban ${name}`,
-        text: message,
-      });
-    } catch (e) {
-      console.error(e);
-    }
+    // Tạm log thay vì gửi SMTP để tránh lỗi ESM của @nestjs-modules/mailer trên Vercel.
+    // QNA đã lưu DB, email chỉ là phụ. Khi cần gửi thật, cấu hình nodemailer trực tiếp ở đây.
+    this.logger.log(`QNA mail to ${email} from ${name}: ${message.slice(0, 80)}`);
+    return { queued: true };
   }
 }

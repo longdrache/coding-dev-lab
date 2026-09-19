@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/nextjs";
+import { SignedIn, SignedOut, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import NavBar from "@/app/ui/Navbar";
-import { ArrowRight, Code2, Flame, MessagesSquare, Terminal, Trophy } from "lucide-react";
+import { ArrowRight, Terminal } from "lucide-react";
 import { useState, useEffect } from "react";
 import { codeLines } from "@/app/data/code";
+import { recordLogin } from "@/app/problem/activity";
 import FeatureCard from "./ui/FeatureCard";
 import OnlineCounter from "./ui/OnlineCounter";
 import Reveal from "./ui/Reveal";
@@ -15,16 +16,16 @@ import StatsStrip from "./ui/StatsStrip";
 import FaqTeaser from "./ui/FaqTeaser";
 import FinalCta from "./ui/FinalCta";
 import { topics } from "@/app/data/topics";
-import { problems } from "@/app/data/problems";
-import { discussions } from "@/app/data/discussions";
-import {
-  CONTEST_CADENCE_LABEL,
-  upcomingContest,
-} from "@/app/data/contests";
 import SectionLink from "./ui/SectionLink";
+import StreakDashboard from "./ui/StreakDashboard";
 export default function Home() {
-  const { user } = useUser();
+  const { user, isSignedIn } = useUser();
+  const { getToken } = useAuth();
   const [visibleLines, setVisibleLines] = useState(0);
+
+  useEffect(() => {
+    if (isSignedIn) recordLogin(getToken);
+  }, [isSignedIn, getToken]);
   useEffect(() => {
     if (visibleLines < codeLines.length) {
       const timer = setTimeout(() => {
@@ -262,38 +263,22 @@ export default function Home() {
                   Bài tập
                 </Link>
                 <Link
-                  href="/contest"
-                  className="hidden transition hover:text-zinc-950 sm:inline"
-                >
-                  Cuộc thi
-                </Link>
-                <Link
-                  href="/discuss"
-                  className="hidden transition hover:text-zinc-950 sm:inline"
-                >
-                  Thảo luận
-                </Link>
-                <Link
                   href="/qna"
                   className="hidden transition hover:text-zinc-950 sm:inline"
                 >
                   Hỏi đáp
                 </Link>
-                {user?.publicMetadata?.role !== "vip" && (
+                {user?.publicMetadata?.role !== "vip" ? (
                   <Link
                     href="/premium"
                     className="font-medium text-amber-600 transition hover:text-amber-700"
                   >
                     Premium
                   </Link>
-                )}
-                {user?.publicMetadata?.role === "vip" && (
-                  <Link
-                    href="/vip"
-                    className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
-                  >
+                ) : (
+                  <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
                     VIP
-                  </Link>
+                  </span>
                 )}
                 <div className="ml-auto flex items-center gap-4">
                   <OnlineCounter />
@@ -304,214 +289,8 @@ export default function Home() {
                 </div>
               </nav>
 
-              <div className="grid gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-                <div className="min-w-0">
-                  <div className="rounded-2xl border border-zinc-200/80 bg-zinc-50 p-6">
-                    <p className="text-xs text-zinc-500">
-                      Chào mừng trở lại{user?.firstName ? `, ${user.firstName}` : ""}!
-                    </p>
-                    <h2 className="mt-2 text-2xl font-bold tracking-tight text-zinc-950">
-                      Hôm nay giải thêm một bài nhé.
-                    </h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-                      Mở problem lab, chọn một dạng bài hợp trình độ và biến
-                      ý tưởng thành chương trình chạy được.
-                    </p>
-                    <Link
-                      href="/problem"
-                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 active:scale-[0.98]"
-                    >
-                      Tiếp tục luyện tập
-                      <ArrowRight className="size-4" />
-                    </Link>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div className="rounded-xl border border-zinc-200/80 bg-white p-4 text-center shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
-                      <p className="text-xl font-bold text-zinc-950 tabular-nums">
-                        {problems.length}
-                      </p>
-                      <p className="mt-1 text-[11px] text-zinc-500">Bài tập</p>
-                    </div>
-                    <div className="rounded-xl border border-zinc-200/80 bg-white p-4 text-center shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
-                      <p className="text-xl font-bold text-zinc-950 tabular-nums">
-                        {topics.length}
-                      </p>
-                      <p className="mt-1 text-[11px] text-zinc-500">Dạng bài</p>
-                    </div>
-                    <div className="rounded-xl border border-zinc-200/80 bg-white p-4 text-center shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
-                      <p className="text-xl font-bold text-zinc-950 tabular-nums">
-                        5
-                      </p>
-                      <p className="mt-1 text-[11px] text-zinc-500">Ngôn ngữ</p>
-                    </div>
-                    <div className="rounded-xl border border-zinc-200/80 bg-white p-4 text-center shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
-                      <p className="text-xl font-bold text-zinc-950 tabular-nums">
-                        {discussions.length}
-                      </p>
-                      <p className="mt-1 text-[11px] text-zinc-500">Thảo luận</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="font-semibold text-zinc-900">
-                        Gợi ý cho bạn
-                      </h3>
-                      <Link
-                        href="/problem"
-                        className="text-xs text-zinc-500 transition hover:text-zinc-900"
-                      >
-                        Xem tất cả →
-                      </Link>
-                    </div>
-                    <div className="divide-y divide-zinc-200/70 rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
-                      {problems
-                        .filter((problem) => problem.difficulty === "Dễ")
-                        .slice(0, 3)
-                        .map((problem) => (
-                          <Link
-                            key={problem.slug}
-                            href={`/problem/${problem.slug}`}
-                            className="group flex items-center gap-3 px-4 py-3.5 transition hover:bg-zinc-50"
-                          >
-                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                              {problem.difficulty}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-sm text-zinc-900">
-                              {problem.title}
-                            </span>
-                            <ArrowRight className="size-4 shrink-0 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-zinc-500" />
-                          </Link>
-                        ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-6">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="font-semibold text-zinc-900">
-                        Đang bàn luận
-                      </h3>
-                      <Link
-                        href="/discuss"
-                        className="text-xs text-zinc-500 transition hover:text-zinc-900"
-                      >
-                        Vào thảo luận →
-                      </Link>
-                    </div>
-                    <div className="divide-y divide-zinc-200/70 rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
-                      {discussions.slice(0, 3).map((thread) => (
-                        <Link
-                          key={thread.id}
-                          href="/discuss"
-                          className="group block px-4 py-3.5 transition hover:bg-zinc-50"
-                        >
-                          <p className="truncate text-sm text-zinc-900">
-                            {thread.title}
-                          </p>
-                          <p className="mt-1 font-mono text-[11px] text-zinc-400">
-                            {thread.category} • {thread.replies} trả lời •{" "}
-                            {thread.timeAgo}
-                          </p>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <aside className="space-y-4">
-                  <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 p-5 text-white shadow-lg shadow-emerald-500/20 transition duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-emerald-500/25">
-                    <div className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-white/15 blur-2xl" />
-                    <div className="relative flex size-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
-                      <Flame className="size-5" />
-                    </div>
-                    <p className="relative mt-4 font-mono text-[11px] uppercase tracking-[0.18em] text-white/60">
-                      Thói quen
-                    </p>
-                    <p className="relative mt-1 text-lg font-bold leading-snug">
-                      Mỗi ngày một bài.
-                    </p>
-                    <p className="relative mt-1.5 text-[13px] leading-relaxed text-white/75">
-                      Chuỗi luyện tập đều đặn giúp tiến bộ nhanh nhất.
-                    </p>
-                    <Link
-                      href="/problem"
-                      className="relative mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3.5 py-2 text-xs font-bold ring-1 ring-white/25 transition hover:bg-white/25"
-                    >
-                      Giải bài hôm nay
-                      <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-                    </Link>
-                  </div>
-
-                  <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 p-5 text-white shadow-lg shadow-violet-500/20 transition duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25">
-                    <div className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-white/15 blur-2xl" />
-                    <div className="relative flex size-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
-                      <Code2 className="size-5" />
-                    </div>
-                    <p className="relative mt-4 font-mono text-[11px] uppercase tracking-[0.18em] text-white/60">
-                      Problem Lab
-                    </p>
-                    <p className="relative mt-1 text-lg font-bold leading-snug">
-                      {problems.length} bài chấm tự động.
-                    </p>
-                    <p className="relative mt-1.5 text-[13px] leading-relaxed text-white/75">
-                      Từ Dễ đến Trung bình, chạy code và xem kết quả ngay.
-                    </p>
-                    <Link
-                      href="/problem"
-                      className="relative mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3.5 py-2 text-xs font-bold ring-1 ring-white/25 transition hover:bg-white/25"
-                    >
-                      Bắt đầu giải
-                      <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-                    </Link>
-                  </div>
-
-                  <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 text-white shadow-lg shadow-amber-500/20 transition duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-amber-500/25">
-                    <div className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-white/15 blur-2xl" />
-                    <div className="relative flex size-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
-                      <Trophy className="size-5" />
-                    </div>
-                    <p className="relative mt-4 font-mono text-[11px] uppercase tracking-[0.18em] text-white/60">
-                      {upcomingContest.title}
-                    </p>
-                    <p className="relative mt-1 text-lg font-bold leading-snug">
-                      Thi đấu mỗi Chủ nhật.
-                    </p>
-                    <p className="relative mt-1.5 text-[13px] leading-relaxed text-white/75">
-                      {CONTEST_CADENCE_LABEL} • {upcomingContest.durationLabel}.
-                    </p>
-                    <Link
-                      href="/contest"
-                      className="relative mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3.5 py-2 text-xs font-bold ring-1 ring-white/25 transition hover:bg-white/25"
-                    >
-                      Xem cuộc thi
-                      <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-                    </Link>
-                  </div>
-
-                  <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 p-5 text-white shadow-lg shadow-sky-500/20 transition duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-sky-500/25">
-                    <div className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-white/15 blur-2xl" />
-                    <div className="relative flex size-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
-                      <MessagesSquare className="size-5" />
-                    </div>
-                    <p className="relative mt-4 font-mono text-[11px] uppercase tracking-[0.18em] text-white/60">
-                      Cộng đồng
-                    </p>
-                    <p className="relative mt-1 text-lg font-bold leading-snug">
-                      Cùng nhau gỡ bí.
-                    </p>
-                    <p className="relative mt-1.5 text-[13px] leading-relaxed text-white/75">
-                      Hỏi cách tiếp cận, chia sẻ kinh nghiệm cùng mọi người.
-                    </p>
-                    <Link
-                      href="/discuss"
-                      className="relative mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3.5 py-2 text-xs font-bold ring-1 ring-white/25 transition hover:bg-white/25"
-                    >
-                      Vào thảo luận
-                      <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-                    </Link>
-                  </div>
-                </aside>
+              <div className="py-6">
+                <StreakDashboard />
               </div>
             </div>
           </section>

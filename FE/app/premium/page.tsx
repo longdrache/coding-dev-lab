@@ -1,6 +1,8 @@
 import Link from "next/link";
 import Logo from "@/app/ui/Logo";
 import Pricing from "@/app/ui/Pricing";
+import PremiumGuard from "./PremiumGuard";
+import { ArrowLeft } from "lucide-react";
 import { Metadata } from "next";
 // const plans = [
 //   { id: "monthly", label: "Monthly", price: "1vnd", detail: "per month" },
@@ -32,32 +34,34 @@ export const metadata: Metadata = {
 };
 export default function PremiumPage() {
   return (
-    <main className="min-h-screen  bg-[#1a1a1a] px-6 py-12 text-[#f5f1e8] sm:px-10">
-      <div className="mx-auto max-w-5xl">
-        <nav className="mb-10 flex items-center justify-between border-b border-white/10 pb-5">
-          <Logo theme="dark" />
-          <div className="flex items-center gap-6 text-sm text-[#f5f1e8]/65">
-            <Link href="/problem" className="transition hover:text-[#f5f1e8]">
-              Problem Lab
-            </Link>
-            <Link
-              href="/"
-              className="border border-[#f5f1e8]/30 px-3 py-1.5 text-xs font-semibold text-[#f5f1e8] transition hover:border-[#f5f1e8]"
-            >
-              ← Trang chủ
-            </Link>
+    <main className="min-h-screen bg-[#1a1a1a] text-[#f5f1e8]">
+      <PremiumGuard />
+      <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#1a1a1a]/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6 sm:px-10">
+          <div className="flex items-center gap-8">
+            <Logo theme="dark" />
+            <nav className="hidden items-center gap-6 text-sm text-white/60 md:flex">
+              <Link href="/problem" className="transition hover:text-white">
+                Bài tập
+              </Link>
+              <Link href="/#topics" className="transition hover:text-white">
+                Dạng bài
+              </Link>
+              <Link href="/qna" className="transition hover:text-white">
+                Hỏi đáp
+              </Link>
+            </nav>
           </div>
-          {/* <div className="fixed top-6 right-6 z-50 grid w-full max-w-sm items-start gap-3">
-            <Alert>
-              <CheckCircle2Icon />
-              <AlertTitle>Payment successful</AlertTitle>
-              <AlertDescription>
-                Your payment of $29.99 has been processed. A receipt has been
-                sent to your email address.
-              </AlertDescription>
-            </Alert>
-          </div> */}
-        </nav>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-zinc-900 shadow hover:bg-zinc-100 transition"
+          >
+            <ArrowLeft className="size-4" />
+            Trang chủ
+          </Link>
+        </div>
+      </header>
+      <div className="mx-auto max-w-5xl px-6 py-12 sm:px-10">
 
         <div
           id="plans-section"
@@ -65,24 +69,24 @@ export default function PremiumPage() {
         >
           <div className="inline-flex items-center gap-2 px-3.5 py-3.5 rounded-full bg-neutral-900/90 border border-neutral-800 text-xs font-semibold text-neutral-300 mb-3 shadow-inner">
             <span className="h-2 w-2 rounded-full bg-[#ffa116]"></span>
-            <span>2 lựa chọn gói thành viên tối ưu</span>
+            <span>GoCode Premium • 20 bài • 8 ngôn ngữ • Batch 10</span>
           </div>
 
           <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight flex items-center justify-center gap-2.5 flex-wrap">
             <span className="text-neutral-200 flex items-center gap-1.5">
               <span>⏱️</span>
-              <span>Linh hoạt thời gian</span>
+              <span>Linh hoạt</span>
             </span>
             <span className="text-neutral-500 font-normal">&bull;</span>
             <span className="text-[#ffa116] flex items-center gap-1.5">
               <span>👑</span>
-              <span>Gói Năm tiết kiệm 83.3%</span>
+              <span>Tiết kiệm 83% gói Năm</span>
             </span>
           </h2>
 
           <p className="mt-2.5 text-xs sm:text-sm text-neutral-400 max-w-xl leading-relaxed">
-            Tùy chọn thanh toán từng tháng để ôn luyện cấp tốc, hoặc đăng ký
-            trọn năm để tiết kiệm đến 83.3% chi phí kèm 35 LeetCoins mỗi tuần.
+            20 bài Dễ/Trung bình, chấm Batch 10, streak & heatmap, lưu Neon — chọn
+            tháng linh hoạt hoặc năm tiết kiệm 10.000 ₫.
           </p>
         </div>
         <Pricing />

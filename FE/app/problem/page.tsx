@@ -3,11 +3,12 @@
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, CheckCircle2, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Search } from "lucide-react";
 import Logo from "@/app/ui/Logo";
-import { problems, type Difficulty } from "@/app/data/problems";
+import type { Difficulty } from "@/app/data/problems";
 import { topics } from "@/app/data/topics";
 import { useSolvedSlugs } from "./solved";
+import { useProblems } from "@/app/hooks/useProblems";
 
 const DIFFICULTIES: Array<"Tất cả" | Difficulty> = [
   "Tất cả",
@@ -36,6 +37,8 @@ function ProblemList() {
   const [query, setQuery] = useState("");
   const [difficulty, setDifficulty] = useState<"Tất cả" | Difficulty>("Tất cả");
   const solvedSlugs = useSolvedSlugs();
+  const { problems: dbProblems, loading } = useProblems();
+  const problems = dbProblems ?? [];
 
   function updateTopic(next: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -56,7 +59,7 @@ function ProblemList() {
       counts.set(problem.topic, (counts.get(problem.topic) ?? 0) + 1);
     }
     return counts;
-  }, []);
+  }, [problems]);
 
   const filtered = problems.filter((problem) => {
     const matchQuery =
@@ -74,7 +77,7 @@ function ProblemList() {
         <div className="mb-5">
           <Logo />
         </div>
-        <header className="mb-8 border-b border-zinc-200/80 pb-5">
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200/80 pb-5">
           <div>
             <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-600">
               Problem Lab
@@ -86,6 +89,13 @@ function ProblemList() {
               {problems.length} bài tập • chọn một bài để bắt đầu giải
             </p>
           </div>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-zinc-800 transition"
+          >
+            <ArrowLeft className="size-4" />
+            Trang chủ
+          </Link>
         </header>
 
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center">
@@ -148,7 +158,13 @@ function ProblemList() {
           })}
         </div>
 
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-44 animate-pulse rounded-2xl bg-zinc-100" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/60 px-6 py-16 text-center">
             <p className="font-semibold text-zinc-900">Không tìm thấy bài tập</p>
             <p className="mt-2 text-sm text-zinc-500">

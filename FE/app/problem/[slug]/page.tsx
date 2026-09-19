@@ -5,9 +5,12 @@ import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
+  ArrowLeft,
   Check,
   CheckCircle2,
   ChevronDown,
+  FileText,
+  History,
   ListChecks,
   Loader2,
   Maximize2,
@@ -22,9 +25,11 @@ import {
 } from "lucide-react";
 import CodeEditor from "@/app/ui/Editor";
 import Logo from "@/app/ui/Logo";
-import { getProblem, type Problem, type ProblemTest } from "@/app/data/problems";
+import type { Problem, ProblemTest } from "@/app/data/problems";
 import { markSolved, useSolvedSlugs } from "../solved";
+import { recordActivity } from "../activity";
 import { topics } from "@/app/data/topics";
+import { useProblem } from "@/app/hooks/useProblems";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -44,18 +49,7 @@ const LANGUAGES = [
     version: "3.10",
     short: "Py",
     tile: "from-sky-400 to-blue-600",
-    starter: `import sys
-
-def solve() -> None:
-    data = sys.stdin.read().strip().split()
-    if not data:
-        return
-    # TODO: viet loi giai cua ban tai day
-    pass
-
-if __name__ == "__main__":
-    solve()
-`,
+    starter: `print("Hello, GoCode!")`,
   },
   {
     id: 63,
@@ -63,14 +57,7 @@ if __name__ == "__main__":
     version: "Node 22",
     short: "JS",
     tile: "from-amber-400 to-orange-600",
-    starter: `const fs = require("fs");
-
-const tokens = fs.readFileSync(0, "utf8").trim().split(/\\s+/).filter(Boolean);
-if (tokens.length === 0) process.exit(0);
-
-// TODO: viet loi giai cua ban tai day
-console.log();
-`,
+    starter: `console.log("Hello, GoCode!");`,
   },
   {
     id: 74,
@@ -78,15 +65,7 @@ console.log();
     version: "5.x",
     short: "TS",
     tile: "from-blue-500 to-indigo-700",
-    starter: `declare const require: any;
-const fs = require("fs");
-
-const raw: string = fs.readFileSync(0, "utf8").trim();
-const tokens: string[] = raw === "" ? [] : raw.split(/\\s+/);
-
-// TODO: viet loi giai cua ban tai day
-console.log();
-`,
+    starter: `console.log("Hello, GoCode!");`,
   },
   {
     id: 54,
@@ -96,16 +75,10 @@ console.log();
     tile: "from-rose-400 to-red-600",
     starter: `#include <bits/stdc++.h>
 using namespace std;
-
 int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    // TODO: viet loi giai cua ban tai day
-
+    cout << "Hello, GoCode!";
     return 0;
-}
-`,
+}`,
   },
   {
     id: 68,
@@ -114,11 +87,7 @@ int main() {
     short: "PHP",
     tile: "from-violet-400 to-purple-700",
     starter: `<?php
-$data = trim(file_get_contents("php://stdin"));
-if ($data === "") exit;
-$tokens = preg_split('/\\s+/', $data);
-// TODO: viet loi giai cua ban tai day
-`,
+echo "Hello, GoCode!";`,
   },
   {
     id: 62,
@@ -126,16 +95,11 @@ $tokens = preg_split('/\\s+/', $data);
     version: "JDK",
     short: "Ja",
     tile: "from-orange-400 to-red-600",
-    starter: `import java.util.*;
-
-public class Main {
+    starter: `public class Main {
     public static void main(String[] args) {
-        Scanner sc = new Scanner(System.in);
-        // TODO: viet loi giai cua ban tai day
-        sc.close();
+        System.out.println("Hello, GoCode!");
     }
-}
-`,
+}`,
   },
   {
     id: 51,
@@ -144,15 +108,11 @@ public class Main {
     short: "C#",
     tile: "from-purple-400 to-fuchsia-700",
     starter: `using System;
-
 class Program {
     static void Main() {
-        string input = Console.In.ReadToEnd();
-        if (string.IsNullOrWhiteSpace(input)) return;
-        // TODO: viet loi giai cua ban tai day
+        Console.WriteLine("Hello, GoCode!");
     }
-}
-`,
+}`,
   },
   {
     id: 60,
@@ -161,24 +121,10 @@ class Program {
     short: "Go",
     tile: "from-cyan-400 to-sky-700",
     starter: `package main
-
-import (
-    "fmt"
-    "io"
-    "os"
-    "strings"
-)
-
+import "fmt"
 func main() {
-    data, _ := io.ReadAll(os.Stdin)
-    tokens := strings.Fields(string(data))
-    if len(tokens) == 0 {
-        return
-    }
-    // TODO: viet loi giai cua ban tai day
-    fmt.Println(tokens[0])
-}
-`,
+    fmt.Println("Hello, GoCode!")
+}`,
   },
 ];
 
@@ -409,9 +355,23 @@ type AuthHeaders = {
 export default function ProblemWorkspace() {
   const params = useParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
-  const problem = getProblem(slug);
+  const { problem, loading, error } = useProblem(slug);
 
-  if (!problem) {
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-white px-5 py-8 sm:px-10">
+        <div className="mx-auto max-w-6xl animate-pulse">
+          <div className="mb-8 h-12 w-72 rounded-lg bg-zinc-200" />
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="h-[60vh] rounded-2xl bg-zinc-100" />
+            <div className="h-[60vh] rounded-2xl bg-zinc-100" />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error || !problem) {
     notFound();
   }
 
@@ -449,6 +409,8 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   const [langOpen, setLangOpen] = useState(false);
   // focus full-ngang: "statement" ẩn cột editor, "editor" ẩn cột đề bài.
   const [focus, setFocus] = useState<"none" | "statement" | "editor">("none");
+  const [leftTab, setLeftTab] = useState<"description" | "submissions">("description");
+  const [history, setHistory] = useState<Array<{ id: string; status: string | null; statusId: number | null; passed: boolean | null; passedCount: number | null; totalCount: number | null; languageId: number; sourceCode: string; createdAt: string }>>([]);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -566,6 +528,24 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
     [buildAuth],
   );
 
+  const fetchHistory = useCallback(async () => {
+    if (!isSignedIn) return;
+    try {
+      const t = await getToken();
+      const res = await fetch(`${API_URL}/api/history?slug=${encodeURIComponent(slug)}`, {
+        headers: t ? { Authorization: `Bearer ${t}` } : undefined,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!mountedRef.current) return;
+      setHistory(Array.isArray(data) ? data : []);
+    } catch {}
+  }, [getToken, isSignedIn, slug]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
   async function runSampleTests() {
     if (runningTests) return;
     if (customTests.length === 0) {
@@ -613,6 +593,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
         setActiveResult(firstFailed === -1 ? 0 : firstFailed);
       }
       setResults(collected);
+      recordActivity(getToken);
     } catch (runError) {
       if (mountedRef.current) {
         setError(toUserErrorMessage(runError));
@@ -629,38 +610,31 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
     setSubmitVerdict(null);
     setSubmitting(true);
     try {
-      // Chấm trên test ẩn: chỉ biết đúng/sai, không lộ input/expected.
-      const tokens = await submitBatch(
-        sourceCode,
-        problem.hiddenTests.map((test) => test.stdin),
-      );
-      if (!mountedRef.current) return;
-      const submissions = await pollBatch(tokens);
-      if (!mountedRef.current) return;
-      let passed = 0;
-      let failedIndex: number | null = null;
-      problem.hiddenTests.forEach((test, i) => {
-        const submission = submissions[i] ?? {};
-        const ok =
-          submission.status?.id === 3 &&
-          normalizeOutput(rawOutputOf(submission)) ===
-            normalizeOutput(test.expected);
-        if (ok) {
-          passed += 1;
-        } else if (failedIndex === null) {
-          failedIndex = i + 1;
-        }
+      // Test ẩn lấy từ DB (BE), không lộ ra client
+      const t = await getToken();
+      const res = await fetch(`${API_URL}/api/problems/${encodeURIComponent(slug)}/submit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(t ? { Authorization: `Bearer ${t}` } : {}),
+        },
+        body: JSON.stringify({ languageId, sourceCode }),
       });
-      if (mountedRef.current) {
-        setSubmitVerdict({
-          passed,
-          total: problem.hiddenTests.length,
-          failedIndex,
-        });
-        if (passed === problem.hiddenTests.length) {
-          markSolved(problem.slug);
-        }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? "Không thể nộp bài");
+      if (!mountedRef.current) return;
+      setSubmitVerdict({
+        passed: data.passedCount,
+        total: data.totalCount,
+        failedIndex: data.failedIndex,
+      });
+      // BE đã lưu Submission (kể cả thất bại) và SolvedProblem nếu Accepted
+      fetchHistory();
+      if (data.passed) {
+        markSolved(problem.slug);
+        window.dispatchEvent(new Event("gocode-activity-changed"));
       }
+      recordActivity(getToken);
     } catch (runError) {
       if (mountedRef.current) {
         setError(toUserErrorMessage(runError));
@@ -704,7 +678,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
     };
 
   function addTest() {
-    if (customTests.length >= 5) return;
+    if (customTests.length >= 10) return;
     setCustomTests((tests) => [...tests, { stdin: "", expected: "" }]);
     setActiveTest(customTests.length);
   }
@@ -778,6 +752,13 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
             >
               ← Danh sách bài
             </Link>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-zinc-800 transition"
+            >
+              <ArrowLeft className="size-4" />
+              Trang chủ
+            </Link>
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-zinc-950/[0.04] px-3 py-1 text-xs font-medium text-zinc-600">
@@ -813,10 +794,23 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
               focus === "editor" ? "hidden" : ""
             }`}
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-bold uppercase tracking-[0.14em] text-zinc-400">
-                Đề bài
-              </span>
+            <div className="flex items-center justify-between gap-2 border-b border-zinc-200/80">
+              <div className="flex gap-6">
+                <button
+                  type="button"
+                  onClick={() => setLeftTab("description")}
+                  className={`flex items-center gap-1.5 pb-3 text-sm font-medium border-b-2 ${leftTab === "description" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-700"}`}
+                >
+                  <FileText className="size-4" /> Description
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLeftTab("submissions")}
+                  className={`flex items-center gap-1.5 pb-3 text-sm font-medium border-b-2 ${leftTab === "submissions" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-700"}`}
+                >
+                  <History className="size-4" /> Submissions ({history.length})
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() =>
@@ -836,9 +830,11 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
                 )}
               </button>
             </div>
-            <p className="mt-3 text-[15px] leading-relaxed text-zinc-700">
-              {problem.description}
-            </p>
+            {leftTab === "description" ? (
+              <>
+                <p className="mt-3 text-[15px] leading-relaxed text-zinc-700">
+                  {problem.description}
+                </p>
 
             <h3 className="mt-5 text-sm font-semibold text-zinc-900">
               Định dạng đầu vào
@@ -899,6 +895,47 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
                 </div>
               ))}
             </div>
+              </>
+            ) : (
+              <div className="mt-3">
+                {history.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-zinc-500">
+                    Chưa có lần nộp nào — chạy test hoặc nộp bài để lưu lịch sử
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {history.map((h) => {
+                      const lang = LANGUAGES.find((l) => l.id === h.languageId)?.name ?? String(h.languageId);
+                      return (
+                        <div
+                          key={h.id}
+                          className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 p-3"
+                        >
+                          <div>
+                            <p className={`text-xs font-bold ${h.passed ? "text-emerald-600" : "text-rose-600"}`}>
+                              {h.status ?? (h.passed ? "Accepted" : "Failed")} {h.passedCount ?? ""}/{h.totalCount ?? ""}
+                            </p>
+                            <p className="font-mono text-[11px] text-zinc-500">
+                              {new Date(h.createdAt).toLocaleString("vi-VN")} • {lang}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSourceCode(h.sourceCode);
+                              setLeftTab("description");
+                            }}
+                            className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800"
+                          >
+                            Tải lại
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           <section className={focus === "statement" ? "hidden" : "min-w-0"}>
@@ -1085,11 +1122,11 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
                       )}
                     </button>
                   ))}
-                  {customTests.length < 5 && (
+                  {customTests.length < 10 && (
                     <button
                       type="button"
                       onClick={addTest}
-                      title="Thêm test mới (tối đa 5)"
+                      title="Thêm test mới (tối đa 10)"
                       className="inline-flex shrink-0 items-center rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-950/[0.04] hover:text-zinc-900"
                     >
                       <Plus className="size-4" />
@@ -1151,7 +1188,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
             <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
               <div className="flex items-baseline gap-2 border-b-2 border-zinc-900 px-4 py-3">
                 <span className="font-mono text-[13px] font-semibold text-zinc-900">
-                  Test Result:
+                  Kết quả:
                 </span>
                 <span className="font-mono text-xs text-zinc-400">
                   {resultStatusText}

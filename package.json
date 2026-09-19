@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.15.0",
   "scripts": {
-    "dev": "concurrently -n BE,FE,ADMIN -c blue,green,red \"pnpm run dev:be\" \"pnpm run dev:fe\" ",
+    "dev": "concurrently -n BE,FE -c blue,green \"pnpm run dev:be\" \"pnpm run dev:fe\" ",
     "dev-admin": "concurrently -n BE,FE,ADMIN -c blue,green,red \"pnpm run dev:be\" \"pnpm run dev:fe\" \"pnpm run dev:admin\"",
     "dev:be": "pnpm --dir be start:dev",
     "dev:fe": "pnpm --dir FE dev",

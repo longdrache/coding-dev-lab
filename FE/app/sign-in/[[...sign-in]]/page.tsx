@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { SignIn } from "@clerk/nextjs";
 import Logo from "@/app/ui/Logo";
+import { ArrowLeft } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Đăng nhập",
+  description: "Đăng nhập GoCode để lưu streak, lịch sử nộp bài và huy hiệu.",
+  openGraph: { title: "Đăng nhập | GoCode" },
+};
 
 export default function SignInPage() {
   return (
@@ -9,9 +17,10 @@ export default function SignInPage() {
       <SignIn />
       <Link
         href="/"
-        className="text-sm text-zinc-500 transition hover:text-zinc-900"
+        className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-zinc-800 transition"
       >
-        ← Về trang chủ
+        <ArrowLeft className="size-4" />
+        Trang chủ
       </Link>
     </div>
   );

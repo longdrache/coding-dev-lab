@@ -323,7 +323,7 @@ export default function PricingCards() {
       </div>
 
       {/* Trust banner underneath cards */}
-      <div className="mt-10 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 max-w-6xl mx-auto flex flex-wrap items-center justify-around gap-4 text-xs text-neutral-400">
+      <div className="mt-10 rounded-xl border border-neutral-700 bg-neutral-900/60 p-4 max-w-6xl mx-auto flex flex-wrap items-center justify-around gap-4 text-xs font-medium text-neutral-300 shadow-sm">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-emerald-400" />
           <span>Thanh toán bằng Stripe</span>

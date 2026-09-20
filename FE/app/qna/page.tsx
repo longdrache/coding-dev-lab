@@ -101,7 +101,7 @@ export default function Page() {
 
         {/* Page Editorial Header */}
         <div className="mb-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 border border-zinc-200/80 text-[11px] font-mono text-zinc-600 mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-zinc-300 text-[11px] font-mono font-medium text-zinc-700 shadow-sm mb-4">
             <HelpCircle className="w-3.5 h-3.5 text-zinc-900" />
             <span>Hỏi &amp; Đáp Kỹ Thuật (Knowledge Base)</span>
           </div>
@@ -111,7 +111,7 @@ export default function Page() {
               Giải đáp mọi thắc mắc về hạ tầng &amp; học tập.
             </span>
           </h1>
-          <p className="mt-4 text-base text-zinc-600 leading-relaxed">
+          <p className="mt-4 text-base text-zinc-700 leading-relaxed font-medium">
             Tra cứu nhanh các thông số kỹ thuật về sandbox thực thi, các chuẩn
             ngôn ngữ, định hướng lộ trình học tập và chuẩn bị phỏng vấn công
             nghệ cao.

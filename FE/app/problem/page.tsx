@@ -77,7 +77,7 @@ function ProblemList() {
         <div className="mb-5">
           <Logo />
         </div>
-        <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200/80 pb-5">
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b border-zinc-300 pb-5">
           <div>
             <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-600">
               Problem Lab
@@ -85,7 +85,7 @@ function ProblemList() {
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
               Danh sách bài tập
             </h1>
-            <p className="mt-2 text-sm text-zinc-500">
+            <p className="mt-2 text-sm font-medium text-zinc-700">
               {problems.length} bài tập • chọn một bài để bắt đầu giải
             </p>
           </div>

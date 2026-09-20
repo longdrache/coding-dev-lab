@@ -1,0 +1,410 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { adminFetch } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Sparkles, FileText, TestTube, EyeOff, Code2, Clock, ShieldCheck, Hash, Layers } from "lucide-react";
+
+const LANGUAGES = [
+  { id: "71", label: "Python 3", short: "PY", color: "from-sky-500 to-blue-600" },
+  { id: "63", label: "JavaScript", short: "JS", color: "from-amber-400 to-orange-500" },
+  { id: "74", label: "TypeScript", short: "TS", color: "from-blue-500 to-indigo-600" },
+  { id: "54", label: "C++ 17", short: "C++", color: "from-rose-500 to-red-600" },
+  { id: "62", label: "Java", short: "JV", color: "from-orange-500 to-red-500" },
+  { id: "51", label: "C#", short: "CS", color: "from-violet-500 to-purple-600" },
+  { id: "60", label: "Go", short: "GO", color: "from-cyan-500 to-teal-600" },
+  { id: "68", label: "PHP", short: "PHP", color: "from-indigo-400 to-violet-600" },
+];
+
+type TestRow = { input: string; output: string };
+
+function makeTests(n: number): TestRow[] {
+  return Array.from({ length: n }, () => ({ input: "", output: "" }));
+}
+
+export default function NewProblemPage() {
+  const router = useRouter();
+  const [slug, setSlug] = useState("");
+  const [title, setTitle] = useState("");
+  const [difficulty, setDifficulty] = useState("Dễ");
+  const [topic, setTopic] = useState("");
+  const [description, setDescription] = useState("");
+  const [inputFormat, setInputFormat] = useState("");
+  const [outputFormat, setOutputFormat] = useState("");
+  const [constraints, setConstraints] = useState<string[]>([""]);
+  const [examples, setExamples] = useState<{ input: string; output: string; explanation?: string }[]>([{ input: "", output: "" }]);
+  const [tests, setTests] = useState<TestRow[]>(makeTests(3));
+  const [hiddenTests, setHiddenTests] = useState<TestRow[]>(makeTests(10));
+  const [starterCodes, setStarterCodes] = useState<Record<string, string>>({});
+  const [timeLimit, setTimeLimit] = useState(1000);
+  const [memoryLimit, setMemoryLimit] = useState(256000);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const slugRegex = /^[a-z0-9-]+$/;
+
+  const updateTest = (arr: TestRow[], setArr: (v: TestRow[]) => void, idx: number, field: keyof TestRow, value: string) => {
+    const copy = [...arr];
+    copy[idx] = { ...copy[idx], [field]: value };
+    setArr(copy);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!slugRegex.test(slug)) {
+      setError("Slug phải khớp /^[a-z0-9-]+$/ (chỉ chữ thường, số, dấu -)");
+      return;
+    }
+    if (!title.trim() || !topic.trim() || !description.trim()) {
+      setError("Title, topic và description là bắt buộc");
+      return;
+    }
+    if (tests.length !== 3) {
+      setError("Cần đúng 3 test visible");
+      return;
+    }
+    if (hiddenTests.length !== 10) {
+      setError("Cần đúng 10 hidden test");
+      return;
+    }
+    for (let i = 0; i < tests.length; i++) {
+      if (!tests[i].input.trim() || !tests[i].output.trim()) {
+        setError(`Visible test #${i + 1} thiếu input/output`);
+        return;
+      }
+    }
+    for (let i = 0; i < hiddenTests.length; i++) {
+      if (!hiddenTests[i].input.trim() || !hiddenTests[i].output.trim()) {
+        setError(`Hidden test #${i + 1} thiếu input/output`);
+        return;
+      }
+    }
+    if (!inputFormat.trim() || !outputFormat.trim()) {
+      setError("InputFormat và OutputFormat là bắt buộc");
+      return;
+    }
+    const cleanConstraints = constraints.map((c) => c.trim()).filter(Boolean);
+    if (cleanConstraints.length === 0) {
+      setError("Cần ít nhất 1 constraint");
+      return;
+    }
+    const cleanExamples = examples.filter((ex) => ex.input.trim() && ex.output.trim());
+    if (cleanExamples.length === 0) {
+      setError("Cần ít nhất 1 example");
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      slug: slug.trim(),
+      title: title.trim(),
+      difficulty,
+      topic: topic.trim(),
+      description: description.trim(),
+      inputFormat: inputFormat.trim(),
+      outputFormat: outputFormat.trim(),
+      constraints: cleanConstraints,
+      examples: cleanExamples,
+      tests,
+      hiddenTests,
+      starterCodes,
+      timeLimit: Number(timeLimit),
+      memoryLimit: Number(memoryLimit),
+    };
+
+    setSubmitting(true);
+    try {
+      const res = await adminFetch("/api/admin/problems", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const msg = data?.message;
+        const text = Array.isArray(msg) ? msg.join(", ") : msg || `Failed: ${res.status}`;
+        throw new Error(text);
+      }
+      router.push("/problems");
+      router.refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Submit failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const visibleDone = tests.filter((t) => t.input.trim() && t.output.trim()).length;
+  const hiddenDone = hiddenTests.filter((t) => t.input.trim() && t.output.trim()).length;
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 pb-10">
+      {/* Hero */}
+      <div className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 text-white shadow-lg">
+        <div className="absolute inset-0 bg-[radial-gradient(600px_circle_at_0%_0%,rgba(255,255,255,0.08),transparent_50%)]" />
+        <div className="absolute right-0 top-0 size-64 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 blur-3xl" />
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
+              <Sparkles className="size-3.5 text-amber-300" /> Tạo bài tập mới
+            </div>
+            <h1 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-3xl">New Problem</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="border-white/20 bg-white/10 text-white backdrop-blur">
+              {visibleDone}/3 visible
+            </Badge>
+            <Badge variant="outline" className="border-white/20 bg-white/10 text-white backdrop-blur">
+              {hiddenDone}/10 hidden
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>
+        )}
+
+        {/* Basic Info */}
+        <Card className="border-zinc-200 bg-white shadow-sm">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-zinc-950 text-white">
+                <Hash className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Thông tin cơ bản</CardTitle>
+                <CardDescription className="font-medium text-zinc-600">Slug, tiêu đề, độ khó và chủ đề</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Slug *</Label>
+              <Input value={slug} onChange={(ev) => setSlug(ev.target.value)} placeholder="vd: two-sum" className="font-mono border-zinc-300 placeholder:text-zinc-400 focus-visible:ring-zinc-900" required />
+              <p className="text-xs font-medium text-zinc-500">/^[a-z0-9-]+$/ — dùng làm URL</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Difficulty *</Label>
+              <Select value={difficulty} onValueChange={(v) => { if (v) setDifficulty(v); }}>
+                <SelectTrigger className="border-zinc-300 bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Dễ">Dễ</SelectItem>
+                  <SelectItem value="Trung bình">Trung bình</SelectItem>
+                  <SelectItem value="Khó">Khó</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Title *</Label>
+              <Input value={title} onChange={(ev) => setTitle(ev.target.value)} placeholder="Two Sum" className="border-zinc-300 focus-visible:ring-zinc-900" required />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Topic *</Label>
+              <Input value={topic} onChange={(ev) => setTopic(ev.target.value)} placeholder="vd: Array, DP, Graph..." className="border-zinc-300 placeholder:text-zinc-400" required />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Statement */}
+        <Card className="border-zinc-200 bg-white shadow-sm">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+                <FileText className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Đề bài chi tiết</CardTitle>
+                <CardDescription className="font-medium text-zinc-600">Mô tả, format, ràng buộc và ví dụ</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Description *</Label>
+              <Textarea value={description} onChange={(ev) => setDescription(ev.target.value)} rows={6} placeholder="Mô tả chi tiết bài toán, có thể dùng markdown..." className="min-h-[140px] border-zinc-300 placeholder:text-zinc-400" required />
+            </div>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="font-semibold text-zinc-900">Input Format *</Label>
+                <Textarea value={inputFormat} onChange={(ev) => setInputFormat(ev.target.value)} rows={3} placeholder="Dòng đầu n, dòng sau mảng a..." className="border-zinc-300 placeholder:text-zinc-400" required />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold text-zinc-900">Output Format *</Label>
+                <Textarea value={outputFormat} onChange={(ev) => setOutputFormat(ev.target.value)} rows={3} placeholder="In ra một số nguyên..." className="border-zinc-300 placeholder:text-zinc-400" required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Constraints *</Label>
+              <div className="space-y-2">
+                {constraints.map((c, i) => (
+                  <div key={i} className="flex gap-2">
+                    <Input value={c} onChange={(ev) => { const copy = [...constraints]; copy[i] = ev.target.value; setConstraints(copy); }} placeholder={`1 ≤ n ≤ 10^5`} className="flex-1 border-zinc-300" />
+                    <Button type="button" variant="outline" size="sm" onClick={() => setConstraints(constraints.filter((_, idx) => idx !== i))} disabled={constraints.length <= 1}>Xóa</Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setConstraints([...constraints, ""])} className="border-zinc-300">+ Thêm ràng buộc</Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Examples *</Label>
+              <div className="space-y-3">
+                {examples.map((ex, i) => (
+                  <div key={i} className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2">
+                    <Input value={ex.input} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], input: ev.target.value }; setExamples(copy); }} placeholder="Input" className="bg-white" />
+                    <Input value={ex.output} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], output: ev.target.value }; setExamples(copy); }} placeholder="Output" className="bg-white" />
+                    <Input value={ex.explanation ?? ""} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], explanation: ev.target.value }; setExamples(copy); }} placeholder="Giải thích (optional)" className="col-span-2 bg-white" />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setExamples(examples.filter((_, idx) => idx !== i))} disabled={examples.length <= 1} className="col-span-2 justify-start text-red-600">Xóa example</Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setExamples([...examples, { input: "", output: "" }])} className="border-zinc-300">+ Thêm example</Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Visible Tests */}
+        <Card className="border-emerald-200 bg-gradient-to-b from-emerald-50/60 to-white shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
+                  <TestTube className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Visible Tests <span className="font-mono text-emerald-700">3 bắt buộc</span></CardTitle>
+                  <CardDescription className="font-medium text-zinc-600">Hiện cho người làm bài — chấm mẫu</CardDescription>
+                </div>
+              </div>
+              <Badge className="bg-emerald-600 text-white">{visibleDone}/3</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {tests.map((t, i) => (
+              <div key={i} className="grid grid-cols-1 gap-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold tracking-wide text-emerald-700">INPUT #{i + 1}</Label>
+                  <Textarea value={t.input} onChange={(ev) => updateTest(tests, setTests, i, "input", ev.target.value)} rows={2} placeholder="vd: 3&#10;1 2 3" className="font-mono border-zinc-300 bg-zinc-50 focus-visible:ring-emerald-600" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold tracking-wide text-emerald-700">OUTPUT #{i + 1}</Label>
+                  <Textarea value={t.output} onChange={(ev) => updateTest(tests, setTests, i, "output", ev.target.value)} rows={2} placeholder="vd: 6" className="font-mono border-zinc-300 bg-zinc-50 focus-visible:ring-emerald-600" />
+                </div>
+              </div>
+            ))}
+            <p className="text-xs font-medium text-emerald-700">Không được thêm/xóa — đúng 3 test để BE validate qua.</p>
+          </CardContent>
+        </Card>
+
+        {/* Hidden Tests */}
+        <Card className="border-zinc-900/10 bg-gradient-to-b from-zinc-950 to-zinc-900 text-white shadow-lg">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/10">
+                  <EyeOff className="size-4 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-bold tracking-tight text-white">Hidden Tests <span className="font-mono text-amber-300">10 bắt buộc</span></CardTitle>
+                  <CardDescription className="font-medium text-zinc-400">Chấm kín — không hiện cho user</CardDescription>
+                </div>
+              </div>
+              <Badge variant="outline" className="border-white/20 bg-white/10 text-white">{hiddenDone}/10</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {hiddenTests.map((t, i) => (
+                <div key={i} className="rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur">
+                  <p className="mb-2 text-xs font-bold tracking-wide text-amber-300">HIDDEN #{i + 1}</p>
+                  <div className="space-y-2">
+                    <Textarea value={t.input} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "input", ev.target.value)} rows={2} placeholder="input" className="font-mono border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 focus-visible:ring-amber-400" />
+                    <Textarea value={t.output} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "output", ev.target.value)} rows={2} placeholder="output" className="font-mono border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 focus-visible:ring-amber-400" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs font-medium text-zinc-400">Đúng 10 test — BE sẽ reject nếu thiếu/ thừa.</p>
+          </CardContent>
+        </Card>
+
+        {/* Starter Codes */}
+        <Card className="border-zinc-200 bg-white shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-violet-600 text-white">
+                <Code2 className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Starter Codes</CardTitle>
+                <CardDescription className="font-medium text-zinc-600">Gợi ý ban đầu cho 8 ngôn ngữ — có thể để trống</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {LANGUAGES.map((lang) => (
+              <div key={lang.id} className="group space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex size-6 items-center justify-center rounded-md bg-gradient-to-br text-[10px] font-bold text-white ${lang.color}`}>{lang.short}</span>
+                  <Label className="text-xs font-bold tracking-wide text-zinc-800">{lang.label}</Label>
+                </div>
+                <Textarea
+                  value={starterCodes[lang.id] ?? ""}
+                  onChange={(ev) => setStarterCodes((prev) => ({ ...prev, [lang.id]: ev.target.value }))}
+                  rows={3}
+                  placeholder={`// Starter for ${lang.label}`}
+                  className="font-mono text-xs border-zinc-300 bg-zinc-50 placeholder:text-zinc-400 focus-visible:ring-violet-600"
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Limits */}
+        <Card className="border-zinc-200 bg-white shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500 text-white">
+                <Clock className="size-4" />
+              </div>
+              <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Giới hạn</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Time limit (ms)</Label>
+              <Input type="number" value={timeLimit} onChange={(ev) => setTimeLimit(Number(ev.target.value))} className="border-zinc-300 font-mono" />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-semibold text-zinc-900">Memory limit (KB)</Label>
+              <Input type="number" value={memoryLimit} onChange={(ev) => setMemoryLimit(Number(ev.target.value))} className="border-zinc-300 font-mono" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Separator />
+
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={submitting} className="flex-1 bg-zinc-950 py-6 text-base font-bold hover:bg-black sm:flex-none sm:px-10">
+            {submitting ? "Đang tạo..." : "Tạo Problem"}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => router.push("/problems")} className="border-zinc-300 font-semibold">
+            Hủy
+          </Button>
+          <div className="ml-auto hidden items-center gap-2 text-xs font-medium text-zinc-500 sm:flex">
+            <ShieldCheck className="size-4 text-emerald-600" /> Validate 3/10 tests trước khi gửi
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

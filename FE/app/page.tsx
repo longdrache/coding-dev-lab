@@ -76,7 +76,7 @@ export default function Home() {
             <div className="relative z-10 max-w-3xl">
               {/* Minimalist Top Eyebrow Tag */}
               <div className="flex justify-center mb-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100/90 border border-zinc-200/80 text-[11px] font-mono text-zinc-600">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-zinc-300 text-[11px] font-mono font-medium text-zinc-700 shadow-sm">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   <span>Local Native Engine</span>
                   <span className="text-zinc-300">/</span>
@@ -93,7 +93,7 @@ export default function Home() {
                     Tối giản, thuần khiết &amp; tức thì.
                   </span>
                 </h1>
-                <p className="text-base sm:text-lg text-zinc-600 leading-relaxed max-w-2xl mx-auto">
+                <p className="text-base sm:text-lg text-zinc-700 leading-relaxed max-w-2xl mx-auto font-medium">
                   Hệ thống chấm mã nguồn độc lập chạy trực tiếp trong vài
                   mili-giây. Tuyển chọn bài toán cấu trúc dữ liệu và giải thuật
                   cốt lõi, không rườm rà, tập trung 100% vào năng lực kỹ thuật.
@@ -114,7 +114,7 @@ export default function Home() {
                     Xem dạng bài
                   </SectionLink>
                 </div>
-                <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 font-mono text-[12px] text-zinc-500">
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 font-mono text-[12px] font-medium text-zinc-600">
                   <span>Miễn phí 100%</span>
                   <span className="size-1 rounded-full bg-zinc-300" />
                   <span>Mới ra mắt</span>

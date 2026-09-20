@@ -1,21 +1,25 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, CheckCircle2, Search } from "lucide-react";
+import { ArrowLeft, Search, List, LayoutGrid, ArrowUpDown, Eye, Star, CheckCircle2, Circle, Tag } from "lucide-react";
 import Logo from "@/app/ui/Logo";
 import type { Difficulty } from "@/app/data/problems";
 import { topics } from "@/app/data/topics";
 import { useSolvedSlugs } from "./solved";
 import { useProblems } from "@/app/hooks/useProblems";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
-const DIFFICULTIES: Array<"Tất cả" | Difficulty> = [
-  "Tất cả",
-  "Dễ",
-  "Trung bình",
-  "Khó",
-];
+const DIFFICULTIES: Array<"Tất cả" | Difficulty> = ["Tất cả", "Dễ", "Trung bình", "Khó"];
 
 const DIFFICULTY_STYLES: Record<Difficulty, string> = {
   Dễ: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -23,196 +27,403 @@ const DIFFICULTY_STYLES: Record<Difficulty, string> = {
   Khó: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
+const PAGE_SIZE = 10;
+
 function topicTitle(slug: string): string {
   return topics.find((topic) => topic.slug === slug)?.title ?? slug;
+}
+
+// mock chấp nhận % deterministically từ slug
+function acceptanceRate(slug: string): number {
+  let hash = 0;
+  for (let i = 0; i < slug.length; i++) hash = (hash * 31 + slug.charCodeAt(i)) % 1000;
+  return 30 + (hash % 30) + (hash % 10) / 10; // 30.0 - 59.9
+}
+
+function useFavorites() {
+  const [favs, setFavs] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("gocode-favorites");
+      if (raw) setFavs(JSON.parse(raw));
+    } catch {}
+  }, []);
+  const toggle = (slug: string) => {
+    setFavs((prev) => {
+      const next = prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug];
+      try { localStorage.setItem("gocode-favorites", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  return { favs, toggle };
 }
 
 function ProblemList() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Topic lấy trực tiếp từ URL để nút lọc, back/forward và link
-  // từ homepage (?topic=...) luôn đồng bộ, không kẹt state cũ.
   const topic = searchParams.get("topic") ?? "all";
-
   const [query, setQuery] = useState("");
   const [difficulty, setDifficulty] = useState<"Tất cả" | Difficulty>("Tất cả");
+  const [statusFilter, setStatusFilter] = useState<"all" | "solved" | "unsolved" | "fav">("all");
+  const [sortBy, setSortBy] = useState<"id" | "title">("id");
+  const [view, setView] = useState<"list" | "grid">("list");
+  const [page, setPage] = useState(1);
   const solvedSlugs = useSolvedSlugs();
+  const { favs, toggle: toggleFav } = useFavorites();
   const { problems: dbProblems, loading } = useProblems();
   const problems = useMemo(() => dbProblems ?? [], [dbProblems]);
 
-  function updateTopic(next: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === "all") {
-      params.delete("topic");
-    } else {
-      params.set("topic", next);
-    }
-    const queryString = params.toString();
-    router.replace(queryString ? `/problem?${queryString}` : "/problem", {
-      scroll: false,
-    });
-  }
-
+  // counts cho pills
   const topicCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const problem of problems) {
-      counts.set(problem.topic, (counts.get(problem.topic) ?? 0) + 1);
-    }
-    return counts;
+    const m = new Map<string, number>();
+    for (const p of problems) m.set(p.topic, (m.get(p.topic) ?? 0) + 1);
+    return m;
   }, [problems]);
 
-  const filtered = problems.filter((problem) => {
-    const matchQuery =
-      query.trim() === "" ||
-      problem.title.toLowerCase().includes(query.trim().toLowerCase());
-    const matchTopic = topic === "all" || problem.topic === topic;
-    const matchDifficulty =
-      difficulty === "Tất cả" || problem.difficulty === difficulty;
-    return matchQuery && matchTopic && matchDifficulty;
-  });
+  const difficultyCounts = useMemo(() => {
+    const m: Record<string, number> = { "Tất cả": problems.length };
+    for (const d of ["Dễ", "Trung bình", "Khó"] as const) m[d] = problems.filter((p) => p.difficulty === d).length;
+    return m;
+  }, [problems]);
+
+  const solvedCount = useMemo(() => problems.filter((p) => solvedSlugs.includes(p.slug)).length, [problems, solvedSlugs]);
+  const unsolvedCount = problems.length - solvedCount;
+  const favCount = useMemo(() => problems.filter((p) => favs.includes(p.slug)).length, [problems, favs]);
+
+  function updateTopic(next: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "all") params.delete("topic");
+    else params.set("topic", next);
+    const qs = params.toString();
+    router.replace(qs ? `/problem?${qs}` : "/problem", { scroll: false });
+  }
+
+  const filtered = useMemo(() => {
+    let arr = problems.filter((p) => {
+      const mq = query.trim() === "" || p.title.toLowerCase().includes(query.trim().toLowerCase()) || p.slug.includes(query.trim().toLowerCase());
+      const mt = topic === "all" || p.topic === topic;
+      const md = difficulty === "Tất cả" || p.difficulty === difficulty;
+      return mq && mt && md;
+    });
+    // status filter
+    if (statusFilter === "solved") arr = arr.filter((p) => solvedSlugs.includes(p.slug));
+    else if (statusFilter === "unsolved") arr = arr.filter((p) => !solvedSlugs.includes(p.slug));
+    else if (statusFilter === "fav") arr = arr.filter((p) => favs.includes(p.slug));
+
+    // sort
+    if (sortBy === "id") {
+      // giữ nguyên thứ tự gốc (đã là ID tăng dần)
+    } else {
+      arr = [...arr].sort((a, b) => a.title.localeCompare(b.title, "vi"));
+    }
+    return arr;
+  }, [problems, query, topic, difficulty, statusFilter, sortBy, solvedSlugs, favs]);
+
+  useEffect(() => { setPage(1); }, [query, topic, difficulty, statusFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = useMemo(() => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE), [filtered, currentPage]);
 
   return (
-    <main className="min-h-screen bg-white px-5 py-8 sm:px-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-5">
+    <main className="min-h-screen bg-[#fafafa] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1400px]">
+        {/* Top header */}
+        <div className="mb-6 flex items-center justify-between gap-4">
           <Logo />
-        </div>
-        <header className="mb-8 flex flex-wrap items-start justify-between gap-4 border-b border-zinc-300 pb-5">
-          <div>
-            <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-600">
-              Problem Lab
-            </p>
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
-              Danh sách bài tập
-            </h1>
-            <p className="mt-2 text-sm font-medium text-zinc-700">
-              {problems.length} bài tập • chọn một bài để bắt đầu giải
-            </p>
-          </div>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-zinc-800 transition"
-          >
-            <ArrowLeft className="size-4" />
-            Trang chủ
+          <Link href="/" className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-zinc-800 transition">
+            <ArrowLeft className="size-4" /> Trang chủ
           </Link>
-        </header>
+        </div>
 
-        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center">
-          <label className="relative block lg:max-w-xs lg:flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tìm bài tập..."
-              className="w-full rounded-xl border border-zinc-300 bg-white py-2.5 pl-9 pr-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500"
-            />
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            {DIFFICULTIES.map((level) => (
+        {/* Filter card như ảnh */}
+        <div className="rounded-2xl border border-zinc-200 bg-white p-3 sm:p-4 shadow-sm">
+          {/* Row 1: search + difficulty pills + sort + view toggle */}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <label className="relative flex flex-1 items-center">
+              <Search className="pointer-events-none absolute left-3 size-4 text-zinc-400" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Tìm kiếm bài tập theo tên, thẻ tag (ví dụ: Two Pointers, Trie, DP, #1)..."
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50/50 py-2.5 pl-9 pr-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-300 focus:bg-white"
+              />
+            </label>
+
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <div className="flex items-center gap-1 rounded-xl border border-zinc-200 bg-zinc-100 p-1">
+                {DIFFICULTIES.map((lv) => (
+                  <button
+                    key={lv}
+                    type="button"
+                    onClick={() => setDifficulty(lv)}
+                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                      difficulty === lv ? "bg-white text-zinc-900 shadow-sm border border-zinc-200" : "text-zinc-600 hover:text-zinc-900"
+                    }`}
+                  >
+                    {lv} ({difficultyCounts[lv] ?? 0})
+                  </button>
+                ))}
+              </div>
+
+              <div className="hidden sm:flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSortBy(sortBy === "id" ? "title" : "id")}
+                  className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Sắp xếp: {sortBy === "id" ? "Mã bài (#ID)" : "Tên bài"} <ArrowUpDown className="size-3.5 text-zinc-400" />
+                </button>
+                <div className="flex items-center rounded-xl border border-zinc-200 bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setView("list")}
+                    className={`rounded-lg p-1.5 ${view === "list" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50"}`}
+                    title="Dạng danh sách"
+                  >
+                    <List className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView("grid")}
+                    className={`rounded-lg p-1.5 ${view === "grid" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50"}`}
+                    title="Dạng lưới"
+                  >
+                    <LayoutGrid className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Chủ đề scroll */}
+          <div className="mt-3 flex items-center gap-2 overflow-hidden">
+            <span className="inline-flex items-center gap-1 shrink-0 text-xs font-medium text-zinc-500">
+              <Tag className="size-3.5" /> Chủ đề:
+            </span>
+            <div className="flex flex-1 items-center gap-1.5 overflow-x-auto scrollbar-thin py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <button
-                key={level}
                 type="button"
-                onClick={() => setDifficulty(level)}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                  difficulty === level
-                    ? "bg-zinc-950 text-white"
-                    : "border border-zinc-300 text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50"
-                }`}
+                onClick={() => updateTopic("all")}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${topic === "all" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}
               >
-                {level}
+                Tất cả
               </button>
-            ))}
+              {topics.map((t) => {
+                const cnt = topicCounts.get(t.slug) ?? 0;
+                if (cnt === 0) return null;
+                return (
+                  <button
+                    key={t.slug}
+                    type="button"
+                    onClick={() => updateTopic(t.slug)}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${topic === t.slug ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}
+                  >
+                    {t.title}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {/* scrollbar giả như ảnh */}
+          <div className="mt-2 h-1.5 rounded-full bg-zinc-100">
+            <div className="h-1.5 w-3/4 rounded-full bg-zinc-300" />
+          </div>
+
+          {/* Row 3: Trạng thái */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3 text-xs">
+            <button
+              type="button"
+              onClick={() => setStatusFilter("all")}
+              className={`font-medium ${statusFilter === "all" ? "font-bold text-zinc-900 underline decoration-zinc-900 underline-offset-4" : "text-zinc-600 hover:text-zinc-900"}`}
+            >
+              Tất cả ({problems.length})
+            </button>
+            <span className="text-zinc-300">•</span>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("solved")}
+              className={`inline-flex items-center gap-1 ${statusFilter === "solved" ? "font-bold text-zinc-900 underline decoration-zinc-900 underline-offset-4" : "text-zinc-600 hover:text-zinc-900"}`}
+            >
+              <CheckCircle2 className="size-3.5 text-emerald-600" /> Đã giải ({solvedCount})
+            </button>
+            <span className="text-zinc-300">•</span>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("unsolved")}
+              className={`${statusFilter === "unsolved" ? "font-bold text-zinc-900 underline decoration-zinc-900 underline-offset-4" : "text-zinc-600 hover:text-zinc-900"}`}
+            >
+              Chưa giải ({unsolvedCount})
+            </button>
+            <span className="text-zinc-300">•</span>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("fav")}
+              className={`inline-flex items-center gap-1 ${statusFilter === "fav" ? "font-bold text-zinc-900 underline decoration-zinc-900 underline-offset-4" : "text-zinc-600 hover:text-zinc-900"}`}
+            >
+              <Star className="size-3.5 fill-amber-400 text-amber-400" /> Yêu thích ({favCount})
+            </button>
           </div>
         </div>
 
-        <div className="mb-8 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => updateTopic("all")}
-            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-              topic === "all"
-                ? "bg-zinc-950 text-white"
-                : "border border-zinc-300 text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50"
-            }`}
-          >
-            Tất cả ({problems.length})
-          </button>
-          {topics.map((item) => {
-            const count = topicCounts.get(item.slug) ?? 0;
-            if (count === 0) return null;
-            return (
-              <button
-                key={item.slug}
-                type="button"
-                onClick={() => updateTopic(item.slug)}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                  topic === item.slug
-                    ? "bg-zinc-950 text-white"
-                    : "border border-zinc-300 text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50"
-                }`}
-              >
-                {item.title} ({count})
-              </button>
-            );
-          })}
-        </div>
+        <p className="mt-4 text-xs font-medium text-zinc-500">Hiển thị <span className="font-bold text-zinc-900">{filtered.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0}–{Math.min(currentPage * PAGE_SIZE, filtered.length)}</span> / {problems.length} bài tập</p>
 
+        {/* Table / Grid */}
         {loading ? (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-44 animate-pulse rounded-2xl bg-zinc-100" />
-            ))}
+          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200 bg-white">
+            <div className="divide-y divide-zinc-100">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-4 py-4">
+                  <div className="h-5 w-5 animate-pulse rounded-full bg-zinc-100" />
+                  <div className="h-5 w-8 animate-pulse rounded bg-zinc-100" />
+                  <div className="h-5 w-48 animate-pulse rounded bg-zinc-100" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/60 px-6 py-16 text-center">
+          <div className="mt-3 rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-16 text-center">
             <p className="font-semibold text-zinc-900">Không tìm thấy bài tập</p>
-            <p className="mt-2 text-sm text-zinc-500">
-              Thử từ khóa khác hoặc chọn lại chủ đề và độ khó.
-            </p>
+            <p className="mt-2 text-sm font-medium text-zinc-600">Thử từ khóa khác hoặc chọn lại chủ đề.</p>
+          </div>
+        ) : view === "grid" ? (
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {paginated.map((p, idx) => {
+              const globalIndex = (currentPage - 1) * PAGE_SIZE + idx + 1;
+              const solved = solvedSlugs.includes(p.slug);
+              const fav = favs.includes(p.slug);
+              const rate = acceptanceRate(p.slug);
+              return (
+                <Link key={p.slug} href={`/problem/${p.slug}`} className="group flex flex-col rounded-xl border border-zinc-200 bg-white p-4 shadow-sm hover:border-zinc-300 hover:shadow-md transition">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-zinc-500">#{globalIndex}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); toggleFav(p.slug); }}
+                      className={fav ? "text-amber-400" : "text-zinc-300 hover:text-amber-400"}
+                    >
+                      <Star className={`size-4 ${fav ? "fill-amber-400" : ""}`} />
+                    </button>
+                  </div>
+                  <h3 className="mt-2 line-clamp-1 text-sm font-bold tracking-tight text-zinc-900 group-hover:text-zinc-700">{p.title}</h3>
+                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">{p.description}</p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${DIFFICULTY_STYLES[p.difficulty]}`}>{p.difficulty}</span>
+                    {solved && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">Đã đạt</span>}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs font-medium text-zinc-500">{rate.toFixed(1)}% <span className="inline-block h-1.5 w-12 rounded-full bg-zinc-200 align-middle"><span className="block h-1.5 rounded-full bg-zinc-700" style={{ width: `${rate}%` }} /></span></span>
+                    <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-bold text-white">Giải →</span>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((problem) => (
-              <Link
-                key={problem.slug}
-                href={`/problem/${problem.slug}`}
-                className="group flex h-full flex-col rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-[0_16px_35px_-16px_rgba(16,24,40,0.2)]"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-zinc-950/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-600">
-                    {topicTitle(problem.topic)}
-                  </span>
-                  <span
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${DIFFICULTY_STYLES[problem.difficulty]}`}
-                  >
-                    {problem.difficulty}
-                  </span>
-                </div>
-                <h2 className="mt-3 text-[16px] font-semibold tracking-tight text-zinc-900">
-                  {problem.title}
-                </h2>
-                <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-zinc-500">
-                  {problem.description}
-                </p>
-                <div className="mt-auto flex items-center justify-between pt-4">
-                  {solvedSlugs.includes(problem.slug) ? (
-                    <span className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-emerald-600">
-                      <CheckCircle2 className="size-3.5" />
-                      Đã giải
-                    </span>
-                  ) : (
-                    <span className="font-mono text-[11px] text-zinc-400">
-                      {problem.tests.length} test mẫu
-                    </span>
-                  )}
-                  <span className="inline-flex items-center gap-1 text-[13px] font-medium text-emerald-600">
-                    Giải ngay
-                    <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-1" />
-                  </span>
-                </div>
-              </Link>
-            ))}
+          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-zinc-50/80 hover:bg-zinc-50/80 border-b border-zinc-200">
+                    <TableHead className="w-[56px] text-center font-mono text-[11px] font-bold tracking-widest text-zinc-500">TRẠNG THÁI</TableHead>
+                    <TableHead className="w-[64px] text-center font-mono text-[11px] font-bold tracking-widest text-zinc-500">MÃ</TableHead>
+                    <TableHead className="min-w-[320px] font-mono text-[11px] font-bold tracking-widest text-zinc-500">TIÊU ĐỀ BÀI TOÁN</TableHead>
+                    <TableHead className="w-[110px] text-center font-mono text-[11px] font-bold tracking-widest text-zinc-500">ĐỘ KHÓ</TableHead>
+                    <TableHead className="w-[140px] text-center font-mono text-[11px] font-bold tracking-widest text-zinc-500">CHẤP NHẬN</TableHead>
+                    <TableHead className="w-[150px] font-mono text-[11px] font-bold tracking-widest text-zinc-500">CHỦ ĐỀ</TableHead>
+                    <TableHead className="w-[120px] text-right font-mono text-[11px] font-bold tracking-widest text-zinc-500">THAO TÁC</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginated.map((p, idx) => {
+                    const globalIndex = (currentPage - 1) * PAGE_SIZE + idx + 1;
+                    const solved = solvedSlugs.includes(p.slug);
+                    const fav = favs.includes(p.slug);
+                    const rate = acceptanceRate(p.slug);
+                    return (
+                      <TableRow key={p.slug} className="group border-b border-zinc-100 last:border-0 hover:bg-zinc-50/60">
+                        <TableCell className="text-center">
+                          <span className="inline-flex items-center gap-1">
+                            {solved ? <CheckCircle2 className="size-4 text-emerald-600" /> : <Circle className="size-4 text-zinc-300" />}
+                            <button
+                              type="button"
+                              onClick={() => toggleFav(p.slug)}
+                              className={fav ? "text-amber-400" : "text-zinc-300 hover:text-amber-400"}
+                            >
+                              <Star className={`size-4 ${fav ? "fill-amber-400" : ""}`} />
+                            </button>
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs font-bold text-zinc-500">#{globalIndex}</TableCell>
+                        <TableCell>
+                          <Link href={`/problem/${p.slug}`} className="block group/link">
+                            <span className="flex items-center gap-2">
+                              <span className="line-clamp-1 text-sm font-semibold tracking-tight text-zinc-900 group-hover/link:text-zinc-700">{p.title}</span>
+                              {solved && <span className="shrink-0 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700">Đã đạt</span>}
+                            </span>
+                            <span className="mt-1 flex flex-wrap gap-1">
+                              <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] font-mono text-zinc-600 border border-zinc-200">{topicTitle(p.topic)}</span>
+                            </span>
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-bold ${DIFFICULTY_STYLES[p.difficulty]}`}>{p.difficulty}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="inline-flex items-center gap-2 text-xs font-medium text-zinc-700">
+                            {rate.toFixed(1)}%
+                            <span className="hidden sm:inline-block h-1.5 w-12 rounded-full bg-zinc-200"><span className="block h-1.5 rounded-full bg-zinc-700" style={{ width: `${rate}%` }} /></span>
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="inline-flex rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 border border-zinc-200">{topicTitle(p.topic)}</span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="hidden sm:inline-flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500"><Eye className="size-3.5" /></span>
+                            <Link href={`/problem/${p.slug}`} className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-black">
+                              Giải <span aria-hidden>→</span>
+                            </Link>
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {filtered.length > PAGE_SIZE && (
+          <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
+            <p className="text-xs font-medium text-zinc-500">Trang {currentPage}/{Math.ceil(filtered.length / PAGE_SIZE)}</p>
+            <Pagination className="mx-0 w-auto">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious href="#" onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(1, p - 1)); }} className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer border border-zinc-300 bg-white"} />
+                </PaginationItem>
+                {Array.from({ length: Math.ceil(filtered.length / PAGE_SIZE) }).map((_, i) => {
+                  const p = i + 1;
+                  const total = Math.ceil(filtered.length / PAGE_SIZE);
+                  if (total > 7 && p !== 1 && p !== total && Math.abs(p - currentPage) > 1) {
+                    if (p === 2 || p === total - 1) return <PaginationItem key={p}><span className="px-2 text-zinc-400">…</span></PaginationItem>;
+                    return null;
+                  }
+                  return (
+                    <PaginationItem key={p}>
+                      <PaginationLink href="#" isActive={p === currentPage} onClick={(e) => { e.preventDefault(); setPage(p); }} className={p === currentPage ? "bg-zinc-900 text-white border-zinc-900" : "border border-zinc-300 bg-white"}>
+                        {p}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+                <PaginationItem>
+                  <PaginationNext href="#" onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(Math.ceil(filtered.length / PAGE_SIZE), p + 1)); }} className={currentPage === Math.ceil(filtered.length / PAGE_SIZE) ? "pointer-events-none opacity-50" : "cursor-pointer border border-zinc-300 bg-white"} />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           </div>
         )}
       </div>
@@ -224,14 +435,9 @@ export default function ProblemPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-white px-5 py-8 sm:px-10">
-          <div className="mx-auto max-w-6xl animate-pulse">
-            <div className="mb-8 h-12 w-72 rounded-lg bg-zinc-200" />
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-44 rounded-2xl bg-zinc-100" />
-              ))}
-            </div>
+        <main className="min-h-screen bg-[#fafafa] px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1400px] animate-pulse">
+            <div className="h-12 w-72 rounded-lg bg-zinc-200" />
           </div>
         </main>
       }

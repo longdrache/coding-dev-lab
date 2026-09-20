@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { adminFetch } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 
@@ -80,43 +79,41 @@ export default function QnaPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-extrabold tracking-tight text-zinc-950">QNA</h1>
+    <div className="space-y-5">
+      <div className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-5 shadow-lg">
+        <div className="absolute inset-0 bg-[radial-gradient(500px_circle_at_0%_0%,rgba(255,255,255,0.08),transparent_50%)]" />
+        <div className="relative">
+          <h1 className="text-2xl font-extrabold tracking-tight text-white">QNA</h1>
+          <p className="text-sm font-medium text-zinc-400">{items.length} câu hỏi từ người dùng</p>
+        </div>
+      </div>
       {items.length === 0 ? (
-        <p className="text-sm font-medium text-zinc-600">No questions yet.</p>
+        <p className="rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center text-sm font-medium text-zinc-600">Chưa có câu hỏi nào.</p>
       ) : (
-        <Card className="border-zinc-300 bg-white shadow-sm">
-          <CardContent className="p-0">
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-zinc-100 hover:bg-zinc-100 border-b border-zinc-300">
-                  <TableHead className="font-bold text-zinc-900">Name</TableHead>
-                  <TableHead className="font-bold text-zinc-900">Email</TableHead>
-                  <TableHead className="font-bold text-zinc-900">Question</TableHead>
-                  <TableHead className="font-bold text-zinc-900">CreatedAt</TableHead>
-                  <TableHead className="font-bold text-zinc-900 text-right">Action</TableHead>
+                <TableRow className="border-b border-zinc-200 bg-zinc-50 hover:bg-zinc-50">
+                  <TableHead className="px-4 py-3 text-xs font-bold tracking-wide text-zinc-700">Tên</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-bold tracking-wide text-zinc-700">Email</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-bold tracking-wide text-zinc-700">Câu hỏi</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-bold tracking-wide text-zinc-700">Ngày gửi</TableHead>
+                  <TableHead className="px-4 py-3 text-right text-xs font-bold tracking-wide text-zinc-700">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((q) => {
                   const text = q.question ?? q.message ?? q.content ?? "";
                   return (
-                    <TableRow key={q.id} className="hover:bg-zinc-50 align-top border-zinc-200">
-                      <TableCell className="whitespace-nowrap font-semibold text-zinc-900">{q.name}</TableCell>
-                      <TableCell className="whitespace-nowrap font-medium text-zinc-700">{q.email}</TableCell>
-                      <TableCell className="max-w-[400px] break-words font-medium text-zinc-900">{text}</TableCell>
-                      <TableCell className="whitespace-nowrap font-medium text-zinc-600">
-                        {q.createdAt ? new Date(q.createdAt).toLocaleString("vi-VN") : "—"}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right">
-                        <Button
-                          onClick={() => handleDelete(q.id)}
-                          disabled={deletingId === q.id}
-                          variant="destructive"
-                          size="sm"
-                          className="font-bold"
-                        >
-                          {deletingId === q.id ? "Deleting..." : "Delete"}
+                    <TableRow key={q.id} className="hover:bg-zinc-50/70 border-zinc-100">
+                      <TableCell className="font-semibold text-zinc-900">{q.name}</TableCell>
+                      <TableCell className="font-medium text-zinc-700">{q.email}</TableCell>
+                      <TableCell className="max-w-[420px] break-words font-medium text-zinc-900">{text}</TableCell>
+                      <TableCell className="whitespace-nowrap text-sm font-medium text-zinc-600">{q.createdAt ? new Date(q.createdAt).toLocaleString("vi-VN") : "—"}</TableCell>
+                      <TableCell className="text-right">
+                        <Button onClick={() => handleDelete(q.id)} disabled={deletingId === q.id} variant="destructive" size="sm" className="h-7 font-bold">
+                          {deletingId === q.id ? "Đang xóa..." : "Xóa"}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -124,8 +121,8 @@ export default function QnaPage() {
                 })}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   );

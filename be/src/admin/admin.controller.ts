@@ -1,6 +1,20 @@
-import { Body, Controller, Post, Res, UseGuards, Get, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Res,
+  UseGuards,
+  Get,
+  Req,
+  Delete,
+  Param,
+  Put,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
 import { AdminService } from './admin.service.ts';
 import { AdminGuard } from './admin.guard.ts';
+import { CreateProblemDto } from './dto/create-problem.dto.ts';
 import type { Response, Request } from 'express';
 
 @Controller('api/admin')
@@ -30,5 +44,65 @@ export class AdminController {
   @UseGuards(AdminGuard)
   me(@Req() req: Request) {
     return (req as any).admin;
+  }
+
+  @Get('stats')
+  @UseGuards(AdminGuard)
+  getStats() {
+    return this.svc.getStats();
+  }
+
+  @Get('qna')
+  @UseGuards(AdminGuard)
+  listQna() {
+    return this.svc.listQna();
+  }
+
+  @Delete('qna/:id')
+  @UseGuards(AdminGuard)
+  deleteQna(@Param('id') id: string) {
+    return this.svc.deleteQna(id);
+  }
+
+  @Get('users')
+  @UseGuards(AdminGuard)
+  listUsers(@Req() req: Request) {
+    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    const limit = Number(url.searchParams.get("limit") ?? "20");
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const q = url.searchParams.get("q") ?? url.searchParams.get("query") ?? undefined;
+    return this.svc.listUsers({ limit, offset, query: q });
+  }
+
+  @Get('problems')
+  @UseGuards(AdminGuard)
+  listProblems() {
+    return this.svc.listProblems();
+  }
+
+  @Get('problems/:slug')
+  @UseGuards(AdminGuard)
+  getProblem(@Param('slug') slug: string) {
+    return this.svc.getProblem(slug);
+  }
+
+  @Post('problems')
+  @UseGuards(AdminGuard)
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }))
+  createProblem(@Body() dto: CreateProblemDto) {
+    return this.svc.createProblem(dto);
+  }
+
+  @Delete('problems/:slug')
+  @UseGuards(AdminGuard)
+  deleteProblem(@Param('slug') slug: string) {
+    return this.svc.deleteProblem(slug);
+  }
+
+  @Put('problems/:slug')
+  @UseGuards(AdminGuard)
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }))
+  updateProblem(@Param('slug') slug: string, @Body() dto: CreateProblemDto) {
+    return this.svc.updateProblem(slug, dto);
   }
 }

@@ -23,7 +23,7 @@ export default function PricingCards() {
   const formatPrice = (vnd: number) => {
     return new Intl.NumberFormat("vi-VN").format(vnd) + " ₫";
   };
-  async function choosePlan(plan: (typeof pricingPlans)[number]["id"]) {
+  async function choosePlan(plan: typeof pricingPlans[number]["id"]) {
     setError("");
     if (!isLoaded || !isSignedIn) {
       router.push("/sign-in?redirect_url=/premium");
@@ -31,6 +31,7 @@ export default function PricingCards() {
     }
 
     setLoadingPlan(plan);
+    console.log(plan)
     try {
       const token = await getToken();
       const response = await fetch(`${API_URL}/api/premium/checkout`, {

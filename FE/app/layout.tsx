@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ClerkProvider } from "@clerk/nextjs";
 import { viVN } from "@clerk/localizations";
+import NextTopLoader from "nextjs-toploader";
 import Footer from "./ui/Footer";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -50,6 +51,7 @@ export default function RootLayout({
   return (
     <html
       lang="vi"
+      suppressHydrationWarning
       className={cn(
         "h-full",
         "antialiased",
@@ -60,6 +62,7 @@ export default function RootLayout({
       )}
     >
       <body className="min-h-full flex flex-col">
+        <NextTopLoader color="#10b981" height={5} showSpinner={false} zIndex={100} />
         <ClerkProvider localization={viVN}>{children}</ClerkProvider>
         <Footer />
       </body>

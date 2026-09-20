@@ -8,6 +8,8 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/problems", label: "Problems" },
   { href: "/qna", label: "QNA" },
+  { href: "/users", label: "Users" },
+  { href: "/slow-demo", label: "Slow Demo 🐢" },
 ];
 
 export default function DashboardLayout({

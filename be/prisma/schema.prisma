@@ -61,20 +61,23 @@ model UserBadge {
 }
 
 model Problem {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  title       String
-  difficulty  String
-  topic       String
-  description String   @db.Text
-  inputFormat String   @db.Text
-  outputFormat String  @db.Text
-  constraints Json
-  examples    Json
-  tests       Json
-  hiddenTests Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  difficulty   String
+  topic        String
+  description  String   @db.Text
+  inputFormat  String   @db.Text @default("")
+  outputFormat String   @db.Text @default("")
+  constraints  Json     @default("[]")
+  examples     Json     @default("[]")
+  tests        Json
+  hiddenTests  Json     @default("[]")
+  starterCodes Json?    @default("{}")
+  timeLimit    Int?     @default(1000)
+  memoryLimit  Int?     @default(256000)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Submission {

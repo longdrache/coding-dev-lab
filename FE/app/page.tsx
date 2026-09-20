@@ -22,10 +22,15 @@ export default function Home() {
   const { user, isSignedIn } = useUser();
   const { getToken } = useAuth();
   const [visibleLines, setVisibleLines] = useState(0);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (isSignedIn) recordLogin(getToken);
-  }, [isSignedIn, getToken]);
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted && isSignedIn) recordLogin(getToken);
+  }, [mounted, isSignedIn, getToken]);
   useEffect(() => {
     if (visibleLines < codeLines.length) {
       const timer = setTimeout(() => {
@@ -47,8 +52,24 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  // Guard hydration: server và lần render đầu của client phải giống nhau.
+  // Clerk chỉ biết trạng thái đăng nhập ở client, nên chờ mounted mới
+  // phân nhánh SignedIn/SignedOut để tránh mismatch.
+  if (!mounted) {
+    return (
+      <main className="min-h-screen overflow-hidden">
+        <div className="mx-auto px-6 pb-7 sm:px-6 lg:px-8">
+          <div className="h-16 animate-pulse border-b border-zinc-200/80" />
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <p className="font-mono text-xs text-zinc-500">Đang tải…</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen overflow-hidden">
+    <main className="min-h-screen overflow-hidden" suppressHydrationWarning>
       <div className="mx-auto  px-6 pb-7 sm:px-6 lg:px-8">
         <SignedOut>
           {/* <nav className="flex items-center justify-between border-b border-[#f5f1e8]/20 pb-5 pt-4"> */}

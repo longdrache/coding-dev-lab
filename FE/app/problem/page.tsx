@@ -45,6 +45,7 @@ function useFavorites() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem("gocode-favorites");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setFavs(JSON.parse(raw));
     } catch {}
   }, []);
@@ -119,7 +120,11 @@ function ProblemList() {
     return arr;
   }, [problems, query, topic, difficulty, statusFilter, sortBy, solvedSlugs, favs]);
 
-  useEffect(() => { setPage(1); }, [query, topic, difficulty, statusFilter, sortBy]);
+  useEffect(() => {
+    // Reset pagination khi filter đổi — cố ý cascading 1 lần
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [query, topic, difficulty, statusFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);

@@ -15,9 +15,11 @@ import { ProgressModule } from './progress/progress.module.ts';
 import { ProblemsModule } from './problems/problems.module.ts';
 import { SubmissionsModule } from './submissions/submissions.module.ts';
 import { QnaModule } from './qna/qna.module.ts';
+import { AdminModule } from './admin/admin.module.ts';
 @Module({
   imports: [
     ConfigModule.forRoot({ envFilePath: '.env', isGlobal: true }),
+    AdminModule,
     EmployeesModule,
     PresenceModule,
     ActivityModule,

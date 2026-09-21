@@ -74,6 +74,17 @@ export class AdminController {
     return this.svc.listUsers({ limit, offset, query: q });
   }
 
+  @Get('submissions')
+  @UseGuards(AdminGuard)
+  listSubmissions(@Req() req: Request) {
+    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+    const limit = Number(url.searchParams.get("limit") ?? "20");
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const problemSlug = url.searchParams.get("problemSlug") ?? undefined;
+    const q = url.searchParams.get("q") ?? undefined;
+    return this.svc.listSubmissions({ limit, offset, problemSlug, query: q });
+  }
+
   @Get('problems')
   @UseGuards(AdminGuard)
   listProblems() {

@@ -16,11 +16,11 @@ import { Type } from 'class-transformer';
 
 export class TestDto {
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'input không được rỗng' })
   input!: string;
 
   @IsString()
-  @IsNotEmpty()
+  // output được phép rỗng (ví dụ bài không yêu cầu in gì)
   output!: string;
 }
 

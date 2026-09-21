@@ -98,9 +98,10 @@ export default function EditProblemPage() {
     setError(null);
     if (!/^[a-z0-9-]+$/.test(slug)) { setError("Slug must match /^[a-z0-9-]+$/"); return; }
     if (!title.trim() || !topic.trim() || !description.trim()) { setError("Title, topic và description là bắt buộc"); return; }
-    if (tests.length !== 3 || hiddenTests.length !== 10) { setError("Cần đúng 3 visible và 10 hidden"); return; }
-    for (let i = 0; i < 3; i++) if (!tests[i].input.trim() || !tests[i].output.trim()) { setError(`Visible test #${i+1} thiếu`); return; }
-    for (let i = 0; i < 10; i++) if (!hiddenTests[i].input.trim() || !hiddenTests[i].output.trim()) { setError(`Hidden test #${i+1} thiếu`); return; }
+    if (tests.length !== 3) { setError(`Cần đúng 3 visible test (đang có ${tests.length}/3)`); document.getElementById("form-error-top")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    if (hiddenTests.length !== 10) { setError(`Cần đúng 10 hidden test (đang có ${hiddenTests.length}/10)`); document.getElementById("form-error-top")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    for (let i = 0; i < 3; i++) if (!tests[i].input.trim()) { setError(`Visible test #${i+1}: input (stdin) không được rỗng — output được phép rỗng`); document.getElementById("form-error-top")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    for (let i = 0; i < 10; i++) if (!hiddenTests[i].input.trim()) { setError(`Hidden test #${i+1}: input (stdin) không được rỗng — output được phép rỗng`); document.getElementById("form-error-top")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     const cleanConstraints = constraints.map((c) => c.trim()).filter(Boolean);
     if (cleanConstraints.length === 0) { setError("Cần ít nhất 1 constraint"); return; }
     const cleanExamples = examples.filter((ex) => ex.input.trim() && ex.output.trim());
@@ -146,8 +147,8 @@ export default function EditProblemPage() {
   if (loading) return <div className="mx-auto max-w-5xl p-6 text-sm font-medium text-zinc-600">Loading...</div>;
   if (error && !slug) return <div className="mx-auto max-w-5xl p-6"><p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p></div>;
 
-  const visibleDone = tests.filter((t) => t.input.trim() && t.output.trim()).length;
-  const hiddenDone = hiddenTests.filter((t) => t.input.trim() && t.output.trim()).length;
+  const visibleDone = tests.filter((t) => t.input.trim()).length;
+  const hiddenDone = hiddenTests.filter((t) => t.input.trim()).length;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-10">
@@ -168,7 +169,7 @@ export default function EditProblemPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>}
+        {error && <div id="form-error-top" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>}
 
         <Card className="border-zinc-200 bg-white shadow-sm">
           <CardHeader className="pb-4">
@@ -220,31 +221,33 @@ export default function EditProblemPage() {
         </Card>
 
         <Card className="border-emerald-200 bg-gradient-to-b from-emerald-50/60 to-white shadow-sm">
-          <CardHeader className="pb-3"><div className="flex items-center gap-2"><div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white"><TestTube className="size-4" /></div><CardTitle className="text-base font-bold tracking-tight text-zinc-950">Visible Tests 3 bắt buộc</CardTitle></div></CardHeader>
+          <CardHeader className="pb-3"><div className="flex items-center gap-2"><div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white"><TestTube className="size-4" /></div><div><CardTitle className="text-base font-bold tracking-tight text-zinc-950">Visible Tests <span className="font-mono text-emerald-700">3 bắt buộc</span></CardTitle><CardDescription className="font-medium text-zinc-600">Input (stdin) bắt buộc — Output (expected) được phép rỗng</CardDescription></div></div></CardHeader>
           <CardContent className="space-y-3">
             {tests.map((t, i) => (
               <div key={i} className="grid grid-cols-1 gap-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm sm:grid-cols-2">
-                <div className="space-y-1"><Label className="text-xs font-bold tracking-wide text-emerald-700">INPUT #{i + 1}</Label><Textarea value={t.input} onChange={(ev) => updateTest(tests, setTests, i, "input", ev.target.value)} rows={2} className="font-mono border-zinc-300 bg-zinc-50" /></div>
-                <div className="space-y-1"><Label className="text-xs font-bold tracking-wide text-emerald-700">OUTPUT #{i + 1}</Label><Textarea value={t.output} onChange={(ev) => updateTest(tests, setTests, i, "output", ev.target.value)} rows={2} className="font-mono border-zinc-300 bg-zinc-50" /></div>
+                <div className="space-y-1"><Label className="text-xs font-bold tracking-wide text-emerald-700">Input (stdin) #{i + 1} <span className="text-red-600">*</span></Label><Textarea value={t.input} onChange={(ev) => updateTest(tests, setTests, i, "input", ev.target.value)} rows={2} placeholder="stdin — bắt buộc" className="font-mono border-zinc-300 bg-zinc-50 focus-visible:ring-emerald-600" /></div>
+                <div className="space-y-1"><Label className="text-xs font-bold tracking-wide text-emerald-700">Output (expected) #{i + 1} <span className="font-normal text-zinc-500">— có thể để trống</span></Label><Textarea value={t.output} onChange={(ev) => updateTest(tests, setTests, i, "output", ev.target.value)} rows={2} placeholder="expected — để trống nếu không có output" className="font-mono border-zinc-300 bg-zinc-50 focus-visible:ring-emerald-600" /></div>
               </div>
             ))}
+            <p className="text-xs font-medium text-emerald-700">Đúng 3 test — input bắt buộc, output được phép rỗng.</p>
           </CardContent>
         </Card>
 
-        <Card className="border-zinc-900/10 bg-gradient-to-b from-zinc-950 to-zinc-900 text-white shadow-lg">
-          <CardHeader className="pb-3"><div className="flex items-center gap-2"><div className="flex size-8 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/10"><EyeOff className="size-4 text-white" /></div><CardTitle className="text-base font-bold tracking-tight text-white">Hidden Tests 10 bắt buộc</CardTitle></div></CardHeader>
+        <Card className="border-amber-200 bg-gradient-to-b from-amber-50/60 to-white shadow-sm">
+          <CardHeader className="pb-3"><div className="flex items-center gap-2"><div className="flex size-8 items-center justify-center rounded-lg bg-amber-500 text-white"><EyeOff className="size-4 text-white" /></div><div><CardTitle className="text-base font-bold tracking-tight text-zinc-950">Hidden Tests <span className="font-mono text-amber-600">10 bắt buộc</span></CardTitle><p className="text-xs font-medium text-zinc-600">Input (stdin) bắt buộc — Output (expected) được phép rỗng</p></div></div></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {hiddenTests.map((t, i) => (
-                <div key={i} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <p className="mb-2 text-xs font-bold tracking-wide text-amber-300">HIDDEN #{i + 1}</p>
+                <div key={i} className="rounded-xl border border-amber-200 bg-white p-3 shadow-sm">
+                  <p className="mb-2 text-xs font-bold tracking-wide text-amber-700">HIDDEN #{i + 1}</p>
                   <div className="space-y-2">
-                    <Textarea value={t.input} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "input", ev.target.value)} rows={2} className="font-mono border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500" />
-                    <Textarea value={t.output} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "output", ev.target.value)} rows={2} className="font-mono border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500" />
+                    <div className="space-y-1"><Label className="text-[11px] font-bold tracking-wide text-zinc-700">Input (stdin) <span className="text-red-600">*</span></Label><Textarea value={t.input} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "input", ev.target.value)} rows={2} placeholder="stdin — bắt buộc" className="font-mono border-zinc-300 bg-zinc-50 placeholder:text-zinc-400 focus-visible:ring-amber-500" /></div>
+                    <div className="space-y-1"><Label className="text-[11px] font-bold tracking-wide text-zinc-600">Output (expected) <span className="font-normal">— có thể để trống</span></Label><Textarea value={t.output} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "output", ev.target.value)} rows={2} placeholder="expected — để trống nếu không có output" className="font-mono border-zinc-300 bg-zinc-50 placeholder:text-zinc-400 focus-visible:ring-amber-500" /></div>
                   </div>
                 </div>
               ))}
             </div>
+            <p className="text-xs font-medium text-amber-700">Đúng 10 test — input bắt buộc, output được phép rỗng.</p>
           </CardContent>
         </Card>
 
@@ -268,11 +271,12 @@ export default function EditProblemPage() {
           </CardContent>
         </Card>
 
+        {error && <div id="form-error-bottom" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>}
         <Separator />
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={submitting} className="flex-1 bg-zinc-950 py-6 text-base font-bold hover:bg-black sm:flex-none sm:px-10">{submitting ? "Đang cập nhật..." : "Cập nhật Problem"}</Button>
           <Button type="button" variant="outline" onClick={() => router.push("/problems")} className="border-zinc-300 font-semibold">Hủy</Button>
-          <div className="ml-auto hidden items-center gap-2 text-xs font-medium text-zinc-500 sm:flex"><ShieldCheck className="size-4 text-emerald-600" /> Validate 3/10 tests</div>
+          <div className="ml-auto hidden items-center gap-2 text-xs font-medium text-zinc-500 sm:flex"><ShieldCheck className="size-4 text-emerald-600" /> Input bắt buộc, output được phép rỗng</div>
         </div>
       </form>
     </div>

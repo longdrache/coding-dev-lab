@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { adminFetch } from "@/lib/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type QnaItem = {
   id: string;
@@ -19,6 +20,7 @@ export default function QnaPage() {
   const [items, setItems] = useState<QnaItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<QnaItem | null>(null);
 
   const load = async () => {
     setError(null);
@@ -106,12 +108,16 @@ export default function QnaPage() {
                 {items.map((q) => {
                   const text = q.question ?? q.message ?? q.content ?? "";
                   return (
-                    <TableRow key={q.id} className="hover:bg-zinc-50/70 border-zinc-100">
-                      <TableCell className="font-semibold text-zinc-900">{q.name}</TableCell>
-                      <TableCell className="font-medium text-zinc-700">{q.email}</TableCell>
-                      <TableCell className="max-w-[420px] break-words font-medium text-zinc-900">{text}</TableCell>
+                    <TableRow
+                      key={q.id}
+                      className="cursor-pointer border-zinc-100 hover:bg-zinc-50/70"
+                      onClick={() => setSelected(q)}
+                    >
+                      <TableCell className="max-w-[160px] truncate font-semibold text-zinc-900" title={q.name}>{q.name}</TableCell>
+                      <TableCell className="max-w-[200px] truncate font-medium text-zinc-700" title={q.email}>{q.email}</TableCell>
+                      <TableCell className="max-w-[420px] truncate font-medium text-zinc-900" title="Bấm để xem đầy đủ">{text}</TableCell>
                       <TableCell className="whitespace-nowrap text-sm font-medium text-zinc-600">{q.createdAt ? new Date(q.createdAt).toLocaleString("vi-VN") : "—"}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <Button onClick={() => handleDelete(q.id)} disabled={deletingId === q.id} variant="destructive" size="sm" className="h-7 font-bold">
                           {deletingId === q.id ? "Đang xóa..." : "Xóa"}
                         </Button>
@@ -124,6 +130,31 @@ export default function QnaPage() {
           </div>
         </div>
       )}
+
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] gap-4 overflow-hidden border-zinc-200 bg-white sm:max-w-xl">
+          <DialogHeader className="min-w-0 space-y-1.5 text-left">
+            <DialogTitle className="min-w-0 text-base font-bold leading-snug tracking-tight break-all text-zinc-950 [overflow-wrap:anywhere]">Câu hỏi từ {selected?.name}</DialogTitle>
+            <p className="min-w-0 text-xs font-medium text-zinc-500 [overflow-wrap:anywhere]">
+              {selected?.email} • {selected?.createdAt ? new Date(selected.createdAt).toLocaleString("vi-VN") : "—"}
+            </p>
+          </DialogHeader>
+          <div className="h-auto max-h-[55vh] min-w-0 overflow-y-auto overflow-x-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-relaxed break-all whitespace-pre-wrap text-zinc-900 [overflow-wrap:anywhere]">
+            {selected ? (selected.question ?? selected.message ?? selected.content ?? "") : ""}
+          </div>
+          <div className="flex justify-end">
+            <Button
+              onClick={() => { if (selected) { handleDelete(selected.id); setSelected(null); } }}
+              disabled={deletingId === selected?.id}
+              variant="destructive"
+              size="sm"
+              className="font-bold"
+            >
+              {deletingId === selected?.id ? "Đang xóa..." : "Xóa câu hỏi này"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

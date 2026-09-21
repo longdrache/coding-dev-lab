@@ -1,12 +1,10 @@
 export const dynamic = "force-dynamic";
-import { adminFetch } from "@/lib/api";
 export default async function SlowDemoPage() {
   // Giả lập trang load chậm 5s để TopLoader chạy lâu cho dễ quan sát.
   // Vì là Server Component + force-dynamic, delay chỉ chạy khi request,
   // không làm chậm lúc build.
-  // await new Promise((r) => setTimeout(r, 5000));
- const url = '/api/admin/users?';
-  await  adminFetch(url)
+  await new Promise((r) => setTimeout(r, 5000));
+
   return (
     <div className="space-y-4">
       <div className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-5 shadow-lg">

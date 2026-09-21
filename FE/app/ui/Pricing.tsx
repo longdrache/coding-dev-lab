@@ -23,7 +23,7 @@ export default function PricingCards() {
   const formatPrice = (vnd: number) => {
     return new Intl.NumberFormat("vi-VN").format(vnd) + " ₫";
   };
-  async function choosePlan(plan: typeof pricingPlans[number]["id"]) {
+  async function choosePlan(plan: string) {
     setError("");
     if (!isLoaded || !isSignedIn) {
       router.push("/sign-in?redirect_url=/premium");

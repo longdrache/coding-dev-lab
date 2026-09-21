@@ -61,7 +61,7 @@ export class AdminService {
     // Ký RS256 bằng private key — FE chỉ giữ public key để verify
     return jwt.sign({ sub: 'admin', role: 'admin' }, this.getPrivateKey(), {
       algorithm: 'RS256',
-      expiresIn: '7d',
+      expiresIn: '30m',
     });
   }
 
@@ -89,7 +89,7 @@ export class AdminService {
     return '';
   }
 
-  // ---- Task 3 methods ----
+  // ---- Stats / QNA ----
 
   async getStats() {
     const [problems, qna, submissions] = await Promise.all([
@@ -121,15 +121,26 @@ export class AdminService {
       }
     }
 
-    // activity last 30d
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    // reset to start of day for consistent filtering
-    thirtyDaysAgo.setHours(0, 0, 0, 0);
+    // Tất cả bucket theo ngày Việt Nam (UTC+7) để khớp ActivityDay
+    // (lưu theo ngày VN) và múi giờ trình duyệt của user
+    const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+    const vnDayKey = (d: Date) => new Date(d.getTime() + VN_OFFSET_MS).toISOString().slice(0, 10);
+    const todayVnKey = vnDayKey(new Date());
+    const startVnKey = (() => {
+      const d = new Date(todayVnKey + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 29);
+      return d.toISOString().slice(0, 10);
+    })();
+    // ActivityDay lưu ngày VN dưới dạng UTC-midnight nên so sánh trực tiếp key;
+    // Submission.createdAt là mốc thật nên trừ 7h để lấy đủ ngày VN đầu tiên
+    const activityGte = new Date(startVnKey + 'T00:00:00Z');
+    const submissionGte = new Date(activityGte.getTime() - VN_OFFSET_MS);
+
+    // activity last 30d (VN days)
     let activity30d: any[] = [];
     try {
       activity30d = await this.db.activityDay.findMany({
-        where: { date: { gte: thirtyDaysAgo } },
+        where: { date: { gte: activityGte } },
         orderBy: { date: 'asc' },
       });
     } catch {
@@ -149,11 +160,47 @@ export class AdminService {
       topProblems = [];
     }
 
+    // Aggregate runs/submits per VN day for the 30-day chart.
+    // date phát ra ở dạng UTC-midnight nên browser VN (+7) render đúng ngày.
+    const runsByDay = new Map<string, number>();
+    for (const r of activity30d) {
+      const k = vnDayKey(new Date(r.date));
+      runsByDay.set(k, (runsByDay.get(k) ?? 0) + (r.count ?? 0));
+    }
+    let subsByDay = new Map<string, number>();
+    try {
+      const subs = await this.db.submission.findMany({
+        where: { createdAt: { gte: submissionGte } },
+        select: { createdAt: true },
+      });
+      for (const s of subs) {
+        const k = vnDayKey(new Date(s.createdAt));
+        subsByDay.set(k, (subsByDay.get(k) ?? 0) + 1);
+      }
+    } catch {
+      subsByDay = new Map();
+    }
+    const daily: Array<{ date: string; runs: number; submits: number }> = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(todayVnKey + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() - i);
+      const k = d.toISOString().slice(0, 10);
+      daily.push({ date: k + 'T00:00:00.000Z', runs: runsByDay.get(k) ?? 0, submits: subsByDay.get(k) ?? 0 });
+    }
+
+    const runs30d = daily.reduce((s, d) => s + d.runs, 0);
+    const submits30d = daily.reduce((s, d) => s + d.submits, 0);
+
     return {
       online,
       counts: { problems, qna, submissions },
       activity30d,
       topProblems,
+      daily,
+      runs30d,
+      submits30d,
+      todayRuns: daily[daily.length - 1]?.runs ?? 0,
+      todaySubmits: daily[daily.length - 1]?.submits ?? 0,
     };
   }
 
@@ -169,6 +216,112 @@ export class AdminService {
       if (e?.code === 'P2025') throw new NotFoundException('QNA not found');
       throw e;
     }
+  }
+
+  // ---- Users (Clerk) ----
+
+  async listUsers(opts?: { limit?: number; offset?: number; query?: string }) {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
+    const clerk = createClerkClient({ secretKey: clerkSecretKey });
+    const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
+    const offset = Math.max(opts?.offset ?? 0, 0);
+    const query = opts?.query?.trim() || undefined;
+    const res = await clerk.users.getUserList({ limit, offset });
+    // Clerk getUserList không hỗ trợ query tổng quát — filter local
+    let users = res.data;
+    if (query) {
+      const q = query.toLowerCase();
+      users = users.filter((u: any) => {
+        const email = (u.emailAddresses?.[0]?.emailAddress ?? '').toLowerCase();
+        const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.toLowerCase();
+        const username = (u.username ?? '').toLowerCase();
+        const id = (u.id ?? '').toLowerCase();
+        return email.includes(q) || name.includes(q) || username.includes(q) || id.includes(q);
+      });
+    }
+    return {
+      users: users.map((u: any) => ({
+        id: u.id,
+        username: u.username ?? u.emailAddresses?.[0]?.emailAddress?.split('@')[0] ?? '',
+        email: u.emailAddresses?.[0]?.emailAddress ?? '',
+        firstName: u.firstName ?? '',
+        lastName: u.lastName ?? '',
+        imageUrl: u.imageUrl ?? '',
+        createdAt: u.createdAt,
+        lastSignInAt: u.lastSignInAt,
+        publicMetadata: u.publicMetadata ?? {},
+        role: (u.publicMetadata as any)?.role ?? 'user',
+      })),
+      totalCount: res.totalCount,
+      hasMore: users.length === limit,
+    };
+  }
+
+  // ---- Problems ----
+
+  // ---- Submissions (xem ai nộp + code) ----
+
+  async listSubmissions(opts?: {
+    limit?: number;
+    offset?: number;
+    problemSlug?: string;
+    query?: string;
+  }) {
+    const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
+    const offset = Math.max(opts?.offset ?? 0, 0);
+    const where: Record<string, unknown> = {};
+    if (opts?.problemSlug) where['problemSlug'] = opts.problemSlug;
+    const [rows, total] = await Promise.all([
+      this.db.submission.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.db.submission.count({ where }),
+    ]);
+    // resolve clerkId -> user info 1 lần duy nhất
+    const ids = [...new Set(rows.map((r) => r.clerkId).filter(Boolean))];
+    const userMap = await this.resolveUsers(ids);
+    const q = opts?.query?.trim().toLowerCase();
+    let items = rows.map((r) => ({ ...r, user: userMap[r.clerkId] ?? null }));
+    if (q) {
+      items = items.filter((it) => {
+        const u = it.user as any;
+        return (
+          it.problemSlug.toLowerCase().includes(q) ||
+          (u?.email ?? '').toLowerCase().includes(q) ||
+          `${u?.firstName ?? ''} ${u?.lastName ?? ''}`.toLowerCase().includes(q) ||
+          (u?.username ?? '').toLowerCase().includes(q)
+        );
+      });
+    }
+    return { items, total };
+  }
+
+  private async resolveUsers(ids: string[]): Promise<Record<string, any>> {
+    const map: Record<string, any> = {};
+    if (ids.length === 0) return map;
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) return map;
+    try {
+      const clerk = createClerkClient({ secretKey: clerkSecretKey });
+      const res = await clerk.users.getUserList({ userId: ids, limit: Math.min(ids.length, 100) });
+      for (const u of res.data as any[]) {
+        map[u.id] = {
+          id: u.id,
+          username: u.username ?? u.emailAddresses?.[0]?.emailAddress?.split('@')[0] ?? '',
+          email: u.emailAddresses?.[0]?.emailAddress ?? '',
+          firstName: u.firstName ?? '',
+          lastName: u.lastName ?? '',
+          imageUrl: u.imageUrl ?? '',
+        };
+      }
+    } catch {
+      // Clerk lỗi thì vẫn trả submissions với user=null
+    }
+    return map;
   }
 
   async listProblems() {
@@ -229,43 +382,6 @@ export class AdminService {
       if (e?.code === 'P2025') throw new NotFoundException('Problem not found');
       throw e;
     }
-  }
-
-  async listUsers(opts?: { limit?: number; offset?: number; query?: string }) {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
-    const clerk = createClerkClient({ secretKey: clerkSecretKey });
-    const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
-    const offset = Math.max(opts?.offset ?? 0, 0);
-    const query = opts?.query?.trim() || undefined;
-    const res = await clerk.users.getUserList({ limit, offset, ...(query ? { query } as any : {}), ...(query ? { emailAddress: [query] } as any : {}) });
-    // Clerk getUserList may ignore query if not supported, fallback filter locally
-    let users = res.data;
-    if (query) {
-      const q = query.toLowerCase();
-      users = users.filter((u: any) => {
-        const email = (u.emailAddresses?.[0]?.emailAddress ?? "").toLowerCase();
-        const name = `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase();
-        const id = (u.id ?? "").toLowerCase();
-        return email.includes(q) || name.includes(q) || id.includes(q);
-      });
-    }
-    return {
-      users: users.map((u: any) => ({
-        id: u.id,
-        username: u.username ?? u.emailAddresses?.[0]?.emailAddress?.split("@")[0] ?? "",
-        email: u.emailAddresses?.[0]?.emailAddress ?? "",
-        firstName: u.firstName ?? "",
-        lastName: u.lastName ?? "",
-        imageUrl: u.imageUrl ?? "",
-        createdAt: u.createdAt,
-        lastSignInAt: u.lastSignInAt,
-        publicMetadata: u.publicMetadata ?? {},
-        role: (u.publicMetadata as any)?.role ?? "user",
-      })),
-      totalCount: res.totalCount,
-      hasMore: users.length === limit,
-    };
   }
 
   async createProblem(dto: CreateProblemDto) {

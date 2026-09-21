@@ -93,16 +93,16 @@ export default function ProblemsPage() {
 
   if (error) {
     return (
-      <div className="space-y-4">
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>
+      <div className="-m-8 min-h-screen space-y-4 p-6 text-slate-200 sm:p-8">
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300">{error}</p>
       </div>
     );
   }
 
   if (!problems) {
     return (
-      <div className="space-y-4">
-        <p className="text-sm font-medium text-zinc-500">Loading...</p>
+      <div className="-m-8 min-h-screen space-y-4  p-6 text-slate-200 sm:p-8">
+        <p className="text-sm font-medium text-slate-400">Loading...</p>
       </div>
     );
   }

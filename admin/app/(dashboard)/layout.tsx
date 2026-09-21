@@ -7,6 +7,7 @@ import { adminFetch } from "@/lib/api";
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/problems", label: "Problems" },
+  { href: "/submissions", label: "Bài nộp" },
   { href: "/qna", label: "QNA" },
   { href: "/users", label: "Users" },
   { href: "/slow-demo", label: "Slow Demo 🐢" },

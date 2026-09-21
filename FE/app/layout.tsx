@@ -27,6 +27,7 @@ export const metadata: Metadata = {
   description:
     "Hệ thống chấm mã nguồn độc lập, tuyển chọn bài toán DSA cốt lõi, chấm batch 10, streak & heatmap, lưu Neon.",
   metadataBase: new URL("https://gocode.example.com"),
+  icons: { icon: "/favicon.ico" },
   openGraph: {
     title: "GoCode — Luyện thuật toán tối giản",
     description:

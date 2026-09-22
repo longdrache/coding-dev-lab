@@ -158,9 +158,15 @@ export default function QnaPage() {
                             <Send className="size-3.5" />
                             Trả lời
                           </Button>
-                          <Button onClick={() => handleDelete(q.id)} disabled={deletingId === q.id} variant="destructive" size="sm" className="h-8 rounded-lg bg-red-500 px-3.5 text-xs font-medium hover:bg-red-600 disabled:opacity-40">
+                          <Button
+                            onClick={() => handleDelete(q.id)}
+                            disabled={deletingId === q.id}
+                            variant="destructive"
+                            size="icon-sm"
+                            title={deletingId === q.id ? "Đang xóa..." : "Xóa câu hỏi"}
+                            className="size-8 rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-40"
+                          >
                             <Trash2 className="size-3.5 text-white" />
-                            {deletingId === q.id ? "Đang xóa..." : "Xóa"}
                           </Button>
                         </span>
                       </TableCell>
@@ -198,17 +204,18 @@ export default function QnaPage() {
               onClick={() => { if (selected) { handleDelete(selected.id); setSelected(null); } }}
               disabled={deletingId === selected?.id}
               variant="destructive"
-              size="sm"
-              className="h-8 rounded-lg bg-red-500 px-3.5 text-xs font-medium hover:bg-red-600 disabled:opacity-40"
+              size="icon-sm"
+              title={deletingId === selected?.id ? "Đang xóa..." : "Xóa câu hỏi này"}
+              className="size-8 rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-40"
             >
-              {deletingId === selected?.id ? "Đang xóa..." : "Xóa câu hỏi này"}
+              <Trash2 className="size-3.5 text-white" />
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!replying} onOpenChange={(open) => { if (!open) setReplying(null); }}>
-        <DialogContent className="w-[calc(100%-2rem)] gap-4 overflow-hidden border-slate-200 bg-white sm:max-w-xl">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-[calc(100vw-2rem)] gap-4 overflow-hidden border-slate-200 bg-white sm:max-w-xl">
           <DialogHeader className="min-w-0 space-y-1.5 text-left">
             <DialogTitle className="min-w-0 font-display text-xl font-semibold break-all text-slate-900 [overflow-wrap:anywhere]">
               Trả lời {replying?.name}
@@ -230,7 +237,7 @@ export default function QnaPage() {
                   onChange={(e) => setReplyMessage(e.target.value)}
                   rows={6}
                   placeholder="Chỉ nhập nội dung trả lời..."
-                  className="min-h-[140px] border-slate-200 placeholder:text-slate-400"
+                  className="min-h-[140px] w-full max-w-full resize-y border-slate-200 break-all placeholder:text-slate-400 [overflow-wrap:anywhere]"
                 />
               </div>
               {replyError && (

@@ -10,8 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Sparkles, FileText, TestTube, EyeOff, Code2, Clock, ShieldCheck, Hash, Layers } from "lucide-react";
+import { FileText, TestTube, EyeOff, Code2, Clock, ShieldCheck, Hash } from "lucide-react";
 
 const LANGUAGES = [
   { id: "71", label: "Python 3", short: "PY", color: "from-sky-500 to-blue-600" },
@@ -35,6 +34,7 @@ export default function NewProblemPage() {
   const [slug, setSlug] = useState("");
   const [title, setTitle] = useState("");
   const [difficulty, setDifficulty] = useState("Dễ");
+  const [status, setStatus] = useState("draft");
   const [topic, setTopic] = useState("");
   const [description, setDescription] = useState("");
   const [inputFormat, setInputFormat] = useState("");
@@ -110,6 +110,7 @@ export default function NewProblemPage() {
       slug: slug.trim(),
       title: title.trim(),
       difficulty,
+      status,
       topic: topic.trim(),
       description: description.trim(),
       inputFormat: inputFormat.trim(),
@@ -148,57 +149,43 @@ export default function NewProblemPage() {
   const hiddenDone = hiddenTests.filter((t) => t.input.trim()).length;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-10">
-      {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 text-white shadow-lg">
-        <div className="absolute inset-0 bg-[radial-gradient(600px_circle_at_0%_0%,rgba(255,255,255,0.08),transparent_50%)]" />
-        <div className="absolute right-0 top-0 size-64 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 blur-3xl" />
-        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
-              <Sparkles className="size-3.5 text-amber-300" /> Tạo bài tập mới
-            </div>
-            <h1 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-3xl">New Problem</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="border-white/20 bg-white/10 text-white backdrop-blur">
-              {visibleDone}/3 visible
-            </Badge>
-            <Badge variant="outline" className="border-white/20 bg-white/10 text-white backdrop-blur">
-              {hiddenDone}/10 hidden
-            </Badge>
-          </div>
-        </div>
+    <div className="mx-auto max-w-5xl space-y-6 pb-10 font-sans">
+      <div>
+        <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Tạo bài tập</h1>
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+          Điền đầy đủ các thành phần của đề bài
+          <span className="rounded bg-emerald-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.5px] text-emerald-700">{visibleDone}/3 visible</span>
+          <span className="rounded bg-yellow-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.5px] text-yellow-700">{hiddenDone}/10 hidden</span>
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
-          <div id="form-error-top" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>
+          <div id="form-error-top" className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">{error}</div>
         )}
 
-        {/* Basic Info */}
-        <Card className="border-zinc-200 bg-white shadow-sm">
+        <Card className="border-slate-200 bg-white">
           <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-zinc-950 text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-slate-900 text-white">
                 <Hash className="size-4" />
               </div>
               <div>
-                <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Thông tin cơ bản</CardTitle>
-                <CardDescription className="font-medium text-zinc-600">Slug, tiêu đề, độ khó và chủ đề</CardDescription>
+                <CardTitle className="font-display text-xl font-semibold text-slate-900">Thông tin cơ bản</CardTitle>
+                <CardDescription className="text-sm text-slate-500">Slug, tiêu đề, độ khó và chủ đề</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Slug *</Label>
-              <Input value={slug} onChange={(ev) => setSlug(ev.target.value)} placeholder="vd: two-sum" className="font-mono border-zinc-300 placeholder:text-zinc-400 focus-visible:ring-zinc-900" required />
-              <p className="text-xs font-medium text-zinc-500">/^[a-z0-9-]+$/ — dùng làm URL</p>
+          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Slug *</Label>
+              <Input value={slug} onChange={(ev) => setSlug(ev.target.value)} placeholder="vd: two-sum" className="h-[42px] font-mono border-slate-200 placeholder:text-slate-400 focus-visible:border-slate-900 focus-visible:ring-[3px] focus-visible:ring-slate-900/10" required />
+              <p className="text-xs text-slate-500">/^[a-z0-9-]+$/ — dùng làm URL</p>
             </div>
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Difficulty *</Label>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Difficulty *</Label>
               <Select value={difficulty} onValueChange={(v) => { if (v) setDifficulty(v); }}>
-                <SelectTrigger className="border-zinc-300 bg-white"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-[42px] border-slate-200 bg-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Dễ">Dễ</SelectItem>
                   <SelectItem value="Trung bình">Trung bình</SelectItem>
@@ -206,213 +193,217 @@ export default function NewProblemPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Title *</Label>
-              <Input value={title} onChange={(ev) => setTitle(ev.target.value)} placeholder="Two Sum" className="border-zinc-300 focus-visible:ring-zinc-900" required />
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Trạng thái *</Label>
+              <Select value={status} onValueChange={(v) => { if (v) setStatus(v); }}>
+                <SelectTrigger className="h-[42px] border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Nháp — chưa xuất bản</SelectItem>
+                  <SelectItem value="pending">Chờ duyệt</SelectItem>
+                  <SelectItem value="published">Xuất bản ngay</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Topic *</Label>
-              <Input value={topic} onChange={(ev) => setTopic(ev.target.value)} placeholder="vd: Array, DP, Graph..." className="border-zinc-300 placeholder:text-zinc-400" required />
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Title *</Label>
+              <Input value={title} onChange={(ev) => setTitle(ev.target.value)} placeholder="Two Sum" className="h-[42px] border-slate-200 focus-visible:border-slate-900 focus-visible:ring-[3px] focus-visible:ring-slate-900/10" required />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Topic *</Label>
+              <Input value={topic} onChange={(ev) => setTopic(ev.target.value)} placeholder="vd: Array, DP, Graph..." className="h-[42px] border-slate-200 placeholder:text-slate-400" required />
             </div>
           </CardContent>
         </Card>
 
-        {/* Statement */}
-        <Card className="border-zinc-200 bg-white shadow-sm">
+        <Card className="border-slate-200 bg-white">
           <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-slate-900 text-white">
                 <FileText className="size-4" />
               </div>
               <div>
-                <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Đề bài chi tiết</CardTitle>
-                <CardDescription className="font-medium text-zinc-600">Mô tả, format, ràng buộc và ví dụ</CardDescription>
+                <CardTitle className="font-display text-xl font-semibold text-slate-900">Đề bài chi tiết</CardTitle>
+                <CardDescription className="text-sm text-slate-500">Mô tả, format, ràng buộc và ví dụ</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Description *</Label>
-              <Textarea value={description} onChange={(ev) => setDescription(ev.target.value)} rows={6} placeholder="Mô tả chi tiết bài toán, có thể dùng markdown..." className="min-h-[140px] border-zinc-300 placeholder:text-zinc-400" required />
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Description *</Label>
+              <Textarea value={description} onChange={(ev) => setDescription(ev.target.value)} rows={6} placeholder="Mô tả chi tiết bài toán, có thể dùng markdown..." className="min-h-[140px] border-slate-200 placeholder:text-slate-400" required />
             </div>
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label className="font-semibold text-zinc-900">Input Format *</Label>
-                <Textarea value={inputFormat} onChange={(ev) => setInputFormat(ev.target.value)} rows={3} placeholder="Dòng đầu n, dòng sau mảng a..." className="border-zinc-300 placeholder:text-zinc-400" required />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-900">Input Format *</Label>
+                <Textarea value={inputFormat} onChange={(ev) => setInputFormat(ev.target.value)} rows={3} placeholder="Dòng đầu n, dòng sau mảng a..." className="border-slate-200 placeholder:text-slate-400" required />
               </div>
-              <div className="space-y-2">
-                <Label className="font-semibold text-zinc-900">Output Format *</Label>
-                <Textarea value={outputFormat} onChange={(ev) => setOutputFormat(ev.target.value)} rows={3} placeholder="In ra một số nguyên..." className="border-zinc-300 placeholder:text-zinc-400" required />
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-900">Output Format *</Label>
+                <Textarea value={outputFormat} onChange={(ev) => setOutputFormat(ev.target.value)} rows={3} placeholder="In ra một số nguyên..." className="border-slate-200 placeholder:text-slate-400" required />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Constraints *</Label>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Constraints *</Label>
               <div className="space-y-2">
                 {constraints.map((c, i) => (
                   <div key={i} className="flex gap-2">
-                    <Input value={c} onChange={(ev) => { const copy = [...constraints]; copy[i] = ev.target.value; setConstraints(copy); }} placeholder={`1 ≤ n ≤ 10^5`} className="flex-1 border-zinc-300" />
-                    <Button type="button" variant="outline" size="sm" onClick={() => setConstraints(constraints.filter((_, idx) => idx !== i))} disabled={constraints.length <= 1}>Xóa</Button>
+                    <Input value={c} onChange={(ev) => { const copy = [...constraints]; copy[i] = ev.target.value; setConstraints(copy); }} placeholder={`1 ≤ n ≤ 10^5`} className="h-[42px] flex-1 border-slate-200" />
+                    <Button type="button" variant="outline" size="sm" onClick={() => setConstraints(constraints.filter((_, idx) => idx !== i))} disabled={constraints.length <= 1} className="h-[42px]">Xóa</Button>
                   </div>
                 ))}
-                <Button type="button" variant="outline" size="sm" onClick={() => setConstraints([...constraints, ""])} className="border-zinc-300">+ Thêm ràng buộc</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setConstraints([...constraints, ""])} className="border-slate-200">+ Thêm ràng buộc</Button>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Examples *</Label>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Examples *</Label>
               <div className="space-y-3">
                 {examples.map((ex, i) => (
-                  <div key={i} className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2">
-                    <Input value={ex.input} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], input: ev.target.value }; setExamples(copy); }} placeholder="Input" className="bg-white" />
-                    <Input value={ex.output} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], output: ev.target.value }; setExamples(copy); }} placeholder="Output" className="bg-white" />
-                    <Input value={ex.explanation ?? ""} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], explanation: ev.target.value }; setExamples(copy); }} placeholder="Giải thích (optional)" className="col-span-2 bg-white" />
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setExamples(examples.filter((_, idx) => idx !== i))} disabled={examples.length <= 1} className="col-span-2 justify-start text-red-600">Xóa example</Button>
+                  <div key={i} className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
+                    <Input value={ex.input} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], input: ev.target.value }; setExamples(copy); }} placeholder="Input" className="h-[42px] bg-white" />
+                    <Input value={ex.output} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], output: ev.target.value }; setExamples(copy); }} placeholder="Output" className="h-[42px] bg-white" />
+                    <Input value={ex.explanation ?? ""} onChange={(ev) => { const copy = [...examples]; copy[i] = { ...copy[i], explanation: ev.target.value }; setExamples(copy); }} placeholder="Giải thích (optional)" className="h-[42px] col-span-2 bg-white" />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setExamples(examples.filter((_, idx) => idx !== i))} disabled={examples.length <= 1} className="col-span-2 justify-start text-red-600 hover:text-red-700 hover:bg-red-500/10 h-8">Xóa example</Button>
                   </div>
                 ))}
-                <Button type="button" variant="outline" size="sm" onClick={() => setExamples([...examples, { input: "", output: "" }])} className="border-zinc-300">+ Thêm example</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setExamples([...examples, { input: "", output: "" }])} className="border-slate-200">+ Thêm example</Button>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Visible Tests */}
-        <Card className="border-emerald-200 bg-gradient-to-b from-emerald-50/60 to-white shadow-sm">
+        <Card className="border-slate-200 bg-white">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
                   <TestTube className="size-4" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Visible Tests <span className="font-mono text-emerald-700">3 bắt buộc</span></CardTitle>
-                  <CardDescription className="font-medium text-zinc-600">Hiện cho người làm bài — chấm mẫu</CardDescription>
+                  <CardTitle className="font-display text-xl font-semibold text-slate-900">Visible Tests <span className="font-mono text-emerald-700">3 bắt buộc</span></CardTitle>
+                  <CardDescription className="text-sm text-slate-500">Hiện cho người làm bài — chấm mẫu</CardDescription>
                 </div>
               </div>
-              <Badge className="bg-emerald-600 text-white">{visibleDone}/3</Badge>
+              <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">{visibleDone}/3</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {tests.map((t, i) => (
-              <div key={i} className="grid grid-cols-1 gap-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs font-bold tracking-wide text-emerald-700">Input (stdin) #{i + 1} <span className="text-red-600">*</span> — bắt buộc</Label>
-                  <Textarea value={t.input} onChange={(ev) => updateTest(tests, setTests, i, "input", ev.target.value)} rows={2} placeholder="vd: 3&#10;1 2 3" className="font-mono border-zinc-300 bg-zinc-50 focus-visible:ring-emerald-600" />
+              <div key={i} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium text-slate-900">Input (stdin) #{i + 1} *</Label>
+                  <Textarea value={t.input} onChange={(ev) => updateTest(tests, setTests, i, "input", ev.target.value)} rows={2} placeholder="vd: 3&#10;1 2 3" className="font-mono border-slate-200 bg-slate-50" />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-bold tracking-wide text-emerald-700">Output (expected) #{i + 1} <span className="font-normal text-zinc-500">— có thể để trống</span></Label>
-                  <Textarea value={t.output} onChange={(ev) => updateTest(tests, setTests, i, "output", ev.target.value)} rows={2} placeholder="vd: 6 (để trống nếu không có output)" className="font-mono border-zinc-300 bg-zinc-50 focus-visible:ring-emerald-600" />
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium text-slate-900">Output (expected) #{i + 1} <span className="font-normal text-slate-500">— có thể để trống</span></Label>
+                  <Textarea value={t.output} onChange={(ev) => updateTest(tests, setTests, i, "output", ev.target.value)} rows={2} placeholder="vd: 6 (để trống nếu không có output)" className="font-mono border-slate-200 bg-slate-50" />
                 </div>
               </div>
             ))}
-            <p className="text-xs font-medium text-emerald-700">Đúng 3 test — input bắt buộc, output được phép rỗng.</p>
+            <p className="text-xs text-slate-500">Đúng 3 test — input bắt buộc, output được phép rỗng.</p>
           </CardContent>
         </Card>
 
-        {/* Hidden Tests — nền sáng */}
-        <Card className="border-amber-200 bg-gradient-to-b from-amber-50/60 to-white shadow-sm">
+        <Card className="border-slate-200 bg-white">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500 text-white">
-                  <EyeOff className="size-4 text-white" />
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-slate-900 text-white">
+                  <EyeOff className="size-4" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Hidden Tests <span className="font-mono text-amber-600">10 bắt buộc</span></CardTitle>
-                  <CardDescription className="font-medium text-zinc-600">Chấm kín — không hiện cho user</CardDescription>
+                  <CardTitle className="font-display text-xl font-semibold text-slate-900">Hidden Tests <span className="font-mono text-slate-500">10 bắt buộc</span></CardTitle>
+                  <CardDescription className="text-sm text-slate-500">Chấm kín — không hiện cho user</CardDescription>
                 </div>
               </div>
-              <Badge className="bg-amber-500 text-white border-amber-500">{hiddenDone}/10</Badge>
+              <Badge variant="secondary" className="bg-slate-100 text-slate-900 hover:bg-slate-100">{hiddenDone}/10</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {hiddenTests.map((t, i) => (
-                <div key={i} className="rounded-xl border border-amber-200 bg-white p-3 shadow-sm">
-                  <p className="mb-2 text-xs font-bold tracking-wide text-amber-700">HIDDEN #{i + 1}</p>
+                <div key={i} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Hidden #{i + 1}</p>
                   <div className="space-y-2">
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold tracking-wide text-zinc-700">Input (stdin) <span className="text-red-600">*</span></Label>
-                      <Textarea value={t.input} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "input", ev.target.value)} rows={2} placeholder="stdin — bắt buộc" className="font-mono border-zinc-300 bg-zinc-50 placeholder:text-zinc-400 focus-visible:ring-amber-500" />
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium text-slate-900">Input (stdin) *</Label>
+                      <Textarea value={t.input} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "input", ev.target.value)} rows={2} placeholder="stdin — bắt buộc" className="font-mono border-slate-200 bg-white placeholder:text-slate-400" />
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold tracking-wide text-zinc-600">Output (expected) <span className="font-normal">— có thể để trống</span></Label>
-                      <Textarea value={t.output} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "output", ev.target.value)} rows={2} placeholder="expected — để trống nếu không có output" className="font-mono border-zinc-300 bg-zinc-50 placeholder:text-zinc-400 focus-visible:ring-amber-500" />
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium text-slate-900">Output (expected) <span className="font-normal text-slate-500">— có thể để trống</span></Label>
+                      <Textarea value={t.output} onChange={(ev) => updateTest(hiddenTests, setHiddenTests, i, "output", ev.target.value)} rows={2} placeholder="expected — để trống nếu không có output" className="font-mono border-slate-200 bg-white placeholder:text-slate-400" />
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <p className="text-xs font-medium text-amber-700">Đúng 10 test — input bắt buộc, output được phép rỗng.</p>
+            <p className="text-xs text-slate-500">Đúng 10 test — input bắt buộc, output được phép rỗng.</p>
           </CardContent>
         </Card>
 
-        {/* Starter Codes */}
-        <Card className="border-zinc-200 bg-white shadow-sm">
+        <Card className="border-slate-200 bg-white">
           <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-violet-600 text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-slate-900 text-white">
                 <Code2 className="size-4" />
               </div>
               <div>
-                <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Starter Codes</CardTitle>
-                <CardDescription className="font-medium text-zinc-600">Gợi ý ban đầu cho 8 ngôn ngữ — có thể để trống</CardDescription>
+                <CardTitle className="font-display text-xl font-semibold text-slate-900">Starter Codes</CardTitle>
+                <CardDescription className="text-sm text-slate-500">Gợi ý ban đầu cho 8 ngôn ngữ — có thể để trống</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {LANGUAGES.map((lang) => (
-              <div key={lang.id} className="group space-y-1">
+              <div key={lang.id} className="space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex size-6 items-center justify-center rounded-md bg-gradient-to-br text-[10px] font-bold text-white ${lang.color}`}>{lang.short}</span>
-                  <Label className="text-xs font-bold tracking-wide text-zinc-800">{lang.label}</Label>
+                  <span className="inline-flex size-6 items-center justify-center rounded bg-slate-900 font-mono text-[10px] font-bold text-white">{lang.short}</span>
+                  <Label className="text-sm font-medium text-slate-900">{lang.label}</Label>
                 </div>
                 <Textarea
                   value={starterCodes[lang.id] ?? ""}
                   onChange={(ev) => setStarterCodes((prev) => ({ ...prev, [lang.id]: ev.target.value }))}
                   rows={3}
                   placeholder={`// Starter for ${lang.label}`}
-                  className="font-mono text-xs border-zinc-300 bg-zinc-50 placeholder:text-zinc-400 focus-visible:ring-violet-600"
+                  className="font-mono text-xs border-slate-200 bg-slate-50 placeholder:text-slate-400"
                 />
               </div>
             ))}
           </CardContent>
         </Card>
 
-        {/* Limits */}
-        <Card className="border-zinc-200 bg-white shadow-sm">
+        <Card className="border-slate-200 bg-white">
           <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500 text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-slate-900 text-white">
                 <Clock className="size-4" />
               </div>
-              <CardTitle className="text-base font-bold tracking-tight text-zinc-950">Giới hạn</CardTitle>
+              <CardTitle className="font-display text-xl font-semibold text-slate-900">Giới hạn</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Time limit (ms)</Label>
-              <Input type="number" value={timeLimit} onChange={(ev) => setTimeLimit(Number(ev.target.value))} className="border-zinc-300 font-mono" />
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Time limit (ms)</Label>
+              <Input type="number" value={timeLimit} onChange={(ev) => setTimeLimit(Number(ev.target.value))} className="h-[42px] border-slate-200 font-mono" />
             </div>
-            <div className="space-y-2">
-              <Label className="font-semibold text-zinc-900">Memory limit (KB)</Label>
-              <Input type="number" value={memoryLimit} onChange={(ev) => setMemoryLimit(Number(ev.target.value))} className="border-zinc-300 font-mono" />
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-slate-900">Memory limit (KB)</Label>
+              <Input type="number" value={memoryLimit} onChange={(ev) => setMemoryLimit(Number(ev.target.value))} className="h-[42px] border-slate-200 font-mono" />
             </div>
           </CardContent>
         </Card>
 
         {error && (
-          <div id="form-error-bottom" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>
+          <div id="form-error-bottom" className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">{error}</div>
         )}
 
-        <Separator />
-
         <div className="flex items-center gap-3">
-          <Button type="submit" disabled={submitting} className="flex-1 bg-zinc-950 py-6 text-base font-bold hover:bg-black sm:flex-none sm:px-10">
+          <Button type="submit" disabled={submitting} className="h-[42px] flex-1 bg-slate-900 text-sm font-semibold text-white hover:bg-slate-950 disabled:opacity-40 sm:flex-none sm:px-7">
             {submitting ? "Đang tạo..." : "Tạo Problem"}
           </Button>
-          <Button type="button" variant="outline" onClick={() => router.push("/problems")} className="border-zinc-300 font-semibold">
+          <Button type="button" variant="outline" onClick={() => router.push("/problems")} className="h-[42px] border-slate-900 bg-transparent px-[22px] text-sm font-semibold text-slate-900 hover:bg-slate-900/5">
             Hủy
           </Button>
-          <div className="ml-auto hidden items-center gap-2 text-xs font-medium text-zinc-500 sm:flex">
+          <div className="ml-auto hidden items-center gap-2 text-xs text-slate-500 sm:flex">
             <ShieldCheck className="size-4 text-emerald-600" /> Input bắt buộc, output được phép rỗng
           </div>
         </div>

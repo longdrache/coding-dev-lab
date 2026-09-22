@@ -28,15 +28,19 @@ export class ProblemsService {
     private readonly judge0: Judge0Service,
   ) {}
 
+  // Public: chỉ bài đã xuất bản mới hiện cho user
   async findAll() {
-    const rows = await this.db.problem.findMany({ orderBy: { createdAt: 'asc' } });
+    const rows = await this.db.problem.findMany({
+      where: { status: 'published' },
+      orderBy: { createdAt: 'asc' },
+    });
     // ẩn hiddenTests với client
     return rows.map(({ hiddenTests, ...rest }) => rest);
   }
 
   async findBySlug(slug: string) {
     const row = await this.db.problem.findUnique({ where: { slug } });
-    if (!row) return null;
+    if (!row || (row as Record<string, unknown>).status !== 'published') return null;
     const { hiddenTests, ...rest } = row as Record<string, unknown>;
     return rest;
   }

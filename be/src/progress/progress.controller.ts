@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
 import { ProgressService } from './progress.service.ts';
@@ -31,5 +31,25 @@ export class ProgressController {
     const slug = String(body?.slug ?? '').trim();
     if (!slug) return { error: 'slug required' };
     return this.progress.recordSolved(req.user!.userId, slug, body?.difficulty ?? null);
+  }
+
+  @Get('favorites')
+  async favorites(@Req() req: AuthenticatedRequest) {
+    return this.progress.getFavorites(req.user!.userId);
+  }
+
+  @Post('favorites')
+  async addFavorite(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { slug: string },
+  ) {
+    const slug = String(body?.slug ?? '').trim();
+    if (!slug) return { error: 'slug required' };
+    return this.progress.addFavorite(req.user!.userId, slug);
+  }
+
+  @Delete('favorites/:slug')
+  async removeFavorite(@Req() req: AuthenticatedRequest, @Param('slug') slug: string) {
+    return this.progress.removeFavorite(req.user!.userId, slug);
   }
 }

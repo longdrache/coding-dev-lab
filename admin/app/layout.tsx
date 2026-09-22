@@ -1,16 +1,27 @@
 ﻿import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, DM_Sans, Fira_Code } from "next/font/google";
 import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const display = Plus_Jakarta_Sans({
+  variable: "--font-display",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
+  preload: true,
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const body = DM_Sans({
+  variable: "--font-body",
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
+  preload: true,
+});
+
+const code = Fira_Code({
+  variable: "--font-code",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
 export const metadata: Metadata = {
@@ -22,12 +33,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      lang="vi"
+      className={`${display.variable} ${body.variable} ${code.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
-        <NextTopLoader color="#18181b" height={5} showSpinner={false} zIndex={100} />
+      <body className="min-h-full flex flex-col bg-slate-50 font-sans text-slate-900">
+        <NextTopLoader color="#059669" height={2} showSpinner={false} zIndex={100} />
         {children}
       </body>
     </html>

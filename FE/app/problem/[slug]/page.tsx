@@ -26,7 +26,7 @@ import {
 import CodeEditor from "@/app/ui/Editor";
 import Logo from "@/app/ui/Logo";
 import type { Problem, ProblemTest } from "@/app/data/problems";
-import { markSolved, useSolvedSlugs } from "../solved";
+import { markSolved, useSolvedSlugs, useServerSolvedSlugs } from "../solved";
 import { recordActivity } from "../activity";
 import { topics } from "@/app/data/topics";
 import { useProblem } from "@/app/hooks/useProblems";
@@ -405,7 +405,10 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
     total: number;
     failedIndex: number | null;
   } | null>(null);
-  const solved = useSolvedSlugs().includes(problem.slug);
+  const localSolved = useSolvedSlugs();
+  const serverSolved = useServerSolvedSlugs();
+  const solved =
+    localSolved.includes(problem.slug) || serverSolved.includes(problem.slug);
   const [langOpen, setLangOpen] = useState(false);
   // focus full-ngang: "statement" ẩn cột editor, "editor" ẩn cột đề bài.
   const [focus, setFocus] = useState<"none" | "statement" | "editor">("none");

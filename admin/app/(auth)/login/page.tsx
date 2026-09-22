@@ -39,49 +39,58 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-zinc-950 p-6">
-      <Card className="w-full max-w-sm border-zinc-800 bg-white shadow-2xl">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-xl font-bold tracking-tight text-zinc-950">Admin Đăng nhập</CardTitle>
-          <CardDescription className="text-sm font-medium text-zinc-600">
-            Mặc định: <span className="font-mono font-bold text-zinc-900">admin / admin</span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-semibold text-zinc-900">Tài khoản</Label>
-              <Input
-                id="email"
-                type="text"
-                value={email}
-                onChange={(ev) => setEmail(ev.target.value)}
-                placeholder="admin"
-                required
-                autoComplete="username"
-                className="border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500 focus-visible:ring-zinc-900"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-semibold text-zinc-900">Mật khẩu</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(ev) => setPassword(ev.target.value)}
-                placeholder="admin"
-                required
-                autoComplete="current-password"
-                className="border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-500 focus-visible:ring-zinc-900"
-              />
-            </div>
-            {error && <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
-            <Button type="submit" disabled={loading} className="w-full bg-zinc-950 font-semibold text-white hover:bg-black">
-              {loading ? "Đang đăng nhập..." : "Đăng nhập"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+    <main className="min-h-screen flex items-center justify-center bg-slate-50 p-6 font-sans">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="flex items-center justify-center gap-2.5">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-slate-900 font-display text-base font-bold text-white">
+            G
+          </div>
+          <p className="font-display text-lg font-bold tracking-tight text-slate-900">GoCode Admin</p>
+        </div>
+        <Card className="border-slate-200 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.05)]">
+          <CardHeader className="space-y-1">
+            <CardTitle className="font-display text-xl font-bold tracking-tight text-slate-900">Đăng nhập quản trị</CardTitle>
+            <CardDescription className="text-sm text-slate-500">
+              Mặc định: <span className="font-mono font-medium text-slate-900">admin / admin</span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-sm font-medium text-slate-900">Tài khoản</Label>
+                <Input
+                  id="email"
+                  type="text"
+                  value={email}
+                  onChange={(ev) => setEmail(ev.target.value)}
+                  placeholder="admin"
+                  required
+                  autoComplete="username"
+                  className="h-[42px] border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:border-slate-900 focus-visible:ring-[3px] focus-visible:ring-slate-900/10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="password" className="text-sm font-medium text-slate-900">Mật khẩu</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(ev) => setPassword(ev.target.value)}
+                  placeholder="••••••••"
+                  required
+                  autoComplete="current-password"
+                  className="h-[42px] border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:border-slate-900 focus-visible:ring-[3px] focus-visible:ring-slate-900/10"
+                />
+              </div>
+              {error && <p className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600 shadow-[0_3px_0_rgba(239,68,68,0.1)]">{error}</p>}
+              <Button type="submit" disabled={loading} className="h-[42px] w-full bg-slate-900 text-sm font-semibold text-white hover:bg-slate-950 disabled:opacity-40">
+                {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+        <p className="text-center text-xs text-slate-500">Khu vực quản trị · GoCode</p>
+      </div>
     </main>
   );
 }

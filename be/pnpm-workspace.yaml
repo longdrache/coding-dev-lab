@@ -1,0 +1,4 @@
+overrides:
+  undici: ">=6.27.0"
+  tmp: ">=0.2.6"
+  mysql2: ">=3.22.0"

@@ -50,6 +50,12 @@ export class CreateProblemDto {
   @IsNotEmpty({ message: 'topic should not be empty' })
   topic!: string;
 
+  @IsOptional()
+  @IsIn(['draft', 'pending', 'published'], {
+    message: 'status must be one of draft, pending, published',
+  })
+  status?: 'draft' | 'pending' | 'published';
+
   @IsArray()
   @ArrayMinSize(3, { message: 'tests phải có đúng 3 test visible' })
   @ArrayMaxSize(3, { message: 'tests phải có đúng 3 test visible' })

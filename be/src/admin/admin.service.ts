@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   NotFoundException,
@@ -9,13 +10,25 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import nodemailer from 'nodemailer';
+import { MailtrapTransport } from 'mailtrap';
 import { createClerkClient } from '@clerk/backend';
 import { DatabaseService } from '../database/database.service.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
 import { PresenceService } from '../presence/presence.service.ts';
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     private readonly db: DatabaseService,
     @Optional()
@@ -218,6 +231,75 @@ export class AdminService {
     }
   }
 
+  /**
+   * Trả lời câu hỏi QNA qua email. Admin chỉ nhập lời nhắn —
+   * tiêu đề, chào hỏi và chữ ký do template chuyên nghiệp tự lo.
+   */
+  async replyQna(id: string, message: string) {
+    const q = await this.db.qnaQuestion.findUnique({ where: { id } });
+    if (!q) throw new NotFoundException('QNA not found');
+    const cleanMessage = String(message ?? '').trim();
+    if (!cleanMessage) throw new BadRequestException('Lời nhắn không được rỗng');
+
+    const subject = '[GoCode] Phản hồi câu hỏi của bạn';
+    const text =
+      `Chào ${q.name},\n\n` +
+      `Cảm ơn bạn đã gửi câu hỏi đến GoCode.\n\n` +
+      `${cleanMessage}\n\n` +
+      `---\nCâu hỏi của bạn: "${q.question}"\n\n` +
+      `Trân trọng,\nĐội ngũ GoCode`;
+    const html =
+      `<p>Chào ${escapeHtml(q.name)},</p>` +
+      `<p>Cảm ơn bạn đã gửi câu hỏi đến GoCode.</p>` +
+      `<p>${escapeHtml(cleanMessage).replace(/\n/g, '<br/>')}</p>` +
+      `<hr/><p><i>Câu hỏi của bạn: "${escapeHtml(q.question)}"</i></p>` +
+      `<p>Trân trọng,<br/>Đội ngũ GoCode</p>`;
+
+    // Ưu tiên MailtrapTransport chính chủ bằng MAIL_API_TOKEN
+    const apiToken = (process.env.MAIL_API_TOKEN ?? '').trim();
+    if (apiToken) {
+      const fromEmail = process.env.MAIL_FROM_EMAIL ?? 'hello@demomailtrap.co';
+      const transport = nodemailer.createTransport(
+        MailtrapTransport({ token: apiToken }),
+      );
+      try {
+        const info = (await transport.sendMail({
+          from: { address: fromEmail, name: 'GoCode' },
+          to: [{ address: q.email }],
+          subject,
+          text,
+          html,
+        })) as { messageId?: string };
+        this.logger.log(`Đã gửi reply QNA ${id} tới ${q.email} qua Mailtrap (${info?.messageId ?? 'no-id'})`);
+        return { ok: true, to: q.email, messageId: info?.messageId ?? null };
+      } catch (err) {
+        throw new BadRequestException(
+          `Mailtrap lỗi: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
+        );
+      }
+    }
+
+    // Fallback SMTP (nodemailer) khi không có MAIL_API_TOKEN
+    const host = process.env.EMAIL_HOST;
+    const user = process.env.EMAIL_USERNAME;
+    const pass = process.env.EMAIL_PASSWORD;
+    if (!host || !user || !pass) {
+      throw new BadRequestException('Chưa cấu hình MAIL_API_TOKEN hoặc EMAIL_HOST/EMAIL_USERNAME/EMAIL_PASSWORD');
+    }
+    const port = Number(process.env.EMAIL_PORT ?? 587);
+    const from = process.env.EMAIL_FROM ?? `GoCode <${user}>`;
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+    });
+    const info = await transporter.sendMail({ from, to: q.email, subject, text, html });
+    this.logger.log(`Đã gửi reply QNA ${id} tới ${q.email} qua SMTP (${info.messageId ?? 'no-id'})`);
+    return { ok: true, to: q.email, messageId: info.messageId ?? null };
+  }
+
   // ---- Users (Clerk) ----
 
   async listUsers(opts?: { limit?: number; offset?: number; query?: string }) {
@@ -346,6 +428,9 @@ export class AdminService {
     if (!['Dễ', 'Trung bình', 'Khó'].includes(dto.difficulty as string)) throw new BadRequestException('difficulty invalid');
     if (!Array.isArray(dto.tests) || dto.tests.length !== 3) throw new BadRequestException('tests phải có đúng 3');
     if (!Array.isArray(dto.hiddenTests) || dto.hiddenTests.length !== 10) throw new BadRequestException('hiddenTests phải có đúng 10');
+    if (dto.status !== undefined && !['draft', 'pending', 'published'].includes(dto.status)) {
+      throw new BadRequestException('status không hợp lệ');
+    }
 
     const normalizeTests = (arr: any[]): any[] =>
       arr.map((t) => {
@@ -362,6 +447,7 @@ export class AdminService {
       description: dto.description,
       difficulty: dto.difficulty,
       topic: dto.topic,
+      ...(dto.status !== undefined ? { status: dto.status } : {}),
       inputFormat: dto.inputFormat ?? '',
       outputFormat: dto.outputFormat ?? '',
       constraints: dto.constraints ?? [],
@@ -373,6 +459,20 @@ export class AdminService {
       memoryLimit: dto.memoryLimit ?? 256000,
     };
     return this.db.problem.update({ where: { slug }, data });
+  }
+
+  /** Duyệt xuất bản: draft/pending -> published */
+  async approveProblem(slug: string) {
+    const existing = await this.db.problem.findUnique({ where: { slug } });
+    if (!existing) throw new NotFoundException('Problem not found');
+    return this.db.problem.update({ where: { slug }, data: { status: 'published' } });
+  }
+
+  /** Gỡ xuất bản: published -> draft */
+  async unpublishProblem(slug: string) {
+    const existing = await this.db.problem.findUnique({ where: { slug } });
+    if (!existing) throw new NotFoundException('Problem not found');
+    return this.db.problem.update({ where: { slug }, data: { status: 'draft' } });
   }
 
   async deleteProblem(slug: string) {
@@ -407,6 +507,10 @@ export class AdminService {
     if (!Array.isArray(dto.hiddenTests) || dto.hiddenTests.length !== 10) {
       throw new BadRequestException('hiddenTests phải có đúng 10 test ẩn');
     }
+    const status = dto.status ?? 'draft';
+    if (!['draft', 'pending', 'published'].includes(status)) {
+      throw new BadRequestException('status không hợp lệ');
+    }
 
     const exists = await this.db.problem.findUnique({ where: { slug: dto.slug } });
     if (exists) throw new ConflictException('Slug đã tồn tại');
@@ -433,6 +537,7 @@ export class AdminService {
       description: dto.description,
       difficulty: dto.difficulty,
       topic: dto.topic,
+      status,
       inputFormat: dto.inputFormat ?? '',
       outputFormat: dto.outputFormat ?? '',
       constraints: dto.constraints ?? [],

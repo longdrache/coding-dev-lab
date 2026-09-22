@@ -6,7 +6,15 @@ import { adminFetch } from "@/lib/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Trash2, Pencil } from "lucide-react";
+import { Search, Trash2, Pencil, CheckCircle2, Undo2 } from "lucide-react";
+
+type ProblemStatus = "draft" | "pending" | "published";
+
+const STATUS_LABEL: Record<ProblemStatus, string> = {
+  draft: "Nháp",
+  pending: "Chờ duyệt",
+  published: "Đã xuất bản",
+};
 
 type Problem = {
   id?: string;
@@ -15,6 +23,7 @@ type Problem = {
   difficulty: string;
   topic: string;
   description?: string;
+  status?: string;
   createdAt?: string;
 };
 
@@ -79,6 +88,22 @@ export default function ProblemsPage() {
     }
   };
 
+  const handleStatus = async (slug: string, action: "approve" | "unpublish") => {
+    try {
+      const res = await adminFetch(`/api/admin/problems/${slug}/${action}`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || `Failed: ${res.status}`);
+      }
+      const updated = await res.json();
+      setProblems((prev) =>
+        prev ? prev.map((p) => (p.slug === slug ? { ...p, status: updated.status ?? p.status } : p)) : prev,
+      );
+    } catch (e: any) {
+      alert(e.message || "Cập nhật trạng thái thất bại");
+    }
+  };
+
   const FE_URL = process.env.NEXT_PUBLIC_FE_URL || "http://localhost:3000";
 
   const recentCount = useMemo(() => {
@@ -93,77 +118,79 @@ export default function ProblemsPage() {
 
   if (error) {
     return (
-      <div className="-m-8 min-h-screen space-y-4 p-6 text-slate-200 sm:p-8">
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300">{error}</p>
+      <div className="space-y-4">
+        <p className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">{error}</p>
       </div>
     );
   }
 
   if (!problems) {
     return (
-      <div className="-m-8 min-h-screen space-y-4  p-6 text-slate-200 sm:p-8">
-        <p className="text-sm font-medium text-slate-400">Loading...</p>
+      <div className="space-y-6">
+        <div>
+          <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Quản lý bài tập</h1>
+          <p className="mt-1 text-sm text-slate-500">Đang tải thư viện...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-zinc-950">Quản lý bài tập</h1>
-          <p className="mt-1 text-sm text-zinc-500">Thư viện thử thách và tình trạng xuất bản.</p>
+          <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Quản lý bài tập</h1>
+          <p className="mt-1 text-sm text-slate-500">Thư viện thử thách và tình trạng xuất bản.</p>
         </div>
         <Link
           href="/problems/new"
-          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-600"
+          className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-lg bg-slate-900 px-[22px] text-sm font-semibold text-white transition hover:bg-slate-950"
         >
           + Tạo bài tập
         </Link>
       </div>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Tổng bài tập</p>
-          <p className="mt-2 text-4xl font-extrabold tracking-tight text-zinc-950 tabular-nums">{problems.length}</p>
-          <p className="mt-2 text-sm font-semibold text-emerald-600">+{recentCount} trong 30 ngày</p>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Tổng bài tập</p>
+          <p className="mt-2 font-mono text-[32px] font-bold leading-none tabular-nums text-slate-900">{problems.length}</p>
+          <p className="mt-2 text-xs text-emerald-600">+{recentCount} trong 30 ngày</p>
         </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Đang xuất bản</p>
-          <p className="mt-2 text-4xl font-extrabold tracking-tight text-zinc-950 tabular-nums">{problems.length}</p>
-          <p className="mt-2 text-sm font-semibold text-indigo-500">100% danh mục</p>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Đang xuất bản</p>
+          <p className="mt-2 font-mono text-[32px] font-bold leading-none tabular-nums text-slate-900">{problems.length}</p>
+          <p className="mt-2 text-xs text-sky-600">100% danh mục</p>
         </div>
-        <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Chờ duyệt</p>
-          <p className="mt-2 text-4xl font-extrabold tracking-tight text-zinc-950 tabular-nums">0</p>
-          <p className="mt-2 text-sm font-semibold text-amber-500">Không có nội dung chờ</p>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Chờ duyệt</p>
+          <p className="mt-2 font-mono text-[32px] font-bold leading-none tabular-nums text-slate-900">0</p>
+          <p className="mt-2 text-xs text-amber-600">Không có nội dung chờ</p>
         </div>
       </div>
 
-      {/* Library card */}
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-zinc-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-extrabold tracking-tight text-zinc-950">Thư viện bài tập</h2>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="font-display text-xl font-semibold text-slate-900">Thư viện bài tập</h2>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <label className="relative flex items-center">
-              <Search className="pointer-events-none absolute left-3 size-4 text-zinc-400" />
+              <Search className="pointer-events-none absolute left-3.5 size-4 text-slate-400" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Tìm theo tên, slug..."
-                className="border-zinc-200 bg-white pl-9 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:ring-indigo-400"
+                className="h-[42px] border-slate-200 bg-white pl-10 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:border-slate-900 focus-visible:ring-[3px] focus-visible:ring-slate-900/10"
               />
             </label>
-            <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-1">
+            <div className="flex items-center gap-1">
               {["Tất cả", "Dễ", "Trung bình", "Khó"].map((lv) => (
                 <button
                   key={lv}
                   type="button"
                   onClick={() => setDifficulty(lv)}
-                  className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                    difficulty === lv ? "bg-zinc-950 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-900"
+                  className={`whitespace-nowrap rounded px-3 py-1.5 text-xs font-medium uppercase tracking-[0.5px] transition ${
+                    difficulty === lv
+                      ? "bg-slate-900 text-white"
+                      : "border border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-900"
                   }`}
                 >
                   {lv}
@@ -174,52 +201,82 @@ export default function ProblemsPage() {
         </div>
 
         {filtered.length === 0 ? (
-          <p className="px-6 py-12 text-center text-sm font-medium text-zinc-500">Không tìm thấy problem</p>
+          <p className="px-6 py-12 text-center text-sm text-slate-500">Không tìm thấy problem</p>
         ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-b border-zinc-200 bg-zinc-50 hover:bg-zinc-50">
-                  <TableHead className="px-5 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Bài tập</TableHead>
-                  <TableHead className="px-5 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Chủ đề</TableHead>
-                  <TableHead className="px-5 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Độ khó</TableHead>
-                  <TableHead className="px-5 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Trạng thái</TableHead>
-                  <TableHead className="px-5 py-3 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Cập nhật</TableHead>
-                  <TableHead className="px-5 py-3 text-right font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Thao tác</TableHead>
+                <TableRow className="border-b border-slate-200 bg-white hover:bg-white">
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Bài tập</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Chủ đề</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Độ khó</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Trạng thái</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Cập nhật</TableHead>
+                  <TableHead className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginated.map((p) => (
-                  <TableRow key={p.slug} className="border-b border-zinc-100 bg-white transition-colors last:border-0 hover:bg-zinc-50">
-                    <TableCell className="px-5 py-4">
-                      <p className="text-sm font-bold tracking-tight text-zinc-900">{p.title}</p>
-                      <p className="mt-0.5 font-mono text-xs text-zinc-400">{p.slug}</p>
+                  <TableRow key={p.slug} className="h-12 border-b border-slate-100 bg-white last:border-0 hover:bg-slate-50">
+                    <TableCell className="px-4 py-2">
+                      <p className="text-sm font-normal text-slate-900">{p.title}</p>
+                      <p className="mt-0.5 font-mono text-xs text-slate-500">{p.slug}</p>
                     </TableCell>
-                    <TableCell className="px-5 py-4 text-sm text-zinc-500">{p.topic}</TableCell>
-                    <TableCell className="px-5 py-4">
+                    <TableCell className="px-4 py-2 text-sm text-slate-500">{p.topic}</TableCell>
+                    <TableCell className="px-4 py-2">
                       <span
-                        className={`text-sm font-bold ${
+                        className={`rounded px-3 py-1 text-xs font-medium uppercase tracking-[0.5px] ${
                           p.difficulty === "Dễ"
-                            ? "text-emerald-600"
+                            ? "bg-emerald-500/10 text-emerald-700"
                             : p.difficulty === "Trung bình"
-                              ? "text-amber-500"
-                              : "text-rose-500"
+                              ? "bg-yellow-500/10 text-yellow-700"
+                              : "bg-red-500/10 text-red-600"
                         }`}
                       >
                         {p.difficulty}
                       </span>
                     </TableCell>
-                    <TableCell className="px-5 py-4 text-sm font-semibold text-emerald-600">Đã xuất bản</TableCell>
-                    <TableCell className="whitespace-nowrap px-5 py-4 text-sm text-zinc-500">
+                    <TableCell className="px-4 py-2">
+                      <span
+                        className={`rounded px-3 py-1 text-xs font-medium uppercase tracking-[0.5px] ${
+                          p.status === "published"
+                            ? "bg-emerald-500/10 text-emerald-700"
+                            : p.status === "pending"
+                              ? "bg-yellow-500/10 text-yellow-700"
+                              : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {STATUS_LABEL[(p.status as ProblemStatus) ?? "draft"] ?? p.status ?? "Nháp"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap px-4 py-2 font-mono text-xs tabular-nums text-slate-500">
                       {p.createdAt
                         ? new Date(p.createdAt).toLocaleString("vi-VN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
                         : "—"}
                     </TableCell>
-                    <TableCell className="px-5 py-4 text-right">
+                    <TableCell className="px-4 py-2 text-right">
                       <span className="inline-flex items-center justify-end gap-1.5">
+                        {p.status !== "published" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleStatus(p.slug, "approve")}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-600 px-3.5 text-xs font-medium text-white transition hover:bg-emerald-700"
+                          >
+                            <CheckCircle2 className="size-3.5 text-white" /> Duyệt
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleStatus(p.slug, "unpublish")}
+                            title="Gỡ xuất bản"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-500 transition hover:text-slate-900"
+                          >
+                            <Undo2 className="size-3.5" /> Gỡ
+                          </button>
+                        )}
                         <Link
                           href={`/problems/${p.slug}/edit`}
-                          className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-900 bg-transparent px-3.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-900/5"
                         >
                           <Pencil className="size-3.5" /> Sửa
                         </Link>
@@ -227,9 +284,9 @@ export default function ProblemsPage() {
                           variant="destructive"
                           size="sm"
                           onClick={() => handleDelete(p.slug)}
-                          className="h-7 font-bold"
+                          className="h-8 rounded-lg bg-red-500 px-3.5 text-xs font-medium hover:bg-red-600"
                         >
-                          <Trash2 className="size-3.5" />
+                          <Trash2 className="size-3.5 text-white" />
                         </Button>
                       </span>
                     </TableCell>
@@ -243,14 +300,14 @@ export default function ProblemsPage() {
 
       {filtered.length > PAGE_SIZE && (
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-zinc-500">Trang {currentPage}/{totalPages} • {filtered.length} bài</p>
+          <p className="text-xs text-slate-500">Trang {currentPage}/{totalPages} • {filtered.length} bài</p>
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
               disabled={currentPage === 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="border-zinc-200 bg-white"
+              className="h-8 rounded-lg border-slate-200 bg-white"
             >
               Trước
             </Button>
@@ -259,7 +316,7 @@ export default function ProblemsPage() {
               size="sm"
               disabled={currentPage === totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="border-zinc-200 bg-white"
+              className="h-8 rounded-lg border-slate-200 bg-white"
             >
               Sau
             </Button>

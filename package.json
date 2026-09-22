@@ -8,7 +8,7 @@
     "dev-admin": "concurrently -n BE,FE,ADMIN -c blue,green,red \"pnpm run dev:be\" \"pnpm run dev:fe\" \"pnpm run dev:admin\"",
     "dev:be": "pnpm --dir be start:dev",
     "dev:fe": "pnpm --dir FE dev",
-    "dev:admin":"pnpm --dir admin dev",
+    "dev:admin": "pnpm --dir admin dev",
     "build": "pnpm run build:be && pnpm run build:fe",
     "build:be": "pnpm --dir be build",
     "build:fe": "pnpm --dir FE build",
@@ -17,6 +17,7 @@
     "start:fe": "pnpm --dir FE start"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "concurrently": "^9.2.1"
   }
 }

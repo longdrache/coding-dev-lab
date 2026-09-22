@@ -12,8 +12,8 @@
   "dependencies": {
     "@base-ui/react": "^1.8.0",
     "@clerk/localizations": "4.16.1",
-    "@clerk/nextjs": "^6.29.0",
-    "@clerk/ui": "^1.32.3",
+    "@clerk/nextjs": "^6.39.7",
+    "@clerk/ui": "^1.33.1",
     "@monaco-editor/react": "^4.7.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.2.6",

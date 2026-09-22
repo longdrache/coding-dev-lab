@@ -88,6 +88,34 @@ export class ProgressService {
     };
   }
 
+  async getFavorites(clerkId: string) {
+    const rows = await this.db.favoriteProblem.findMany({
+      where: { clerkId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { total: rows.length, slugs: rows.map((r) => r.slug) };
+  }
+
+  async addFavorite(clerkId: string, slug: string) {
+    await this.db.favoriteProblem.upsert({
+      where: { clerkId_slug: { clerkId, slug } },
+      create: { clerkId, slug },
+      update: {},
+    });
+    return this.getFavorites(clerkId);
+  }
+
+  async removeFavorite(clerkId: string, slug: string) {
+    try {
+      await this.db.favoriteProblem.delete({
+        where: { clerkId_slug: { clerkId, slug } },
+      });
+    } catch {
+      // chưa từng favorite thì bỏ qua
+    }
+    return this.getFavorites(clerkId);
+  }
+
   async getBadges(clerkId: string) {
     const stored = await this.db.userBadge.findMany({ where: { clerkId } });
     const unlockedIds = new Set(stored.map((b) => b.badgeId));

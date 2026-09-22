@@ -64,6 +64,12 @@ export class AdminController {
     return this.svc.deleteQna(id);
   }
 
+  @Post('qna/:id/reply')
+  @UseGuards(AdminGuard)
+  replyQna(@Param('id') id: string, @Body() body: { message: string }) {
+    return this.svc.replyQna(id, String(body?.message ?? ''));
+  }
+
   @Get('users')
   @UseGuards(AdminGuard)
   listUsers(@Req() req: Request) {
@@ -115,5 +121,17 @@ export class AdminController {
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }))
   updateProblem(@Param('slug') slug: string, @Body() dto: CreateProblemDto) {
     return this.svc.updateProblem(slug, dto);
+  }
+
+  @Post('problems/:slug/approve')
+  @UseGuards(AdminGuard)
+  approveProblem(@Param('slug') slug: string) {
+    return this.svc.approveProblem(slug);
+  }
+
+  @Post('problems/:slug/unpublish')
+  @UseGuards(AdminGuard)
+  unpublishProblem(@Param('slug') slug: string) {
+    return this.svc.unpublishProblem(slug);
   }
 }

@@ -5,6 +5,9 @@ import { adminFetch } from "@/lib/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Send, Trash2 } from "lucide-react";
 
 type QnaItem = {
   id: string;
@@ -21,6 +24,11 @@ export default function QnaPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<QnaItem | null>(null);
+  const [replying, setReplying] = useState<QnaItem | null>(null);
+  const [replyMessage, setReplyMessage] = useState("");
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [replySending, setReplySending] = useState(false);
+  const [replyDone, setReplyDone] = useState(false);
 
   const load = async () => {
     setError(null);
@@ -43,6 +51,36 @@ export default function QnaPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, []);
+
+  const openReply = (q: QnaItem) => {
+    setReplying(q);
+    setReplyMessage("");
+    setReplyError(null);
+    setReplyDone(false);
+  };
+
+  const handleReply = async () => {
+    if (!replying || !replyMessage.trim() || replySending) return;
+    setReplySending(true);
+    setReplyError(null);
+    try {
+      const res = await adminFetch(`/api/admin/qna/${replying.id}/reply`, {
+        method: "POST",
+        body: JSON.stringify({ message: replyMessage.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || `Gửi thất bại: ${res.status}`);
+      setReplyDone(true);
+      setTimeout(() => {
+        setReplying(null);
+        setReplyDone(false);
+      }, 2500);
+    } catch (e: unknown) {
+      setReplyError(e instanceof Error ? e.message : "Gửi thất bại");
+    } finally {
+      setReplySending(false);
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Xóa câu hỏi này?")) return;
@@ -81,27 +119,24 @@ export default function QnaPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-5 shadow-lg">
-        <div className="absolute inset-0 bg-[radial-gradient(500px_circle_at_0%_0%,rgba(255,255,255,0.08),transparent_50%)]" />
-        <div className="relative">
-          <h1 className="text-2xl font-extrabold tracking-tight text-white">QNA</h1>
-          <p className="text-sm font-medium text-zinc-400">{items.length} câu hỏi từ người dùng</p>
-        </div>
+    <div className="space-y-6 font-sans">
+      <div>
+        <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Hỏi đáp</h1>
+        <p className="mt-1 text-sm text-slate-500">{items.length} câu hỏi từ người dùng — bấm vào hàng để xem đầy đủ</p>
       </div>
       {items.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center text-sm font-medium text-zinc-600">Chưa có câu hỏi nào.</p>
+        <p className="rounded-lg border border-dashed border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">Chưa có câu hỏi nào.</p>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-b border-zinc-200 bg-zinc-50 hover:bg-zinc-50">
-                  <TableHead className="px-4 py-3 text-xs font-bold tracking-wide text-zinc-700">Tên</TableHead>
-                  <TableHead className="px-4 py-3 text-xs font-bold tracking-wide text-zinc-700">Email</TableHead>
-                  <TableHead className="px-4 py-3 text-xs font-bold tracking-wide text-zinc-700">Câu hỏi</TableHead>
-                  <TableHead className="px-4 py-3 text-xs font-bold tracking-wide text-zinc-700">Ngày gửi</TableHead>
-                  <TableHead className="px-4 py-3 text-right text-xs font-bold tracking-wide text-zinc-700">Thao tác</TableHead>
+                <TableRow className="border-b border-slate-200 bg-white hover:bg-white">
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Tên</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Email</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Câu hỏi</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Ngày gửi</TableHead>
+                  <TableHead className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -110,17 +145,24 @@ export default function QnaPage() {
                   return (
                     <TableRow
                       key={q.id}
-                      className="cursor-pointer border-zinc-100 hover:bg-zinc-50/70"
+                      className="h-12 cursor-pointer border-slate-100 hover:bg-slate-50"
                       onClick={() => setSelected(q)}
                     >
-                      <TableCell className="max-w-[160px] truncate font-semibold text-zinc-900" title={q.name}>{q.name}</TableCell>
-                      <TableCell className="max-w-[200px] truncate font-medium text-zinc-700" title={q.email}>{q.email}</TableCell>
-                      <TableCell className="max-w-[420px] truncate font-medium text-zinc-900" title="Bấm để xem đầy đủ">{text}</TableCell>
-                      <TableCell className="whitespace-nowrap text-sm font-medium text-zinc-600">{q.createdAt ? new Date(q.createdAt).toLocaleString("vi-VN") : "—"}</TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button onClick={() => handleDelete(q.id)} disabled={deletingId === q.id} variant="destructive" size="sm" className="h-7 font-bold">
-                          {deletingId === q.id ? "Đang xóa..." : "Xóa"}
-                        </Button>
+                      <TableCell className="max-w-[160px] truncate px-4 py-2 text-sm font-normal text-slate-900" title={q.name}>{q.name}</TableCell>
+                      <TableCell className="max-w-[200px] truncate px-4 py-2 text-sm text-slate-500" title={q.email}>{q.email}</TableCell>
+                      <TableCell className="max-w-[420px] truncate px-4 py-2 text-sm text-slate-900" title="Bấm để xem đầy đủ">{text}</TableCell>
+                      <TableCell className="whitespace-nowrap px-4 py-2 font-mono text-xs tabular-nums text-slate-500">{q.createdAt ? new Date(q.createdAt).toLocaleString("vi-VN") : "—"}</TableCell>
+                      <TableCell className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                        <span className="inline-flex items-center justify-end gap-1.5">
+                          <Button onClick={() => openReply(q)} variant="outline" size="sm" className="h-8 rounded-lg border-slate-200 bg-white text-xs font-medium hover:bg-slate-50">
+                            <Send className="size-3.5" />
+                            Trả lời
+                          </Button>
+                          <Button onClick={() => handleDelete(q.id)} disabled={deletingId === q.id} variant="destructive" size="sm" className="h-8 rounded-lg bg-red-500 px-3.5 text-xs font-medium hover:bg-red-600 disabled:opacity-40">
+                            <Trash2 className="size-3.5 text-white" />
+                            {deletingId === q.id ? "Đang xóa..." : "Xóa"}
+                          </Button>
+                        </span>
                       </TableCell>
                     </TableRow>
                   );
@@ -132,27 +174,89 @@ export default function QnaPage() {
       )}
 
       <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
-        <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] gap-4 overflow-hidden border-zinc-200 bg-white sm:max-w-xl">
+        <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] gap-4 overflow-hidden border-slate-200 bg-white sm:max-w-xl">
           <DialogHeader className="min-w-0 space-y-1.5 text-left">
-            <DialogTitle className="min-w-0 text-base font-bold leading-snug tracking-tight break-all text-zinc-950 [overflow-wrap:anywhere]">Câu hỏi từ {selected?.name}</DialogTitle>
-            <p className="min-w-0 text-xs font-medium text-zinc-500 [overflow-wrap:anywhere]">
+            <DialogTitle className="min-w-0 font-display text-xl font-semibold break-all text-slate-900 [overflow-wrap:anywhere]">Câu hỏi từ {selected?.name}</DialogTitle>
+            <p className="min-w-0 text-xs break-all text-slate-500 [overflow-wrap:anywhere]">
               {selected?.email} • {selected?.createdAt ? new Date(selected.createdAt).toLocaleString("vi-VN") : "—"}
             </p>
           </DialogHeader>
-          <div className="h-auto max-h-[55vh] min-w-0 overflow-y-auto overflow-x-hidden rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-relaxed break-all whitespace-pre-wrap text-zinc-900 [overflow-wrap:anywhere]">
+          <div className="h-auto max-h-[55vh] min-w-0 overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed break-all whitespace-pre-wrap text-slate-900 [overflow-wrap:anywhere]">
             {selected ? (selected.question ?? selected.message ?? selected.content ?? "") : ""}
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              onClick={() => { if (selected) { setSelected(null); openReply(selected); } }}
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg border-slate-200 bg-white text-xs font-medium hover:bg-slate-50"
+            >
+              <Send className="size-3.5" />
+              Trả lời
+            </Button>
             <Button
               onClick={() => { if (selected) { handleDelete(selected.id); setSelected(null); } }}
               disabled={deletingId === selected?.id}
               variant="destructive"
               size="sm"
-              className="font-bold"
+              className="h-8 rounded-lg bg-red-500 px-3.5 text-xs font-medium hover:bg-red-600 disabled:opacity-40"
             >
               {deletingId === selected?.id ? "Đang xóa..." : "Xóa câu hỏi này"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!replying} onOpenChange={(open) => { if (!open) setReplying(null); }}>
+        <DialogContent className="w-[calc(100%-2rem)] gap-4 overflow-hidden border-slate-200 bg-white sm:max-w-xl">
+          <DialogHeader className="space-y-1.5 text-left">
+            <DialogTitle className="font-display text-xl font-semibold text-slate-900">
+              Trả lời {replying?.name}
+            </DialogTitle>
+            <p className="text-xs text-slate-500">
+              Gửi tới {replying?.email} • Tiêu đề, chào hỏi và chữ ký tự động theo mẫu chuyên nghiệp
+            </p>
+          </DialogHeader>
+          {replyDone ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+              Đã gửi email trả lời tới {replying?.email}
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-900">Lời nhắn *</Label>
+                <Textarea
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  rows={6}
+                  placeholder="Chỉ nhập nội dung trả lời..."
+                  className="min-h-[140px] border-slate-200 placeholder:text-slate-400"
+                />
+              </div>
+              {replyError && (
+                <p className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">{replyError}</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  onClick={() => setReplying(null)}
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-lg border-slate-200 bg-white text-xs font-medium hover:bg-slate-50"
+                >
+                  Hủy
+                </Button>
+                <Button
+                  onClick={handleReply}
+                  disabled={replySending || !replyMessage.trim()}
+                  size="sm"
+                  className="h-8 rounded-lg bg-slate-900 px-3.5 text-xs font-medium text-white hover:bg-slate-950 disabled:opacity-40"
+                >
+                  <Send className="size-3.5" />
+                  {replySending ? "Đang gửi..." : "Gửi email"}
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -2,12 +2,13 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Search, List, LayoutGrid, ArrowUpDown, Eye, Star, CheckCircle2, Circle, Tag } from "lucide-react";
 import Logo from "@/app/ui/Logo";
 import type { Difficulty } from "@/app/data/problems";
 import { topics } from "@/app/data/topics";
-import { useSolvedSlugs } from "./solved";
+import { useSolvedSlugs, useServerSolvedSlugs } from "./solved";
 import { useProblems } from "@/app/hooks/useProblems";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -40,21 +41,97 @@ function acceptanceRate(slug: string): number {
   return 30 + (hash % 30) + (hash % 10) / 10; // 30.0 - 59.9
 }
 
+const FAV_KEY = "gocode-favorites";
+const FAV_API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+function readLocalFavs(): string[] {
+  try {
+    const raw = localStorage.getItem(FAV_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function useFavorites() {
+  const { getToken, isSignedIn } = useAuth();
   const [favs, setFavs] = useState<string[]>([]);
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("gocode-favorites");
+      const raw = localStorage.getItem(FAV_KEY);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setFavs(JSON.parse(raw));
     } catch {}
   }, []);
+  // Đồng bộ từ server (FavoriteProblem) khi đăng nhập — gộp với local
+  useEffect(() => {
+    if (!isSignedIn) return;
+    let cancelled = false;
+    (async () => {
+      // Đẩy favorites local chưa có lên server trước (máy mới)
+      const local = readLocalFavs();
+      try {
+        const token = await getToken();
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        await Promise.all(
+          local.map((slug) =>
+            fetch(`${FAV_API}/api/progress/favorites`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...headers },
+              body: JSON.stringify({ slug }),
+            }).catch(() => null),
+          ),
+        );
+        const res = await fetch(`${FAV_API}/api/progress/favorites`, { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.slugs)) {
+          const merged = [...new Set([...readLocalFavs(), ...data.slugs.filter((s: unknown): s is string => typeof s === "string")])];
+          try { localStorage.setItem(FAV_KEY, JSON.stringify(merged)); } catch {}
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setFavs(merged);
+        }
+      } catch {
+        // BE offline thì giữ local, không vỡ app
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken, isSignedIn]);
   const toggle = (slug: string) => {
+    const adding = !favs.includes(slug);
     setFavs((prev) => {
-      const next = prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug];
-      try { localStorage.setItem("gocode-favorites", JSON.stringify(next)); } catch {}
+      const next = adding ? [...prev, slug] : prev.filter((s) => s !== slug);
+      try { localStorage.setItem(FAV_KEY, JSON.stringify(next)); } catch {}
       return next;
     });
+    // Lưu server nền (fire-and-forget) để không mất khi đổi máy
+    if (isSignedIn) {
+      (async () => {
+        try {
+          const token = await getToken();
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          };
+          if (adding) {
+            await fetch(`${FAV_API}/api/progress/favorites`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ slug }),
+            });
+          } else {
+            await fetch(`${FAV_API}/api/progress/favorites/${encodeURIComponent(slug)}`, {
+              method: "DELETE",
+              headers,
+            });
+          }
+        } catch {}
+      })();
+    }
   };
   return { favs, toggle };
 }
@@ -69,7 +146,14 @@ function ProblemList() {
   const [sortBy, setSortBy] = useState<"id" | "title">("id");
   const [view, setView] = useState<"list" | "grid">("list");
   const [page, setPage] = useState(1);
-  const solvedSlugs = useSolvedSlugs();
+  // Hợp nhất localStorage + server (SolvedProblem) để nhận diện
+  // bài đã giải dù đổi trình duyệt hay mất cache
+  const localSolved = useSolvedSlugs();
+  const serverSolved = useServerSolvedSlugs();
+  const solvedSlugs = useMemo(
+    () => [...new Set([...localSolved, ...serverSolved])],
+    [localSolved, serverSolved],
+  );
   const { favs, toggle: toggleFav } = useFavorites();
   const { problems: dbProblems, loading } = useProblems();
   const problems = useMemo(() => dbProblems ?? [], [dbProblems]);

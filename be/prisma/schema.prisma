@@ -50,6 +50,16 @@ model SolvedProblem {
   @@index([clerkId])
 }
 
+model FavoriteProblem {
+  id        String   @id @default(cuid())
+  clerkId   String
+  slug      String
+  createdAt DateTime @default(now())
+
+  @@unique([clerkId, slug])
+  @@index([clerkId])
+}
+
 model UserBadge {
   id         String   @id @default(cuid())
   clerkId    String
@@ -66,6 +76,7 @@ model Problem {
   title        String
   difficulty   String
   topic        String
+  status       String   @default("draft")
   description  String   @db.Text
   inputFormat  String   @db.Text @default("")
   outputFormat String   @db.Text @default("")

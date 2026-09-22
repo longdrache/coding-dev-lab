@@ -51,7 +51,6 @@ export default function LoginPage() {
           <CardHeader className="space-y-1">
             <CardTitle className="font-display text-xl font-bold tracking-tight text-slate-900">Đăng nhập quản trị</CardTitle>
             <CardDescription className="text-sm text-slate-500">
-              Mặc định: <span className="font-mono font-medium text-slate-900">admin / admin</span>
             </CardDescription>
           </CardHeader>
           <CardContent>

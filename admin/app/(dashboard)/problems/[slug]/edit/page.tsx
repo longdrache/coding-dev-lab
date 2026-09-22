@@ -163,8 +163,7 @@ export default function EditProblemPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {error && <div id="form-error-top" className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">{error}</div>}
-
+    
         <Card className="border-slate-200 bg-white">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2.5">

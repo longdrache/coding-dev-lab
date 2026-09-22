@@ -38,5 +38,7 @@ export default async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next|favicon.ico|login).*)"],
+  // /api/* đi qua BFF proxy — login chưa có cookie nên phải loại trừ,
+  // các route API tự guard bằng JWT phía BE
+  matcher: ["/((?!_next|favicon.ico|login|api).*)"],
 };

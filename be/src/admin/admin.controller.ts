@@ -24,6 +24,8 @@ export class AdminController {
   @Post('login')
   async login(@Body() b: { email: string; password: string }, @Res({ passthrough: true }) res: Response) {
     const token = await this.svc.login(b.email, b.password);
+    // Trả token trong body để admin proxy (khác domain BE) tự set cookie
+    // trên domain admin; giữ Set-Cookie cho client cùng-site/local.
     // Admin (admin-*.vercel.app) và BE (be-*.vercel.app) khác site nhau nên
     // production phải SameSite=None + Secure, ngược lại browser nuốt cookie.
     const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
@@ -34,7 +36,7 @@ export class AdminController {
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
     });
-    return { ok: true };
+    return { ok: true, token };
   }
 
   @Post('logout')

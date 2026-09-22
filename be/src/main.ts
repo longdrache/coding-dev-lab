@@ -8,7 +8,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const origins = [
     process.env.FRONTEND_URL,
-    'https://admin-code-lab.vercel.app',
+    process.env.FRONTEND_ADMIN_URL,
+    'https://admin-coding-lab.vercel.app',
     'http://localhost:3000',
     'http://localhost:3001',
   ].filter((o): o is string => !!o);

@@ -258,7 +258,7 @@ export class AdminService {
     // Ưu tiên MailtrapTransport chính chủ bằng MAIL_API_TOKEN
     const apiToken = (process.env.MAIL_API_TOKEN ?? '').trim();
     if (apiToken) {
-      const fromEmail = process.env.MAIL_FROM_EMAIL ?? 'hello@demomailtrap.co';
+      const fromEmail = process.env.MAIL_FROM ?? 'hello@demomailtrap.co';
       const transport = nodemailer.createTransport(
         MailtrapTransport({ token: apiToken }),
       );

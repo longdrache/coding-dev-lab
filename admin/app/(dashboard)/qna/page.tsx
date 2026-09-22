@@ -209,16 +209,16 @@ export default function QnaPage() {
 
       <Dialog open={!!replying} onOpenChange={(open) => { if (!open) setReplying(null); }}>
         <DialogContent className="w-[calc(100%-2rem)] gap-4 overflow-hidden border-slate-200 bg-white sm:max-w-xl">
-          <DialogHeader className="space-y-1.5 text-left">
-            <DialogTitle className="font-display text-xl font-semibold text-slate-900">
+          <DialogHeader className="min-w-0 space-y-1.5 text-left">
+            <DialogTitle className="min-w-0 font-display text-xl font-semibold break-all text-slate-900 [overflow-wrap:anywhere]">
               Trả lời {replying?.name}
             </DialogTitle>
-            <p className="text-xs text-slate-500">
+            <p className="min-w-0 text-xs break-all text-slate-500 [overflow-wrap:anywhere]">
               Gửi tới {replying?.email} • Tiêu đề, chào hỏi và chữ ký tự động theo mẫu chuyên nghiệp
             </p>
           </DialogHeader>
           {replyDone ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            <div className="min-w-0 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium break-all text-emerald-700 [overflow-wrap:anywhere]">
               Đã gửi email trả lời tới {replying?.email}
             </div>
           ) : (

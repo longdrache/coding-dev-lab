@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express, { type Request, type Response } from 'express';
 import { AppModule } from '../src/app.module.ts';
+import { getCorsOrigins } from '../src/cors.ts';
 
 dotenv.config();
 
@@ -13,7 +14,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
     rawBody: true,
   });
-  app.enableCors();
+  app.enableCors({ origin: getCorsOrigins(), credentials: true });
   await app.init();
   return server;
 }

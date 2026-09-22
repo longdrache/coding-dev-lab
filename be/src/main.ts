@@ -1,19 +1,13 @@
 import dotenv from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.ts';
+import { getCorsOrigins } from './cors.ts';
 
 dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
-  const origins = [
-    process.env.FRONTEND_URL,
-    process.env.FRONTEND_ADMIN_URL,
-    'https://admin-coding-lab.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001',
-  ].filter((o): o is string => !!o);
-  app.enableCors({ origin: origins, credentials: true });
+  app.enableCors({ origin: getCorsOrigins(), credentials: true });
   await app.listen(process.env.PORT ?? 4000);
 }
 await bootstrap();

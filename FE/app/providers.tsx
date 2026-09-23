@@ -1,14 +1,73 @@
 "use client";
 
-import { SWRConfig } from "swr";
+import { SWRConfig, type Cache } from "swr";
 
-// Cache chung: giữ data 10s không fetch lại (kể cả remount),
-// không refetch khi focus tab (tránh tưởng "không cache").
-// Dashboard/activity vẫn tươi nhờ mutate() sau mỗi run/submit.
+const CACHE_KEY = "gocode-swr-cache-v1";
+const TTL_MS = 24 * 60 * 60 * 1000; // cache dùng trong 1 ngày
+
+type StoredEntry = { data: unknown; ts: number };
+
+// Chỉ persist API public (danh sách/chi tiết bài) — data theo tài khoản
+// (dashboard, history, solved...) không lưu để tránh lệch user và cũ.
+function persistable(key: string): boolean {
+  return key.includes("/api/problems");
+}
+
+function loadCache(): Map<string, unknown> {
+  const map = new Map<string, unknown>();
+  try {
+    if (typeof window === "undefined") return map;
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return map;
+    const now = Date.now();
+    const entries = JSON.parse(raw) as Array<[string, StoredEntry]>;
+    for (const [k, v] of entries) {
+      if (!k.startsWith("$swr$") || !persistable(k)) continue;
+      if (v && typeof v.ts === "number" && now - v.ts < TTL_MS) {
+        map.set(k, { data: v.data, error: undefined, isValidating: false });
+      }
+    }
+  } catch {
+    // storage đầy/bị chặn thì chạy memory cache thường
+  }
+  return map;
+}
+
+function persistCache(map: Map<string, unknown>) {
+  try {
+    const now = Date.now();
+    const entries: Array<[string, StoredEntry]> = [];
+    for (const [k, v] of map.entries()) {
+      if (!k.startsWith("$swr$") || !persistable(k)) continue;
+      const state = v as { data?: unknown };
+      entries.push([k, { data: state?.data ?? null, ts: now }]);
+    }
+    localStorage.setItem(CACHE_KEY, JSON.stringify(entries));
+  } catch {
+    // quota đầy thì bỏ qua
+  }
+}
+
+function cacheProvider(): Cache {
+  if (typeof window === "undefined") return new Map() as Cache;
+  const map = loadCache();
+  const persist = () => persistCache(map);
+  window.addEventListener("beforeunload", persist);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") persist();
+  });
+  return map as Cache;
+}
+
+// Cache chung: có cache thì dùng luôn, không fetch lại khi mount lại
+// (rời trang quay về hiện ngay, refresh trong 1 ngày cũng hiện ngay).
+// Data mới vẫn về qua mutate() sau run/submit/toggle.
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig
       value={{
+        provider: cacheProvider,
+        revalidateIfStale: false,
         dedupingInterval: 10_000,
         revalidateOnFocus: false,
         revalidateOnReconnect: true,

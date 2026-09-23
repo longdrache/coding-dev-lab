@@ -111,26 +111,15 @@ export class AdminService {
       this.db.submission.count(),
     ]);
 
-    // online via PresenceService or fetch fallback
+    // online via PresenceService (in-memory, không query DB).
+    // KHÔNG fetch HTTP chính nó (/api/presence/online) vì khi pool cạn
+    // sẽ deadlock: request chờ connection mà connection đang bận giữ request.
     let online: number | null = null;
     if (this.presence) {
       try {
         online = this.presence.count();
       } catch {
         online = null;
-      }
-    }
-    if (online === null) {
-      try {
-        const base = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-        const r = await fetch(`${base.replace(/\/$/, '')}/api/presence/online`);
-        if (r.ok) {
-          const j = (await r.json()) as any;
-          if (typeof j.online === 'number') online = j.online;
-          else if (typeof j.count === 'number') online = j.count;
-        }
-      } catch {
-        // ignore, keep null
       }
     }
 

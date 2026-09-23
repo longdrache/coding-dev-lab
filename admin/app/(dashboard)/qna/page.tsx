@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import useSWR from "swr";
 import { adminFetch } from "@/lib/api";
+import { swrFetcher } from "@/lib/swr";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,8 +22,14 @@ type QnaItem = {
 };
 
 export default function QnaPage() {
-  const [items, setItems] = useState<QnaItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, mutate } = useSWR<QnaItem[] | { qna?: QnaItem[]; data?: QnaItem[] }>(
+    "/api/admin/qna",
+    swrFetcher,
+  );
+  const items = useMemo<QnaItem[] | null>(() => {
+    if (!data) return null;
+    return Array.isArray(data) ? data : data?.qna ?? data?.data ?? [];
+  }, [data]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<QnaItem | null>(null);
   const [replying, setReplying] = useState<QnaItem | null>(null);
@@ -30,27 +38,7 @@ export default function QnaPage() {
   const [replySending, setReplySending] = useState(false);
   const [replyDone, setReplyDone] = useState(false);
 
-  const load = async () => {
-    setError(null);
-    try {
-      const res = await adminFetch("/api/admin/qna");
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.message || `Failed: ${res.status}`);
-      }
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.qna ?? data?.data ?? [];
-      setItems(list);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load QNA");
-    }
-  };
-
-  useEffect(() => {
-    // Initial data load — async fetch wraps setState in callback, not sync cascade
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, []);
+  const load = () => mutate();
 
   const openReply = (q: QnaItem) => {
     setReplying(q);
@@ -91,7 +79,7 @@ export default function QnaPage() {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || `Delete failed: ${res.status}`);
       }
-      setItems((prev) => (prev ? prev.filter((x) => x.id !== id) : prev));
+      await mutate();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Delete failed");
     } finally {
@@ -102,9 +90,9 @@ export default function QnaPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold">QNA</h1>
-        <p className="text-sm text-red-600">{error}</p>
-        <button onClick={load} className="rounded border px-3 py-1 text-sm">Retry</button>
+        <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Hỏi đáp</h1>
+        <p className="text-sm text-red-600">{error instanceof Error ? error.message : "Failed to load QNA"}</p>
+        <button onClick={load} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium">Thử lại</button>
       </div>
     );
   }

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import useSWR from "swr";
 import { adminFetch } from "@/lib/api";
+import { swrFetcher } from "@/lib/swr";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,34 +32,25 @@ type Problem = {
 const PAGE_SIZE = 10;
 
 export default function ProblemsPage() {
-  const [problems, setProblems] = useState<Problem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, mutate } = useSWR<Problem[] | { problems?: Problem[]; data?: Problem[] }>(
+    "/api/admin/problems",
+    swrFetcher,
+  );
+  const problems = useMemo(() => {
+    if (!data) return null;
+    return Array.isArray(data) ? data : data?.problems ?? data?.data ?? [];
+  }, [data]);
   const [query, setQuery] = useState("");
   const [difficulty, setDifficulty] = useState<string>("Tất cả");
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    let cancelled = false;
-    adminFetch("/api/admin/problems")
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.message || `Failed: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (cancelled) return;
-        const list = Array.isArray(data) ? data : data?.problems ?? data?.data ?? [];
-        setProblems(list);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const updateQuery = (v: string) => {
+    setQuery(v);
+    setPage(1);
+  };
+  const updateDifficulty = (v: string) => {
+    setDifficulty(v);
+    setPage(1);
+  };
 
   const filtered = useMemo(() => {
     if (!problems) return [];
@@ -67,8 +60,6 @@ export default function ProblemsPage() {
       return mq && md;
     });
   }, [problems, query, difficulty]);
-
-  useEffect(() => { setPage(1); }, [query, difficulty]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -82,9 +73,9 @@ export default function ProblemsPage() {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || `Delete failed: ${res.status}`);
       }
-      setProblems((prev) => (prev ? prev.filter((p) => p.slug !== slug) : prev));
-    } catch (e: any) {
-      alert(e.message || "Delete failed");
+      await mutate();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Delete failed");
     }
   };
 
@@ -95,20 +86,17 @@ export default function ProblemsPage() {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || `Failed: ${res.status}`);
       }
-      const updated = await res.json();
-      setProblems((prev) =>
-        prev ? prev.map((p) => (p.slug === slug ? { ...p, status: updated.status ?? p.status } : p)) : prev,
-      );
-    } catch (e: any) {
-      alert(e.message || "Cập nhật trạng thái thất bại");
+      await res.json().catch(() => null);
+      await mutate();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Cập nhật trạng thái thất bại");
     }
   };
 
-  const FE_URL = process.env.NEXT_PUBLIC_FE_URL || "http://localhost:3000";
+  const [cutoff] = useState(() => Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const recentCount = useMemo(() => {
     if (!problems) return 0;
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
     return problems.filter((p) => {
       if (!p.createdAt) return false;
       const t = new Date(p.createdAt).getTime();
@@ -119,7 +107,9 @@ export default function ProblemsPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <p className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">{error}</p>
+        <p className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">
+          {error instanceof Error ? error.message : "Failed to load problems"}
+        </p>
       </div>
     );
   }
@@ -176,7 +166,7 @@ export default function ProblemsPage() {
               <Search className="pointer-events-none absolute left-3.5 size-4 text-slate-400" />
               <Input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => updateQuery(e.target.value)}
                 placeholder="Tìm theo tên, slug..."
                 className="h-[42px] border-slate-200 bg-white pl-10 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:border-slate-900 focus-visible:ring-[3px] focus-visible:ring-slate-900/10"
               />
@@ -186,7 +176,7 @@ export default function ProblemsPage() {
                 <button
                   key={lv}
                   type="button"
-                  onClick={() => setDifficulty(lv)}
+                  onClick={() => updateDifficulty(lv)}
                   className={`whitespace-nowrap rounded px-3 py-1.5 text-xs font-medium uppercase tracking-[0.5px] transition ${
                     difficulty === lv
                       ? "bg-slate-900 text-white"

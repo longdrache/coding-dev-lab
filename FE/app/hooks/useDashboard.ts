@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
+import useSWR, { useSWRConfig } from "swr";
 import { useAuth } from "@clerk/nextjs";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { API_URL, authedFetcher } from "@/lib/swr";
 
 export type DashboardData = {
   activityMap: Record<string, number>;
@@ -14,43 +14,26 @@ export type DashboardData = {
   todayKey: string;
 };
 
+const DASHBOARD_KEY = `${API_URL}/api/progress/dashboard`;
+
 export function useDashboard() {
   const { getToken, isSignedIn } = useAuth();
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { mutate } = useSWRConfig();
+  const fetcher = useMemo(() => authedFetcher(getToken), [getToken]);
+  const { data, isLoading } = useSWR<DashboardData>(
+    isSignedIn ? DASHBOARD_KEY : null,
+    fetcher,
+  );
 
+  // Tải lại khi có hoạt động mới (run/submit xong)
   useEffect(() => {
-    if (!isSignedIn) return;
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const token = await getToken();
-        const res = await fetch(`${API_URL}/api/progress/dashboard`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const json = (await res.json()) as DashboardData;
-        if (!cancelled) setData(json);
-      } catch {
-        // giữ data cũ
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    const handler = () => load();
+    const handler = () => mutate(DASHBOARD_KEY);
     window.addEventListener("gocode-activity-changed", handler);
-    window.addEventListener("focus", handler);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("gocode-activity-changed", handler);
-      window.removeEventListener("focus", handler);
-    };
-  }, [getToken, isSignedIn]);
+    return () => window.removeEventListener("gocode-activity-changed", handler);
+  }, [mutate]);
 
   if (isSignedIn === false) {
     return { data: null, loading: false } as const;
   }
-  return { data, loading };
+  return { data: data ?? null, loading: isLoading };
 }

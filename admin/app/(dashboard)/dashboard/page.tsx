@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { adminFetch } from "@/lib/api";
+import { useState } from "react";
+import useSWR from "swr";
+import { swrFetcher } from "@/lib/swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -90,35 +91,15 @@ type Stats = {
 };
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    adminFetch("/api/admin/stats")
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.message || `Failed: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (!cancelled) setStats(data);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e.message || "Failed to load stats");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: stats, error } = useSWR<Stats>("/api/admin/stats", swrFetcher, {
+    refreshInterval: 30000, // online counter tự tươi mỗi 30s
+  });
 
   if (error) {
     return (
       <div className="space-y-4">
         <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Dashboard</h1>
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-600">{error instanceof Error ? error.message : "Failed to load stats"}</p>
       </div>
     );
   }

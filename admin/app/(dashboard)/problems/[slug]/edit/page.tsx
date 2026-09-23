@@ -24,9 +24,12 @@ const LANGUAGES = [
 
 type TestRow = { input: string; output: string };
 
-function toInputOutput(t: any): TestRow {
-  if (t?.stdin !== undefined) return { input: t.stdin, output: t.expected ?? "" };
-  return { input: t?.input ?? "", output: t?.output ?? "" };
+type StoredTest = { stdin?: unknown; expected?: unknown; input?: unknown; output?: unknown };
+
+function toInputOutput(t: unknown): TestRow {
+  const row = (t ?? {}) as StoredTest;
+  if (row.stdin !== undefined) return { input: String(row.stdin), output: row.expected !== undefined ? String(row.expected) : "" };
+  return { input: row.input !== undefined ? String(row.input) : "", output: row.output !== undefined ? String(row.output) : "" };
 }
 
 export default function EditProblemPage() {
@@ -59,27 +62,50 @@ export default function EditProblemPage() {
       try {
         const res = await adminFetch(`/api/admin/problems/${encodeURIComponent(slugParam)}`);
         if (!res.ok) throw new Error(`Failed: ${res.status}`);
-        const p: any = await res.json();
+        const p = (await res.json()) as Record<string, unknown>;
         if (cancelled) return;
-        setSlug(p.slug ?? "");
-        setTitle(p.title ?? "");
-        setDifficulty(p.difficulty ?? "Dễ");
-        setStatus(p.status ?? "draft");
-        setTopic(p.topic ?? "");
-        setDescription(p.description ?? "");
-        setInputFormat(p.inputFormat ?? "");
-        setOutputFormat(p.outputFormat ?? "");
-        setConstraints(Array.isArray(p.constraints) && p.constraints.length ? p.constraints : [""]);
-        setExamples(Array.isArray(p.examples) && p.examples.length ? p.examples : [{ input: "", output: "" }]);
+        const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
+        const num = (v: unknown, fallback: number): number => (typeof v === "number" ? v : fallback);
+        setSlug(str(p.slug));
+        setTitle(str(p.title));
+        setDifficulty(str(p.difficulty, "Dễ"));
+        setStatus(str(p.status, "draft"));
+        setTopic(str(p.topic));
+        setDescription(str(p.description));
+        setInputFormat(str(p.inputFormat));
+        setOutputFormat(str(p.outputFormat));
+        setConstraints(
+          Array.isArray(p.constraints) && p.constraints.length
+            ? p.constraints.map((c) => str(c))
+            : [""],
+        );
+        setExamples(
+          Array.isArray(p.examples) && p.examples.length
+            ? p.examples.map((ex) => {
+                const row = (ex ?? {}) as { input?: unknown; output?: unknown; explanation?: unknown };
+                return {
+                  input: str(row.input),
+                  output: str(row.output),
+                  ...(typeof row.explanation === "string" ? { explanation: row.explanation } : {}),
+                };
+              })
+            : [{ input: "", output: "" }],
+        );
         const t = Array.isArray(p.tests) ? p.tests.map(toInputOutput) : [];
         setTests(t.length === 3 ? t : Array.from({ length: 3 }, (_, i) => t[i] ?? { input: "", output: "" }));
         const ht = Array.isArray(p.hiddenTests) ? p.hiddenTests.map(toInputOutput) : [];
         setHiddenTests(ht.length === 10 ? ht : Array.from({ length: 10 }, (_, i) => ht[i] ?? { input: "", output: "" }));
-        setStarterCodes(p.starterCodes ?? {});
-        setTimeLimit(p.timeLimit ?? 1000);
-        setMemoryLimit(p.memoryLimit ?? 256000);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message || "Load failed");
+        setStarterCodes(
+          p.starterCodes && typeof p.starterCodes === "object" && !Array.isArray(p.starterCodes)
+            ? Object.fromEntries(
+                Object.entries(p.starterCodes as Record<string, unknown>).map(([k, v]) => [k, typeof v === "string" ? v : ""]),
+              )
+            : {},
+        );
+        setTimeLimit(num(p.timeLimit, 1000));
+        setMemoryLimit(num(p.memoryLimit, 256000));
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -138,8 +164,8 @@ export default function EditProblemPage() {
       }
       router.push("/problems");
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || "Update failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Update failed");
     } finally {
       setSubmitting(false);
     }

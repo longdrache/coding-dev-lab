@@ -90,7 +90,6 @@ function useFavorites() {
         if (!cancelled && Array.isArray(data.slugs)) {
           const merged = [...new Set([...readLocalFavs(), ...data.slugs.filter((s: unknown): s is string => typeof s === "string")])];
           try { localStorage.setItem(FAV_KEY, JSON.stringify(merged)); } catch {}
-          // eslint-disable-next-line react-hooks/set-state-in-effect
           setFavs(merged);
         }
       } catch {

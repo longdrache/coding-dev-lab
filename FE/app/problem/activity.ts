@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
+import useSWR, { useSWRConfig } from "swr";
 import { useAuth } from "@clerk/nextjs";
+import { authedFetcher } from "@/lib/swr";
 
 export type DayActivity = {
   key: string;
@@ -114,30 +116,23 @@ export function buildWeek(
 /** Map ngày → lượt chạy, đồng bộ qua DB Neon, an toàn hydration. */
 export function useActivityMap(): Record<string, number> {
   const { getToken, isSignedIn } = useAuth();
-  const [map, setMap] = useState<Record<string, number>>(EMPTY_MAP);
+  const { mutate } = useSWRConfig();
+  const fetcher = useMemo(() => authedFetcher(getToken), [getToken]);
+  const key = isSignedIn ? `${API_URL}/api/activity/me` : null;
+  const { data } = useSWR<{ map: Record<string, number> }>(key, fetcher);
 
   useEffect(() => {
-    if (!isSignedIn) return;
-    let cancelled = false;
-    async function load() {
-      try {
-        const data = await authedFetch("/api/activity/me", getToken);
-        if (!cancelled) setMap(data.map ?? {});
-      } catch {
-        // giữ map cũ
-      }
-    }
-    load();
-    const handler = () => load();
+    const handler = () => {
+      if (key) mutate(key);
+    };
     window.addEventListener(EVENT_NAME, handler);
     window.addEventListener("focus", handler);
     return () => {
-      cancelled = true;
       window.removeEventListener(EVENT_NAME, handler);
       window.removeEventListener("focus", handler);
     };
-  }, [getToken, isSignedIn]);
+  }, [key, mutate]);
 
   if (isSignedIn === false) return EMPTY_MAP;
-  return map;
+  return data?.map ?? EMPTY_MAP;
 }

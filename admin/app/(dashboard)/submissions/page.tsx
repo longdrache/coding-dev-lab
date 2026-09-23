@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { adminFetch } from "@/lib/api";
+import useSWR from "swr";
+import { swrFetcher } from "@/lib/swr";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -45,47 +46,30 @@ const LANG_LABELS: Record<number, string> = {
   68: "PHP",
 };
 
+type SubmissionsResponse = { items: Submission[]; total: number };
+
 export default function SubmissionsPage() {
-  const [items, setItems] = useState<Submission[]>([]);
-  const [total, setTotal] = useState(0);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(0);
   const limit = 20;
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Submission | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query.trim()), 400);
+    const t = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setPage(0);
+    }, 400);
     return () => clearTimeout(t);
   }, [query]);
 
-  useEffect(() => { setPage(0); }, [debouncedQuery]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    const offset = page * limit;
-    const url = `/api/admin/submissions?limit=${limit}&offset=${offset}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ""}`;
-    adminFetch(url)
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.message || `Failed: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (cancelled) return;
-        setItems(Array.isArray(data.items) ? data.items : []);
-        setTotal(typeof data.total === "number" ? data.total : 0);
-      })
-      .catch((e) => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [page, debouncedQuery]);
+  const offset = page * limit;
+  const url = `/api/admin/submissions?limit=${limit}&offset=${offset}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ""}`;
+  const { data, error, isLoading: loading } = useSWR<SubmissionsResponse>(url, swrFetcher, {
+    keepPreviousData: true,
+  });
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -102,7 +86,9 @@ export default function SubmissionsPage() {
       </div>
 
       {error ? (
-        <p className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">{error}</p>
+        <p className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600">
+          {error instanceof Error ? error.message : "Failed to load submissions"}
+        </p>
       ) : loading ? (
         <p className="text-sm text-slate-500">Đang tải...</p>
       ) : items.length === 0 ? (

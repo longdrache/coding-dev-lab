@@ -9,15 +9,16 @@ export class DatabaseService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    // Neon pooler tự đóng connection idle -> query tiếp theo rớt P1017
-    // (ConnectionClosed). Tune pool để evict connection chết trước khi
-    // Neon giết, và lắng nghe lỗi để pool tự thay thế.
+    // Ưu tiên direct connection (DATABASE_URL_UNPOOLED) để tránh các
+    // hành vi treo/kill của Neon pooler; fallback pooler URL nếu thiếu.
+    // Pool nhỏ + evict idle sớm để không giữ connection chết.
     const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: Number(process.env.PG_POOL_MAX ?? 5),
-      // Đóng connection idle sau 10s (sớm hơn Neon pooler kill)
+      connectionString:
+        process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL,
+      max: Number(process.env.PG_POOL_MAX ?? 10),
+      // Đóng connection idle sau 10s (sớm hơn Neon kill)
       idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS ?? 10_000),
-      connectionTimeoutMillis: Number(process.env.PG_CONN_TIMEOUT_MS ?? 10_000),
+      connectionTimeoutMillis: Number(process.env.PG_CONN_TIMEOUT_MS ?? 15_000),
       allowExitOnIdle: true,
       keepAlive: true,
     });

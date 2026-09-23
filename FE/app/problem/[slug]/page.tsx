@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
+import useSWR from "swr";
+import { authedFetcher } from "@/lib/swr";
 import {
   ArrowLeft,
   Check,
@@ -413,7 +415,8 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   // focus full-ngang: "statement" ẩn cột editor, "editor" ẩn cột đề bài.
   const [focus, setFocus] = useState<"none" | "statement" | "editor">("none");
   const [leftTab, setLeftTab] = useState<"description" | "submissions">("description");
-  const [history, setHistory] = useState<Array<{ id: string; status: string | null; statusId: number | null; passed: boolean | null; passedCount: number | null; totalCount: number | null; languageId: number; sourceCode: string; createdAt: string }>>([]);
+  type HistoryItem = { id: string; status: string | null; statusId: number | null; passed: boolean | null; passedCount: number | null; totalCount: number | null; languageId: number; sourceCode: string; createdAt: string };
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -531,24 +534,16 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
     [buildAuth],
   );
 
-  const fetchHistory = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const t = await getToken();
-      const res = await fetch(`${API_URL}/api/history?slug=${encodeURIComponent(slug)}`, {
-        headers: t ? { Authorization: `Bearer ${t}` } : undefined,
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (!mountedRef.current) return;
-      setHistory(Array.isArray(data) ? data : []);
-    } catch {}
-  }, [getToken, isSignedIn, slug]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchHistory updates history state after mount; intentional sync to external API
-    fetchHistory();
-  }, [fetchHistory]);
+  const historyFetcher = useMemo(() => authedFetcher(getToken), [getToken]);
+  const historyKey = isSignedIn ? `${API_URL}/api/history?slug=${encodeURIComponent(slug)}` : null;
+  const { mutate: mutateHistory } = useSWR<HistoryItem[]>(historyKey, historyFetcher, {
+    onSuccess: (data) => {
+      if (mountedRef.current) setHistory(Array.isArray(data) ? data : []);
+    },
+  });
+  const fetchHistory = useCallback(() => {
+    mutateHistory();
+  }, [mutateHistory]);
 
   async function runSampleTests() {
     if (runningTests) return;

@@ -22,7 +22,7 @@ function loadCache(): Map<string, unknown> {
     const now = Date.now();
     const entries = JSON.parse(raw) as Array<[string, StoredEntry]>;
     for (const [k, v] of entries) {
-      if (!k.startsWith("$swr$") || !persistable(k)) continue;
+      if (typeof k !== "string" || !persistable(k)) continue;
       if (v && typeof v.ts === "number" && now - v.ts < TTL_MS) {
         map.set(k, { data: v.data, error: undefined, isValidating: false });
       }
@@ -38,9 +38,11 @@ function persistCache(map: Map<string, unknown>) {
     const now = Date.now();
     const entries: Array<[string, StoredEntry]> = [];
     for (const [k, v] of map.entries()) {
-      if (!k.startsWith("$swr$") || !persistable(k)) continue;
+      // SWR v2 lưu key là URL trần (không prefix) — chỉ giữ string key
+      if (typeof k !== "string" || !persistable(k)) continue;
       const state = v as { data?: unknown };
-      entries.push([k, { data: state?.data ?? null, ts: now }]);
+      if (state?.data === undefined) continue;
+      entries.push([k, { data: state.data, ts: now }]);
     }
     localStorage.setItem(CACHE_KEY, JSON.stringify(entries));
   } catch {
@@ -48,14 +50,21 @@ function persistCache(map: Map<string, unknown>) {
   }
 }
 
+// Singleton: StrictMode/HMR có thể gọi provider() nhiều lần —
+// phải dùng chung 1 Map, nếu không listener của Map rỗng sẽ ghi đè
+// localStorage bằng "[]" lúc thoát trang.
+let sharedMap: Map<string, unknown> | null = null;
+
 function cacheProvider(): Cache {
   if (typeof window === "undefined") return new Map() as Cache;
+  if (sharedMap) return sharedMap as Cache;
   const map = loadCache();
   const persist = () => persistCache(map);
   window.addEventListener("beforeunload", persist);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") persist();
   });
+  sharedMap = map;
   return map as Cache;
 }
 

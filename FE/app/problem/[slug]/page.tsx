@@ -8,7 +8,6 @@ import useSWR from "swr";
 import { authedFetcher } from "@/lib/swr";
 import {
   ArrowLeft,
-  ArrowRight,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -33,7 +32,7 @@ import type { Problem, ProblemTest } from "@/app/data/problems";
 import { markSolved, useSolvedSlugs, useServerSolvedSlugs } from "../solved";
 import { recordActivity } from "../activity";
 import { topics } from "@/app/data/topics";
-import { useProblem, useProblems } from "@/app/hooks/useProblems";
+import { useProblem } from "@/app/hooks/useProblems";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -395,13 +394,6 @@ export default function ProblemWorkspace() {
 function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   const router = useRouter();
   const { getToken, isLoaded, isSignedIn } = useAuth();
-  const { problems: allProblems } = useProblems();
-  const problemsList = allProblems ?? [];
-
-  // Find prev/next problem in the list
-  const currentIndex = problemsList.findIndex((p) => p.slug === slug);
-  const prevProblem = currentIndex > 0 ? problemsList[currentIndex - 1] : null;
-  const nextProblem = currentIndex >= 0 && currentIndex < problemsList.length - 1 ? problemsList[currentIndex + 1] : null;
 
   const [languageId, setLanguageId] = useState(LANGUAGES[0].id);
   const [sourceCode, setSourceCode] = useState(LANGUAGES[0].starter);

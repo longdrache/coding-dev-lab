@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
@@ -51,7 +49,7 @@ export function Particles({ count = 220 }: { count?: number }) {
       ref.current.setColorAt(i, new THREE.Color(colors[i]));
     }
     if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
-  }, []);
+  }, [dummy]);
 
   useFrame((_, delta) => {
     if (ref.current) {

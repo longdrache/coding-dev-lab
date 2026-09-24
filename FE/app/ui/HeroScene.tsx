@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -12,34 +12,6 @@ type FloatProps = {
   spin?: number;
   children: React.ReactNode;
 };
-
-// Khối trôi lơ lửng: xoay chậm + bob theo sin(time) — mutate ref trực
-// tiếp trong useFrame, không setState (tránh re-render mỗi frame).
-function Floater({
-  position,
-  speed = 1,
-  floatAmp = 0.25,
-  spin = 0.3,
-  children,
-}: FloatProps) {
-  const ref = useRef<THREE.Group>(null!);
-  const offsetRef = useRef<number>(0);
-  if (offsetRef.current === 0) offsetRef.current = Math.random() * Math.PI * 2;
-  const offset = offsetRef.current;
-
-  useFrame((state, delta) => {
-    const t = state.clock.elapsedTime * speed + offset;
-    ref.current.position.set(
-      position[0],
-      position[1] + Math.sin(t) * floatAmp,
-      position[2],
-    );
-    ref.current.rotation.x += delta * spin * 0.6;
-    ref.current.rotation.y += delta * spin;
-  });
-
-  return <group ref={ref} position={position}>{children}</group>;
-}
 
 const Particles = dynamic(() => import("./Particles").then((mod) => mod.Particles), {
   ssr: false,
@@ -71,7 +43,11 @@ function Rig({ children }: { children: React.ReactNode }) {
 
 function Scene() {
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(timer);
+  }, []);
   
   return (
     <>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, BookOpen } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import Logo from "./ui/Logo";
 import HeroScene from "./ui/HeroScene";
 import { useProblems } from "./hooks/useProblems";

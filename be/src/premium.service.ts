@@ -7,6 +7,7 @@ import {
 import { createClerkClient } from '@clerk/backend';
 import Stripe from 'stripe';
 import 'dotenv/config';
+import { DatabaseService } from './database/database.service.ts';
 export type PremiumPlan = 'daily' | 'monthly' | 'yearly';
 
 const plans: Record<
@@ -22,6 +23,8 @@ const plans: Record<
 export class PremiumService implements OnModuleInit {
   private readonly logger = new Logger(PremiumService.name);
   private stripeInstance?: Stripe;
+
+  constructor(private readonly db: DatabaseService) {}
   private sweepInterval?: NodeJS.Timeout;
 
   onModuleInit() {
@@ -327,6 +330,17 @@ export class PremiumService implements OnModuleInit {
     }
 
     console.log(`🔔 Stripe event nhận được: ${event.type}`);
+
+    // Idempotency: Stripe retry cùng event.id khi timeout — bỏ qua nếu đã xử lý
+    try {
+      await this.db.stripeEvent.create({
+        data: { eventId: event.id, type: event.type },
+      });
+    } catch {
+      // P2002 unique violation = event đã xử lý trước đó
+      this.logger.warn(`Stripe event trùng, bỏ qua: ${event.id}`);
+      return { received: true, duplicate: true };
+    }
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;

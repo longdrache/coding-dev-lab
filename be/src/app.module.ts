@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.ts';
 import { AppService } from './app.service.ts';
 import { Judge0Controller } from './judge0.controller.ts';
@@ -8,7 +10,7 @@ import { RolesGuard } from './auth/roles.guard.ts';
 import { PremiumController } from './premium.controller.ts';
 import { PremiumService } from './premium.service.ts';
 import { ConfigModule } from '@nestjs/config';
-import { EmployeesModule } from './employees/employees.module.js';
+import { DatabaseModule } from './database/database.module.ts';
 import { PresenceModule } from './presence/presence.module.ts';
 import { ActivityModule } from './activity/activity.module.ts';
 import { ProgressModule } from './progress/progress.module.ts';
@@ -19,8 +21,10 @@ import { AdminModule } from './admin/admin.module.ts';
 @Module({
   imports: [
     ConfigModule.forRoot({ envFilePath: '.env', isGlobal: true }),
+    // Giới hạn chung 100 req/phút/IP (bộ nhớ theo instance — đủ chặn abuse cơ bản)
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    DatabaseModule,
     AdminModule,
-    EmployeesModule,
     PresenceModule,
     ActivityModule,
     ProgressModule,
@@ -29,6 +33,13 @@ import { AdminModule } from './admin/admin.module.ts';
     QnaModule,
   ],
   controllers: [AppController, Judge0Controller, PremiumController],
-  providers: [AppService, Judge0Service, ClerkAuthGuard, RolesGuard, PremiumService],
+  providers: [
+    AppService,
+    Judge0Service,
+    ClerkAuthGuard,
+    RolesGuard,
+    PremiumService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "@/app/ui/Logo";
+import Breadcrumbs from "@/app/ui/Breadcrumbs";
 import { ArrowLeft } from "lucide-react";
 
 export default function Page() {
@@ -16,6 +17,10 @@ export default function Page() {
             Trang chủ
           </Link>
         </div>
+        <Breadcrumbs
+          className="mt-6"
+          items={[{ label: "Trang chủ", href: "/" }, { label: "Thử thách" }]}
+        />
         <p className="mt-10 text-3xl font-bold tracking-tight text-zinc-950">
           Thử thách
         </p>

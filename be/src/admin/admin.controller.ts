@@ -12,6 +12,7 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AdminService } from './admin.service.ts';
 import { AdminGuard } from './admin.guard.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
@@ -22,6 +23,7 @@ export class AdminController {
   constructor(private svc: AdminService) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async login(@Body() b: { email: string; password: string }, @Res({ passthrough: true }) res: Response) {
     const token = await this.svc.login(b.email, b.password);
     // Trả token trong body để admin proxy (khác domain BE) tự set cookie
@@ -33,7 +35,7 @@ export class AdminController {
       httpOnly: true,
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 60 * 1000,
       path: '/',
     });
     return { ok: true, token };
@@ -41,7 +43,13 @@ export class AdminController {
 
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('admin_token', { path: '/' });
+    const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+    res.clearCookie('admin_token', {
+      path: '/',
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+    });
     return { ok: true };
   }
 

@@ -122,3 +122,12 @@ model QnaQuestion {
   @@index([email])
   @@index([clerkId])
 }
+
+// Log event Stripe đã xử lý — chống retry gia hạn VIP vô hạn
+model StripeEvent {
+  eventId   String   @id
+  type      String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

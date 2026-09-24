@@ -34,7 +34,7 @@ export const topics: Topic[] = [
       "Duyệt mảng, two pointers, sliding window, prefix sum và mảng hiệu.",
     icon: "array",
     accent: "emerald",
-    count: 32,
+    count: 18,
     level: "Sơ cấp",
   },
   {
@@ -44,7 +44,7 @@ export const topics: Topic[] = [
       "Xử lý chuỗi, pattern matching, palindrome, anagram và regex cơ bản.",
     icon: "string",
     accent: "sky",
-    count: 26,
+    count: 5,
     level: "Sơ cấp",
   },
   {
@@ -54,7 +54,7 @@ export const topics: Topic[] = [
       "Đảo list, phát hiện chu trình, merge hai list đã sắp xếp.",
     icon: "linked-list",
     accent: "violet",
-    count: 18,
+    count: 2,
     level: "Trung bình",
   },
   {
@@ -64,7 +64,7 @@ export const topics: Topic[] = [
       "Ngoặc hợp lệ, monotonic stack, min-stack và BFS bằng queue.",
     icon: "stack-queue",
     accent: "amber",
-    count: 20,
+    count: 5,
     level: "Trung bình",
   },
   {
@@ -74,7 +74,7 @@ export const topics: Topic[] = [
       "DFS/BFS, cây nhị phân, đường ngắn nhất và hợp nhất tập rời rạc.",
     icon: "tree-graph",
     accent: "rose",
-    count: 28,
+    count: 2,
     level: "Trung bình",
   },
   {
@@ -84,7 +84,7 @@ export const topics: Topic[] = [
       "Knapsack, dãy con tăng dài nhất, DP trên chuỗi và trên lưới.",
     icon: "dp",
     accent: "orange",
-    count: 24,
+    count: 6,
     level: "Nâng cao",
   },
   {
@@ -94,7 +94,7 @@ export const topics: Topic[] = [
       "Binary search, quick/merge sort và các biến thể tìm kiếm nâng cao.",
     icon: "sorting-searching",
     accent: "sky",
-    count: 22,
+    count: 6,
     level: "Trung bình",
   },
   {
@@ -104,7 +104,7 @@ export const topics: Topic[] = [
       "Two-sum, frequency map, sliding window với hash và set nâng cao.",
     icon: "hashing",
     accent: "emerald",
-    count: 21,
+    count: 10,
     level: "Sơ cấp",
   },
 ];

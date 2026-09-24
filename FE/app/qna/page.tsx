@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import Logo from "@/app/ui/Logo";
+import Breadcrumbs from "@/app/ui/Breadcrumbs";
 import { EXTENDED_FAQS } from "@/app/data/faq";
 
 export default function Page() {
@@ -61,7 +62,14 @@ export default function Page() {
         }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Gửi thất bại");
+      // BE (Nest) trả lỗi dạng { message, statusCode }; shape cũ { error }
+      const serverMessage =
+        typeof data?.message === "string"
+          ? data.message
+          : typeof data?.error === "string" && data.error !== "Bad Request"
+            ? data.error
+            : null;
+      if (!res.ok || data.error) throw new Error(serverMessage || "Gửi thất bại");
       setContactSubmitted(true);
       setTimeout(() => {
         setContactName("");
@@ -75,28 +83,22 @@ export default function Page() {
   };
 
   return (
-    <div className="bg-[#FAFAFA] min-h-screen py-12">
+    <div className="bg-wash min-h-screen py-12">
       <div className="max-w-4xl mx-auto px-6">
         {/* Navigation Breadcrumbs & Back Button */}
+        <Breadcrumbs
+          className="mb-5"
+          items={[{ label: "Trang chủ", href: "/" }, { label: "Trung tâm Hỏi đáp" }]}
+        />
         <div className="flex items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <Logo />
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-zinc-800 transition"
-            >
-              <ArrowLeft className="size-4" />
-              Trang chủ
-            </Link>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
-            <span className="hover:text-zinc-800 cursor-pointer">
-              Trang chủ
-            </span>
-            <span>/</span>
-            <span className="text-zinc-950 font-medium">Trung tâm Hỏi đáp</span>
-          </div>
+          <Logo />
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-zinc-800 transition"
+          >
+            <ArrowLeft className="size-4" />
+            Trang chủ
+          </Link>
         </div>
 
         {/* Page Editorial Header */}

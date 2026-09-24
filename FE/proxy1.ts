@@ -1,12 +1,29 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const publicPaths = new Set(["/", "/sign-in", "/sign-up"]);
+const publicExact = new Set(["/", "/sign-in", "/sign-up"]);
+// Các trang công khai hiện tại (giữ nguyên hành vi cũ — trang nào cần
+// login đã tự redirect trong component). Route mới mặc định yêu cầu login.
+const publicPrefixes = [
+  "/premium",
+  "/vip",
+  "/qna",
+  "/roadmap",
+  "/problem",
+  "/challenges",
+];
+
+function isPublic(pathname: string): boolean {
+  if (publicExact.has(pathname)) return true;
+  return publicPrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
 
 export default clerkMiddleware(async (auth, request) => {
   const pathname = request.nextUrl.pathname;
 
-  if (publicPaths.has(pathname)) {
+  if (isPublic(pathname)) {
     return NextResponse.next();
   }
 

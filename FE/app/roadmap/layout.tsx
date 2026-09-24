@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 export const metadata: Metadata = {
-  title: "Lộ trình",
-  description: "Lộ trình học DSA từ cơ bản đến Trung bình, 8 chủ đề, 20 bài.",
-  openGraph: { title: "Lộ trình | GoCode" },
+  title: "Tiến độ",
+  description: "Tiến độ luyện tập theo 8 chủ đề DSA.",
+  openGraph: { title: "Tiến độ | GoCode" },
 };
 export default function RoadmapLayout({ children }: { children: React.ReactNode }) {
   return children;

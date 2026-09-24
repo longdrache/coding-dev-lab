@@ -5,7 +5,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme {}
+@theme {
+  /* GoCode brand tokens — xem /DESIGN.md, giá trị chuẩn duy nhất */
+  --color-brand: #10b981;
+  --color-brand-strong: #059669;
+  --color-brand-soft: #ecfdf5;
+  --color-canvas: #ffffff;
+  --color-wash: #fafafa;
+  --color-ink: #09090b;
+  --color-line-strong: #e4e4e7;
+}
 
 @theme inline {
   --color-accent-600: rgb(5 150 105);
@@ -196,4 +205,18 @@
   html {
     @apply font-sans;
   }
+}
+
+/* Marquee vô hạn cho dải công nghệ (dịch -50% vì list nhân đôi) */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 36s linear infinite;
 }

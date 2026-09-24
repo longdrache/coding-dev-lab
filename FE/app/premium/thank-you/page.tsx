@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "@/app/ui/Logo";
+import Breadcrumbs from "@/app/ui/Breadcrumbs";
 import { CheckCircle2, Sparkles, ArrowRight, Trophy, Code2, Flame } from "lucide-react";
 import type { Metadata } from "next";
 
@@ -39,6 +40,15 @@ export default async function ThankYouPage({
 
       <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 py-12">
         <div className="w-full max-w-2xl">
+          <Breadcrumbs
+            tone="dark"
+            className="mb-6"
+            items={[
+              { label: "Trang chủ", href: "/" },
+              { label: "Premium", href: "/premium" },
+              { label: "Cảm ơn" },
+            ]}
+          />
           <div className="relative overflow-hidden rounded-[2rem] border border-amber-500/20 bg-gradient-to-b from-neutral-900 to-neutral-900/50 p-8 sm:p-10 shadow-[0_20px_80px_-20px_rgba(245,158,11,0.3)]">
             {/* glow */}
             <div className="pointer-events-none absolute -top-24 left-1/2 h-72 w-[120%] -translate-x-1/2 bg-gradient-to-b from-amber-500/10 via-[#ffa116]/5 to-transparent blur-2xl" />

@@ -2,7 +2,7 @@
 
 import { SWRConfig, type Cache } from "swr";
 
-const CACHE_KEY = "gocode-swr-cache-v1";
+const CACHE_KEY = "gocode-swr-cache-v2";
 const TTL_MS = 24 * 60 * 60 * 1000; // cache dùng trong 1 ngày
 
 type StoredEntry = { data: unknown; ts: number };

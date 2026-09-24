@@ -33,7 +33,8 @@ export class PremiumController {
   }
 
   @Post('grant-vip')
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard)
+  @Roles('admin')
   async grantVip(
     @Req() request: AuthenticatedRequest,
     @Body('userId') targetUserId?: string,
@@ -53,7 +54,8 @@ export class PremiumController {
   }
 
   @Post('cancel-vip')
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard)
+  @Roles('admin')
   async cancelVip(
     @Req() request: AuthenticatedRequest,
     @Body('userId') targetUserId?: string,
@@ -116,27 +118,12 @@ export class PremiumController {
   async sweepExpired(
     @Req() request: Request,
     @Headers('x-cron-secret') cronSecret?: string,
-    @Headers('authorization') auth?: string,
   ) {
-    // Cho phép 2 cách xác thực: CRON_SECRET header hoặc Bearer token của admin
+    // Chỉ cron server (giữ CRON_SECRET) được gọi. Bỏ nhánh dryRun ẩn danh
+    // vì nó cho phép quét Clerk API không giới hạn.
     const expectedCronSecret = process.env.CRON_SECRET;
-    const isCronCall = !!expectedCronSecret && cronSecret === expectedCronSecret;
-
-    if (!isCronCall) {
-      // Fallback: yêu cầu admin JWT (tự verify thủ công để không phụ thuộc Guard)
-      // Nếu không có cron secret, kiểm tra Bearer token thủ công qua ClerkAuthGuard logic
-      // Đơn giản: nếu không phải cron, yêu cầu query param dryRun=false phải là admin -> trả 401 để client dùng Bearer
-      // Ở đây ta cho phép gọi không cần auth nếu dryRun=true (để test), còn lại cần admin
-      const body = (request.body ?? {}) as Record<string, unknown>;
-      const dryRun = body.dryRun === true;
-      if (!dryRun) {
-        // Thử verify Bearer nếu có
-        const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
-        if (!token) throw new BadRequestException('Thiếu x-cron-secret hoặc Bearer admin token');
-        // Để đơn giản, nếu có token thì để Guard tiếp theo xử lý; ở đây ta throw để caller thêm Guard
-        // Nhưng vì route này không có @UseGuards, ta tự verify nhanh bằng cách gọi service sweep chỉ khi có secret
-        throw new BadRequestException('Cần x-cron-secret hoặc gọi với admin token qua /api/premium/sweep-expired-admin');
-      }
+    if (!expectedCronSecret || cronSecret !== expectedCronSecret) {
+      throw new BadRequestException('Thiếu x-cron-secret hợp lệ');
     }
 
     const body = (request.body ?? {}) as Record<string, unknown>;

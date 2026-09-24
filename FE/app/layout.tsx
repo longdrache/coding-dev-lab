@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ClerkProvider } from "@clerk/nextjs";
 import { viVN } from "@clerk/localizations";
 import NextTopLoader from "nextjs-toploader";
-import Footer from "./ui/Footer";
+import FooterWrapper from "./ui/FooterWrapper";
 import Providers from "./providers";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -68,7 +68,7 @@ export default function RootLayout({
         <ClerkProvider localization={viVN}>
           <Providers>{children}</Providers>
         </ClerkProvider>
-        <Footer />
+        <FooterWrapper />
       </body>
     </html>
   );

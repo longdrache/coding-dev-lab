@@ -26,6 +26,10 @@ export default async function proxy(req: NextRequest) {
     await jose.jwtVerify(token, key);
     return NextResponse.next();
   } catch {
+    // Fallback HS256 chỉ cho dev — production bắt buộc RS256
+    if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
     try {
       const secret = process.env.JWT_SECRET;
       if (!secret) throw new Error("no fallback secret");

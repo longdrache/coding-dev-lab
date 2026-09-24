@@ -219,7 +219,6 @@ export default function PricingCards() {
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
                     {yearlyPlan.nameVi}
-                    <span className="text-[#ffa116] text-sm">👑</span>
                   </h3>
                 </div>
                 <p className="mt-1 text-xs text-neutral-300">
@@ -232,28 +231,25 @@ export default function PricingCards() {
             </div>
 
             {/* Price section */}
-            <div className="mt-6 border-y border-neutral-800 py-6 bg-amber-500/5 -mx-6 sm:-mx-8 px-6 sm:px-8">
-              <div className="flex items-baseline gap-2">
-                <span className="text-4xl sm:text-5xl font-black tracking-tight text-[#ffa116]">
-                  {formatPrice(yearlyPlan.monthlyEquivalentVND)}
-                </span>
-                <span className="text-sm font-medium text-neutral-300">
-                  / tháng
-                </span>
-                <span className="text-xs line-through text-neutral-400">
-                  {formatPrice(12000)}
-                </span>
-              </div>
+              <div className="mt-6 border-y border-neutral-800 py-6 bg-amber-500/5 -mx-6 sm:-mx-8 px-6 sm:px-8">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl sm:text-5xl font-black tracking-tight text-[#ffa116]">
+                    {formatPrice(yearlyPlan.totalBilledVND)}
+                  </span>
+                  <span className="text-sm font-medium text-neutral-300">
+                    / năm
+                  </span>
+                </div>
 
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-neutral-200">
-                  {`Thanh toán một lần ${formatPrice(yearlyPlan.totalBilledVND)} / năm.`}
-                </span>
-                <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300 border border-emerald-500/30">
-                  Tiết kiệm 10.000 ₫
-                </span>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-neutral-200">
+                    {`Chỉ ≈${formatPrice(yearlyPlan.monthlyEquivalentVND)}/tháng, thanh toán một lần.`}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300 border border-emerald-500/30">
+                    Tiết kiệm 10.000 ₫
+                  </span>
+                </div>
               </div>
-            </div>
 
             {/* Features list */}
             <div className="mt-6">

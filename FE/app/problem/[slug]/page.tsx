@@ -8,6 +8,7 @@ import useSWR from "swr";
 import { authedFetcher } from "@/lib/swr";
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -27,11 +28,12 @@ import {
 } from "lucide-react";
 import CodeEditor from "@/app/ui/Editor";
 import Logo from "@/app/ui/Logo";
+import Breadcrumbs from "@/app/ui/Breadcrumbs";
 import type { Problem, ProblemTest } from "@/app/data/problems";
 import { markSolved, useSolvedSlugs, useServerSolvedSlugs } from "../solved";
 import { recordActivity } from "../activity";
 import { topics } from "@/app/data/topics";
-import { useProblem } from "@/app/hooks/useProblems";
+import { useProblem, useProblems } from "@/app/hooks/useProblems";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -357,7 +359,15 @@ type AuthHeaders = {
 export default function ProblemWorkspace() {
   const params = useParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
-  const { problem, loading, error } = useProblem(slug);
+  const { problem: swrProblem, loading: swrLoading, error } = useProblem(slug);
+  // Gate như trang list: lần render đầu khớp server, sau mount lấy cache có sẵn
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration guard, cố ý 1 lần
+    setMounted(true);
+  }, []);
+  const problem = mounted ? swrProblem : null;
+  const loading = !mounted || swrLoading;
 
   if (loading) {
     return (
@@ -385,6 +395,13 @@ export default function ProblemWorkspace() {
 function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   const router = useRouter();
   const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { problems: allProblems } = useProblems();
+  const problemsList = allProblems ?? [];
+
+  // Find prev/next problem in the list
+  const currentIndex = problemsList.findIndex((p) => p.slug === slug);
+  const prevProblem = currentIndex > 0 ? problemsList[currentIndex - 1] : null;
+  const nextProblem = currentIndex >= 0 && currentIndex < problemsList.length - 1 ? problemsList[currentIndex + 1] : null;
 
   const [languageId, setLanguageId] = useState(LANGUAGES[0].id);
   const [sourceCode, setSourceCode] = useState(LANGUAGES[0].starter);
@@ -742,6 +759,14 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   return (
     <main className="min-h-screen bg-white px-5 py-8 text-zinc-900 sm:px-10">
       <div className="mx-auto max-w-7xl">
+        <Breadcrumbs
+          className="mb-4"
+          items={[
+            { label: "Trang chủ", href: "/" },
+            { label: "Bài tập", href: "/problem" },
+            { label: problem.title },
+          ]}
+        />
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <Logo />

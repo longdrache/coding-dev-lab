@@ -1,8 +1,9 @@
 import Link from "next/link";
 import Logo from "@/app/ui/Logo";
+import Breadcrumbs from "@/app/ui/Breadcrumbs";
 import Pricing from "@/app/ui/Pricing";
 import PremiumGuard from "./PremiumGuard";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Crown, Timer } from "lucide-react";
 import { Metadata } from "next";
 // const plans = [
 //   { id: "monthly", label: "Monthly", price: "1vnd", detail: "per month" },
@@ -62,6 +63,11 @@ export default function PremiumPage() {
         </div>
       </header>
       <div className="mx-auto max-w-[1480px] px-4 sm:px-6 lg:px-8 py-12">
+        <Breadcrumbs
+          tone="dark"
+          className="mb-8"
+          items={[{ label: "Trang chủ", href: "/" }, { label: "Premium" }]}
+        />
 
         <div
           id="plans-section"
@@ -69,23 +75,23 @@ export default function PremiumPage() {
         >
           <div className="inline-flex items-center gap-2 px-3.5 py-3.5 rounded-full bg-neutral-900/90 border border-neutral-800 text-xs font-semibold text-neutral-300 mb-3 shadow-inner">
             <span className="h-2 w-2 rounded-full bg-[#ffa116]"></span>
-            <span>GoCode Premium • 20 bài • 8 ngôn ngữ • Batch 10</span>
+            <span>GoCode Premium • 56 bài • 8 ngôn ngữ • Batch 10</span>
           </div>
 
           <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight flex items-center justify-center gap-2.5 flex-wrap">
             <span className="text-neutral-200 flex items-center gap-1.5">
-              <span>⏱️</span>
+              <Timer className="size-5 text-neutral-400" />
               <span>Linh hoạt</span>
             </span>
             <span className="text-neutral-500 font-normal">&bull;</span>
             <span className="text-[#ffa116] flex items-center gap-1.5">
-              <span>👑</span>
+              <Crown className="size-5" />
               <span>Tiết kiệm 83% gói Năm</span>
             </span>
           </h2>
 
           <p className="mt-2.5 text-xs sm:text-sm text-neutral-400 max-w-xl leading-relaxed">
-            20 bài Dễ/Trung bình, chấm Batch 10, streak & heatmap, lưu Neon — thử 1 ngày chỉ 200 ₫, tháng linh hoạt 1.000 ₫ hoặc năm tiết kiệm 10.000 ₫.
+            56 bài Dễ/Trung bình/Khó, chấm Batch 10, streak & heatmap, lưu Neon — thử 1 ngày chỉ 200 ₫, tháng linh hoạt 1.000 ₫ hoặc năm tiết kiệm 10.000 ₫.
           </p>
         </div>
         <Pricing />

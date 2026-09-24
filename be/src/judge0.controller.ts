@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Judge0Service } from './judge0.service.ts';
 import type {
   BatchSubmissionItem,
@@ -40,6 +41,7 @@ export class Judge0Controller {
   constructor(private readonly judge0Service: Judge0Service) {}
 
   @Post()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   createSubmission(@Body() body: CreateSubmissionInput) {
     if (!body?.source_code || typeof body.language_id !== 'number') {
       throw new BadRequestException('language_id và source_code là bắt buộc');
@@ -50,6 +52,7 @@ export class Judge0Controller {
   }
 
   @Post('batch')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   createBatchSubmissions(@Body() body: { submissions?: BatchSubmissionItem[] }) {
     const submissions = body?.submissions;
     if (!Array.isArray(submissions) || submissions.length === 0) {
@@ -68,6 +71,7 @@ export class Judge0Controller {
   }
 
   @Get('batch')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
   getBatchSubmissions(@Query('tokens') tokens?: string) {
     const list = (tokens ?? '')
       .split(',')

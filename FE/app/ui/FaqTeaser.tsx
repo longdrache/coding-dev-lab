@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { EXTENDED_FAQS } from "@/app/data/faq";
 import Reveal from "./Reveal";
@@ -17,7 +18,7 @@ export default function FaqTeaser() {
   return (
     <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
       <Reveal className="text-center mb-10">
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
+        <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
           Câu hỏi thường gặp
         </h2>
         <p className="mt-3 text-zinc-500">
@@ -44,17 +45,22 @@ export default function FaqTeaser() {
                     }`}
                   />
                 </button>
-                <div
-                  className={`grid transition-all duration-300 ease-out ${
-                    open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-                  }`}
-                >
-                  <div className="overflow-hidden">
-                    <p className="pt-3 text-sm leading-relaxed text-zinc-500">
-                      {faq.answer}
-                    </p>
-                  </div>
-                </div>
+                <AnimatePresence initial={false}>
+                  {open && (
+                    <motion.div
+                      key="answer"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                      className="overflow-hidden"
+                    >
+                      <p className="pt-3 text-sm leading-relaxed text-zinc-500">
+                        {faq.answer}
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             );
           })}

@@ -82,10 +82,10 @@ export default function StreakDashboard() {
   ] as const;
   const nextMilestone = MILESTONES.find((m) => m.days > streak);
 
-  // đề xuất & lộ trình
+  // đề xuất & tiến độ theo chủ đề
   const solvedSlugs = new Set(solved?.slugs ?? []);
   const suggestions = problems.filter((p) => !solvedSlugs.has(p.slug)).slice(0, 3);
-  const roadmapTopics = (() => {
+  const topicProgress = (() => {
     const counts: Record<string, number> = {};
     for (const slug of solvedSlugs) {
       const prob = problems.find((p) => p.slug === slug);
@@ -314,17 +314,17 @@ export default function StreakDashboard() {
         ))}
       </div>
 
-      {/* Lộ trình đang học */}
+      {/* Tiến độ theo chủ đề */}
       <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
         <h3 className="inline-flex items-center gap-2 text-base font-bold text-zinc-900">
-          <span className="text-violet-500">▭</span> Lộ trình đang học
+          <span className="text-violet-500">◉</span> Tiến độ theo chủ đề
         </h3>
         <Link href="/roadmap" className="font-mono text-sm font-semibold text-violet-600 hover:text-violet-700">
-          Xem lộ trình &gt;
+          Xem chi tiết &gt;
         </Link>
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {roadmapTopics.map((t) => (
+        {topicProgress.map((t) => (
           <Link
             key={t.slug}
             href={`/problem?topic=${t.slug}`}

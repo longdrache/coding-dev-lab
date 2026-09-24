@@ -68,8 +68,10 @@ export class AdminService {
     if (email !== expEmail) throw new UnauthorizedException('Sai tài khoản');
     let ok = false;
     if (hash) ok = await bcrypt.compare(password, hash);
-    else if (plain) ok = password === plain;
-    else throw new UnauthorizedException('Missing password env');
+    // So sánh plaintext chỉ cho dev local — production bắt buộc hash
+    else if (plain && process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1') {
+      ok = password === plain;
+    } else throw new UnauthorizedException('Missing password env');
     if (!ok) throw new UnauthorizedException('Sai mật khẩu');
     // Ký RS256 bằng private key — FE chỉ giữ public key để verify
     return jwt.sign({ sub: 'admin', role: 'admin' }, this.getPrivateKey(), {
@@ -87,7 +89,11 @@ export class AdminService {
         // Rơi xuống fallback HS256 bên dưới để tương thích cookie cũ
       }
     }
-    // Fallback: token HS256 cũ ký bằng JWT_SECRET (giai đoạn chuyển đổi)
+    // Fallback HS256 cũ chỉ cho dev — production bắt buộc RS256
+    // (tránh alg-confusion khi quên cấu hình key)
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') {
+      throw new UnauthorizedException('Admin token không hợp lệ');
+    }
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new UnauthorizedException('Missing JWT key');
     return jwt.verify(token, secret) as any;

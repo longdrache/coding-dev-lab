@@ -13,19 +13,27 @@ function Core() {
   const orbitB = useRef<THREE.Mesh>(null!);
   const glow = useRef<THREE.Mesh>(null!);
 
-  const particles = useMemo(() => {
+  const particlesRef = useRef<Float32Array | null>(null);
+  if (!particlesRef.current) {
     const count = 350;
     const pos = new Float32Array(count * 3);
+    // Use a seeded random for deterministic SSR-friendly generation
+    let seed = 12345;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296;
+      return seed / 4294967296;
+    }
     for (let i = 0; i < count; i++) {
-      const r = 1.7 + Math.random() * 1.3;
-      const theta = Math.random() * Math.PI * 2;
-      const y = (Math.random() - 0.5) * 2.4;
+      const r = 1.7 + rand() * 1.3;
+      const theta = rand() * Math.PI * 2;
+      const y = (rand() - 0.5) * 2.4;
       pos[i * 3] = Math.cos(theta) * r;
       pos[i * 3 + 1] = y;
       pos[i * 3 + 2] = Math.sin(theta) * r;
     }
-    return pos;
-  }, []);
+    particlesRef.current = pos;
+  }
+  const particles = particlesRef.current;
 
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;

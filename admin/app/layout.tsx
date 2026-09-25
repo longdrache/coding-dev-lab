@@ -1,25 +1,26 @@
 ﻿import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, DM_Sans, Fira_Code } from "next/font/google";
+import { Be_Vietnam_Pro, Inter, JetBrains_Mono } from "next/font/google";
 import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 
-const display = Plus_Jakarta_Sans({
+const display = Be_Vietnam_Pro({
+  weight: ["500", "600", "700", "800"],
   variable: "--font-display",
-  subsets: ["latin", "latin-ext"],
+  subsets: ["latin", "vietnamese"],
   display: "swap",
   preload: true,
 });
 
-const body = DM_Sans({
+const body = Inter({
   variable: "--font-body",
-  subsets: ["latin", "latin-ext"],
+  subsets: ["latin", "vietnamese"],
   display: "swap",
   preload: true,
 });
 
-const code = Fira_Code({
+const code = JetBrains_Mono({
   variable: "--font-code",
-  subsets: ["latin"],
+  subsets: ["latin", "vietnamese"],
   display: "swap",
   preload: true,
 });

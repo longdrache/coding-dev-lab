@@ -34,7 +34,7 @@ export default function AuthShell({
         <div>
           <Logo />
           <p className="mt-8 font-mono text-xs font-medium text-emerald-600">{kicker}</p>
-          <h1 className="mt-3 max-w-md text-3xl font-bold leading-tight tracking-tight text-zinc-950 sm:text-4xl">
+          <h1 className="mt-3 max-w-md font-display text-3xl font-bold leading-tight tracking-tight text-zinc-950 sm:text-4xl">
             {title}
           </h1>
           <ul className="mt-6 space-y-3">

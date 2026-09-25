@@ -788,7 +788,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
           </div>
         </header>
 
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-950">
+        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-zinc-950">
           {problem.title}
         </h1>
         {solved && (

@@ -3,6 +3,7 @@ import { AppService } from './app.service.ts';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
 import { Roles } from './auth/roles.decorator.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
+import { AdminGuard } from './admin/admin.guard.ts';
 
 @Controller()
 export class AppController {
@@ -14,8 +15,7 @@ export class AppController {
   }
 
   @Get('api/admin/health')
-  @UseGuards(ClerkAuthGuard, RolesGuard)
-  @Roles('admin')
+  @UseGuards(AdminGuard)
   getAdminHealth(): { ok: true } {
     return { ok: true };
   }

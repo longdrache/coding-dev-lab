@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { Be_Vietnam_Pro, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ClerkProvider } from "@clerk/nextjs";
@@ -9,16 +9,19 @@ import FooterWrapper from "./ui/FooterWrapper";
 import Providers from "./providers";
 import { getSiteUrl } from "@/lib/site";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const inter = Inter({ subsets: ["latin", "vietnamese"], variable: "--font-sans" });
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+// Be Vietnam Pro cho headings — thiết kế riêng cho tiếng Việt,
+// hết lỗi dấu so với Geist/Inter latin-only
+const display = Be_Vietnam_Pro({
+  weight: ["500", "600", "700", "800"],
+  variable: "--font-display",
+  subsets: ["latin", "vietnamese"],
 });
 
-const geistMono = Geist_Mono({
+const mono = JetBrains_Mono({
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  subsets: ["latin", "vietnamese"],
 });
 
 export const metadata: Metadata = {
@@ -58,8 +61,8 @@ export default function RootLayout({
       className={cn(
         "h-full",
         "antialiased",
-        geistSans.variable,
-        geistMono.variable,
+        display.variable,
+        mono.variable,
         "font-sans",
         inter.variable,
       )}

@@ -290,11 +290,11 @@ export default function DashboardPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <CardTitle className="font-display text-xl font-semibold text-slate-900">Lượt truy cập 30 ngày</CardTitle>
-                <p className="mt-1 text-sm text-slate-500">Pageview theo user (khách dùng hash IP, không lưu IP thô)</p>
+
               </div>
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                <span className="size-2 rounded-full bg-emerald-600" /> Views
-                <span className="size-2 rounded-full bg-sky-500" /> người dùng
+                <span className="size-2 rounded-full bg-emerald-600" /> Lượt xem trang  
+                <span className="size-2 rounded-full bg-sky-500" /> Người dùng truy cập
               </span>
             </div>
           </CardHeader>
@@ -332,7 +332,7 @@ export default function DashboardPage() {
             <Card key={t.label} className="border-slate-200 bg-slate-900 text-white">
               <CardContent className="p-5">
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{t.label}</p>
-                <p className="mt-1 font-mono text-[28px] font-bold leading-none tabular-nums">{String(t.data?.views ?? "—")}</p>
+                <p className="mt-1 font-mono text-[28px] font-bold leading-none tabular-nums">{String(t.data?.views ?? "—")+ ' lượt xem'}</p>
                 <p className="mt-1.5 font-mono text-xs tabular-nums text-slate-400">{String(t.data?.uniques ?? "—")} người dùng</p>
                 <Sparkline values={viewsSeries.map((d) => d.views)} color="fill-emerald-500" />
               </CardContent>

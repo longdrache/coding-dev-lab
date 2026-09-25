@@ -191,7 +191,7 @@ export default function Home() {
                 </div>
               </motion.div>
               <motion.div variants={copyItem} className="text-center max-w-3xl mx-auto mb-12 md:mb-16">
-                <motion.h1 variants={copyItem} className="text-4xl sm:text-5xl md:text-6xl  tracking-tight text-zinc-950 leading-[1.12] mb-6">
+                <motion.h1 variants={copyItem} className="font-display text-4xl sm:text-5xl md:text-6xl  tracking-tight text-zinc-950 leading-[1.12] mb-6">
                   Rèn tư duy giải thuật.{" "}
                   <span className="block   font-normal text-zinc-500 text-3xl sm:text-4xl md:text-5xl mt-1">
                     Tối giản, thuần khiết &amp; tức thì.
@@ -334,7 +334,7 @@ export default function Home() {
             className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
           >
             <Reveal className="text-center mb-12">
-              <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
+              <h2 className="mt-4 font-display text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
                 Tại sao GoCode?
               </h2>
               <p className="mt-3 text-zinc-500">
@@ -376,7 +376,7 @@ export default function Home() {
             className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20 scroll-mt-20"
           >
             <Reveal className="text-center mb-10">
-              <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
+              <h2 className="mt-4 font-display text-3xl sm:text-4xl font-bold tracking-tight text-zinc-950">
                 Các dạng bài luyện tập
               </h2>
               <p className="mt-3 text-zinc-500">

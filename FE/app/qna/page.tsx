@@ -107,7 +107,7 @@ export default function Page() {
             <HelpCircle className="w-3.5 h-3.5 text-zinc-900" />
             <span>Hỏi &amp; Đáp Kỹ Thuật (Knowledge Base)</span>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight text-zinc-950 leading-[1.15]">
+          <h1 className="font-display text-3xl sm:text-5xl font-semibold tracking-tight text-zinc-950 leading-[1.15]">
             Trung tâm Hỏi Đáp.{" "}
             <span className="block  italic font-normal text-zinc-500 text-2xl sm:text-4xl mt-1">
               Giải đáp mọi thắc mắc về hạ tầng &amp; học tập.

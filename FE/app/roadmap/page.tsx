@@ -56,7 +56,7 @@ export default function Page() {
         />
 
 
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-950">
+        <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-zinc-950">
           Tiến độ theo chủ đề
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-zinc-500">

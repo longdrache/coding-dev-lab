@@ -113,9 +113,9 @@ export default function Home() {
   // Guard hydration: server và lần render đầu của client phải giống nhau.
   // Clerk chỉ biết trạng thái đăng nhập ở client, nên chờ mounted mới
   // phân nhánh SignedIn/SignedOut để tránh mismatch.
-  // if (!mounted || !minTime) {
-  //   return <PageLoader />;
-  // }
+  if (!mounted || !minTime) {
+    return <PageLoader />;
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden" suppressHydrationWarning>

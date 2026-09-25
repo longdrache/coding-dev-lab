@@ -39,9 +39,48 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-50 p-6 font-sans">
+    <main className="grid min-h-screen font-sans lg:grid-cols-2">
+      {/* Panel brand (desktop) */}
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-slate-950 p-10 text-white lg:flex">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, rgb(255 255 255 / 0.8) 1px, transparent 1px), linear-gradient(to bottom, rgb(255 255 255 / 0.8) 1px, transparent 1px)",
+            backgroundSize: "44px 44px",
+            maskImage: "radial-gradient(ellipse 70% 60% at 30% 30%, black, transparent)",
+            WebkitMaskImage: "radial-gradient(ellipse 70% 60% at 30% 30%, black, transparent)",
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-24 top-1/3 h-96 w-96 rounded-full bg-emerald-500/20 blur-[100px]"
+        />
+        <div className="relative flex items-center gap-2.5">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500 font-display text-base font-bold text-slate-950">
+            G
+          </div>
+          <p className="font-display text-lg font-bold tracking-tight">GoCode Admin</p>
+        </div>
+        <div className="relative">
+          <p className="font-mono text-xs tracking-[0.25em] text-emerald-400">CONTROL_PLANE // v3.7</p>
+          <p className="mt-4 max-w-md font-display text-3xl font-bold leading-tight tracking-tight">
+            Cửa ngõ duy nhất vào hệ thống chấm bài.
+          </p>
+          <ul className="mt-6 space-y-2.5 font-mono text-[13px] text-slate-400">
+            <li><span className="text-emerald-400">✓</span> Duyệt & xuất bản đề thi</li>
+            <li><span className="text-emerald-400">✓</span> Giám sát submissions realtime</li>
+            <li><span className="text-emerald-400">✓</span> Trả lời học viên qua mail</li>
+          </ul>
+        </div>
+        <p className="relative font-mono text-[11px] text-slate-500">JWT RS256 • httpOnly cookie • audit mọi thao tác</p>
+      </div>
+
+      {/* Form */}
+      <div className="flex items-center justify-center bg-slate-50 p-6">
       <div className="w-full max-w-sm space-y-6">
-        <div className="flex items-center justify-center gap-2.5">
+        <div className="flex items-center justify-center gap-2.5 lg:hidden">
           <div className="flex size-10 items-center justify-center rounded-lg bg-slate-900 font-display text-base font-bold text-white">
             G
           </div>
@@ -89,6 +128,7 @@ export default function LoginPage() {
           </CardContent>
         </Card>
         <p className="text-center text-xs text-slate-500">Khu vực quản trị · GoCode</p>
+      </div>
       </div>
     </main>
   );

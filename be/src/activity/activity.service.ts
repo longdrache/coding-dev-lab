@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { DatabaseService } from '../database/database.service.ts';
 
 function todayKeyVietnam(): string {
@@ -26,7 +27,7 @@ function formatKey(date: Date): string {
 export class ActivityService {
   constructor(private readonly db: DatabaseService) {}
 
-  async recordLogin(clerkId: string) {
+  async recordLogin(clerkId: string, meta?: { ip?: string; country?: string }) {
     const key = todayKeyVietnam();
     const date = toDateOnly(key);
     await this.db.activityDay.upsert({
@@ -34,6 +35,25 @@ export class ActivityService {
       create: { clerkId, date, count: 0 },
       update: {},
     });
+    // Log lần đăng nhập + quốc gia (tối đa 1 dòng/user/giờ để khỏi spam
+    // vì FE gọi endpoint này mỗi lần vào trang khi đã đăng nhập)
+    try {
+      const since = new Date(Date.now() - 60 * 60 * 1000);
+      const recent = await this.db.loginEvent.findFirst({
+        where: { clerkId, createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!recent) {
+        const salt = process.env.IP_HASH_SALT ?? 'gocode-views';
+        const ipHash = createHash('sha256').update(`${salt}:${meta?.ip ?? 'unknown'}`).digest('hex');
+        const country = (meta?.country ?? '').toUpperCase().slice(0, 2);
+        await this.db.loginEvent.create({
+          data: { clerkId, ipHash, country },
+        });
+      }
+    } catch {
+      // analytics không được làm vỡ login
+    }
     return this.getMap(clerkId);
   }
 

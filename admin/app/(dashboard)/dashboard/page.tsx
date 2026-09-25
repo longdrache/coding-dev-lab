@@ -172,11 +172,19 @@ type ViewsAnalytics = {
   series30d: ViewDay[];
 };
 
+type LoginsAnalytics = {
+  recent: Array<{ user: string; country: string; at: string }>;
+  byCountry: Array<{ country: string; count: number }>;
+};
+
 export default function DashboardPage() {
   const { data: stats, error } = useSWR<Stats>("/api/admin/stats", swrFetcher, {
     refreshInterval: 30000, // online counter tự tươi mỗi 30s
   });
   const { data: views } = useSWR<ViewsAnalytics>("/api/admin/analytics/views", swrFetcher, {
+    refreshInterval: 60000,
+  });
+  const { data: logins } = useSWR<LoginsAnalytics>("/api/admin/analytics/logins", swrFetcher, {
     refreshInterval: 60000,
   });
 
@@ -373,6 +381,44 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card className="border-slate-200 bg-white md:col-span-3">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-display text-xl font-semibold text-slate-900">Đăng nhập gần đây</CardTitle>
+          <p className="mt-1 text-sm text-slate-500">Ai vừa vào, từ quốc gia nào</p>
+        </CardHeader>
+        <CardContent className="pt-2">
+          {(logins?.byCountry?.length ?? 0) > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {logins!.byCountry.map((c) => (
+                <span key={c.country} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
+                  {c.country === "XX" ? "—" : c.country}
+                  <span className="font-normal text-slate-500">{c.count}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {(logins?.recent?.length ?? 0) === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-500">Chưa có lượt đăng nhập nào.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {logins!.recent.map((r, i) => (
+                <li key={`${r.user}-${i}`} className="flex h-11 items-center justify-between px-2 text-sm">
+                  <span className="font-mono text-slate-900">{r.user}</span>
+                  <span className="flex items-center gap-3">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-600">
+                      {r.country === "XX" ? "—" : r.country}
+                    </span>
+                    <span className="font-mono text-xs tabular-nums text-slate-500">
+                      {new Date(r.at).toLocaleString("vi-VN", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
       </div>
     </div>
   );

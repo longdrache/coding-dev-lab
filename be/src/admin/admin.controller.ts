@@ -93,6 +93,12 @@ export class AdminController {
     return this.views.getAnalytics();
   }
 
+  @Get('analytics/logins')
+  @UseGuards(AdminGuard)
+  getLoginsAnalytics() {
+    return this.svc.getLoginAnalytics();
+  }
+
   @Get('qna')
   @UseGuards(AdminGuard)
   listQna() {

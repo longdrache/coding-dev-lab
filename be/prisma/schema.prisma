@@ -147,3 +147,16 @@ model PageView {
   @@index([clerkId, createdAt])
   @@index([visitorId, createdAt])
 }
+
+// Lần đăng nhập: ai, từ quốc gia nào (Vercel header), IP hash — cho admin
+model LoginEvent {
+  id        String   @id @default(cuid())
+  clerkId   String
+  ipHash    String
+  country   String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([clerkId, createdAt])
+  @@index([country, createdAt])
+}

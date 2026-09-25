@@ -246,6 +246,34 @@ export class AdminService {
     return this.db.qnaQuestion.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
+  async getLoginAnalytics() {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [recent, byCountry] = await Promise.all([
+      this.db.loginEvent.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 15,
+        select: { clerkId: true, country: true, createdAt: true },
+      }),
+      this.db.$queryRaw<Array<{ country: string; count: number }>>`
+        SELECT COALESCE(NULLIF("country", ''), 'XX') AS country,
+               COUNT(*)::int AS count
+        FROM "LoginEvent"
+        WHERE "createdAt" >= ${since}
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT 12
+      `,
+    ]);
+    return {
+      recent: recent.map((r) => ({
+        user: r.clerkId.slice(0, 10) + '…',
+        country: r.country || 'XX',
+        at: r.createdAt,
+      })),
+      byCountry,
+    };
+  }
+
   async deleteQna(id: string) {
     try {
       return await this.db.qnaQuestion.delete({ where: { id } });

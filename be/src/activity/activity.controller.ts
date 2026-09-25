@@ -11,7 +11,15 @@ export class ActivityController {
   @Post('login')
   async login(@Req() req: AuthenticatedRequest) {
     const clerkId = req.user!.userId;
-    const map = await this.activity.recordLogin(clerkId);
+    const headers = (req as unknown as { headers?: Record<string, string | string[] | undefined> }).headers ?? {};
+    const forwarded = headers['x-forwarded-for'];
+    const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0]?.trim())
+      ?? (req as unknown as { ip?: string }).ip
+      ?? 'unknown';
+    // Vercel tự gắn quốc gia (miễn phí, không cần GeoIP DB); local thì trống
+    const rawCountry = headers['x-vercel-ip-country'];
+    const country = Array.isArray(rawCountry) ? rawCountry[0] : rawCountry;
+    const map = await this.activity.recordLogin(clerkId, { ip, country });
     return { map };
   }
 

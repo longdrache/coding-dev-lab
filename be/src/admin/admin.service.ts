@@ -199,6 +199,34 @@ export class AdminService {
     const runs30d = daily.reduce((s, d) => s + d.runs, 0);
     const submits30d = daily.reduce((s, d) => s + d.submits, 0);
 
+    // Tổng runs/submits từ đầu tháng VN (cửa sổ 30 ngày có thể thiếu
+    // 1-2 ngày đầu tháng nên query riêng cho chuẩn)
+    const monthPrefix = todayVnKey.slice(0, 7);
+    const monthStartUtc = new Date(monthPrefix + '-01T00:00:00Z');
+    let monthRuns = 0;
+    let monthSubmits = 0;
+    try {
+      const [monthActs, monthSubs] = await Promise.all([
+        this.db.activityDay.findMany({
+          where: { date: { gte: monthStartUtc } },
+          select: { date: true, count: true },
+        }),
+        this.db.submission.findMany({
+          where: { createdAt: { gte: new Date(monthStartUtc.getTime() - VN_OFFSET_MS) } },
+          select: { createdAt: true },
+        }),
+      ]);
+      for (const r of monthActs) {
+        if (vnDayKey(new Date(r.date)).startsWith(monthPrefix)) monthRuns += r.count ?? 0;
+      }
+      for (const s of monthSubs) {
+        if (vnDayKey(new Date(s.createdAt)).startsWith(monthPrefix)) monthSubmits += 1;
+      }
+    } catch {
+      monthRuns = 0;
+      monthSubmits = 0;
+    }
+
     return {
       online,
       counts: { problems, qna, submissions },
@@ -209,6 +237,8 @@ export class AdminService {
       submits30d,
       todayRuns: daily[daily.length - 1]?.runs ?? 0,
       todaySubmits: daily[daily.length - 1]?.submits ?? 0,
+      monthRuns,
+      monthSubmits,
     };
   }
 

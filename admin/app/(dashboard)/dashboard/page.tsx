@@ -160,6 +160,8 @@ type Stats = {
   submits30d?: number;
   todayRuns?: number;
   todaySubmits?: number;
+  monthRuns?: number;
+  monthSubmits?: number;
   topProblems?: Array<{ problemSlug: string; _count?: { problemSlug: number }; count?: number }>;
 };
 
@@ -281,6 +283,22 @@ export default function DashboardPage() {
             </Card>
           ))}
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {[
+          { label: "Runs hôm nay", value: stats.todayRuns ?? 0 },
+          { label: "Submits hôm nay", value: stats.todaySubmits ?? 0 },
+          { label: "Runs tháng này", value: stats.monthRuns ?? 0 },
+          { label: "Submits tháng này", value: stats.monthSubmits ?? 0 },
+        ].map((c) => (
+          <Card key={c.label} className="border-slate-200 bg-white">
+            <CardContent className="flex items-baseline justify-between gap-2 p-5">
+              <p className="text-sm text-slate-500">{c.label}</p>
+              <p className="font-mono text-[28px] font-bold leading-none tabular-nums text-slate-900">{String(c.value)}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">

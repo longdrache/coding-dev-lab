@@ -10,6 +10,32 @@ type DayStat = { date: string; runs: number; submits: number };
 
 type ViewDay = { date: string; views: number; uniques: number };
 
+// Sparkline mini cho tile số: bars SVG thuần, rẻ paint
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  const max = Math.max(...values, 1);
+  const w = 120;
+  const h = 32;
+  const bw = w / Math.max(values.length, 1);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="mt-3 h-8 w-full" aria-hidden>
+      {values.map((v, i) => {
+        const bh = Math.max(2, (v / max) * (h - 2));
+        return (
+          <rect
+            key={i}
+            x={i * bw + 1}
+            y={h - bh}
+            width={Math.max(1.5, bw - 2)}
+            height={bh}
+            rx={1}
+            className={color}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 function ChartViews({ series }: { series: ViewDay[] }) {
   const [hover, setHover] = useState<number | null>(null);
   const max = series.length ? Math.max(...series.flatMap((d) => [d.views, d.uniques]), 1) : 1;
@@ -231,12 +257,12 @@ export default function DashboardPage() {
   const runs30d = stats.runs30d ?? daily.reduce((s, d) => s + d.runs, 0);
   const submits30d = stats.submits30d ?? daily.reduce((s, d) => s + d.submits, 0);
 
-  const cards = [
+  const cards: Array<{ label: string; value: string | number; sub: string; series?: number[]; color?: string }> = [
     { label: "Đang trực tuyến", value: stats.online ?? "—", sub: "người dùng online" },
     { label: "Bài tập", value: stats.counts.problems, sub: "thử thách xuất bản" },
     { label: "Hỏi đáp", value: stats.counts.qna, sub: "câu hỏi chờ xem" },
     { label: "Lượt nộp", value: stats.counts.submissions, sub: "bài đã nộp" },
-    { label: "Lượt chạy", value: runs30d, sub: `+${stats.todayRuns ?? daily[daily.length - 1]?.runs ?? 0} hôm nay` },
+    { label: "Lượt chạy", value: runs30d, sub: `+${stats.todayRuns ?? daily[daily.length - 1]?.runs ?? 0} hôm nay`, series: daily.map((d) => d.runs), color: "fill-emerald-500" },
   ];
 
   const topProblems = stats.topProblems ?? [];
@@ -253,12 +279,6 @@ export default function DashboardPage() {
     }
     return out;
   })();
-
-  const visitTiles = [
-    { label: "Hôm nay", views: views?.today.views ?? "—", uniques: views?.today.uniques ?? "—" },
-    { label: "Tháng này", views: views?.month.views ?? "—", uniques: views?.month.uniques ?? "—" },
-    { label: "Năm nay", views: views?.year.views ?? "—", uniques: views?.year.uniques ?? "—" },
-  ];
 
   return (
     <div className="space-y-4">
@@ -285,24 +305,40 @@ export default function DashboardPage() {
           <CardContent>
             <ChartViews series={viewsSeries} />
             {(views?.byCountry?.length ?? 0) > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-                {views!.byCountry.map((c) => (
-                  <span key={c.country} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
-                    {c.country === "XX" ? "—" : c.country}
-                    <span className="font-normal text-slate-500">{c.count}</span>
-                  </span>
-                ))}
+              <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+                {(() => {
+                  const max = Math.max(...views!.byCountry.map((c) => c.count), 1);
+                  return views!.byCountry.map((c) => (
+                    <div key={c.country} className="flex items-center gap-3">
+                      <span className="w-10 shrink-0 font-mono text-xs font-bold text-slate-700">
+                        {c.country === "XX" ? "—" : c.country}
+                      </span>
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                          style={{ width: `${Math.max(3, Math.round((c.count / max) * 100))}%` }}
+                        />
+                      </div>
+                      <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-slate-500">{c.count}</span>
+                    </div>
+                  ));
+                })()}
               </div>
             )}
           </CardContent>
         </Card>
         <div className="grid grid-cols-3 gap-4 md:grid-cols-1">
-          {visitTiles.map((t) => (
+          {[
+            { label: "Hôm nay", data: views?.today },
+            { label: "Tháng này", data: views?.month },
+            { label: "Năm nay", data: views?.year },
+          ].map((t) => (
             <Card key={t.label} className="border-slate-200 bg-slate-900 text-white">
               <CardContent className="p-5">
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{t.label}</p>
-                <p className="mt-1 font-mono text-[28px] font-bold leading-none tabular-nums">{String(t.views)}</p>
-                <p className="mt-1.5 font-mono text-xs tabular-nums text-slate-400">{String(t.uniques)} người dùng</p>
+                <p className="mt-1 font-mono text-[28px] font-bold leading-none tabular-nums">{String(t.data?.views ?? "—")}</p>
+                <p className="mt-1.5 font-mono text-xs tabular-nums text-slate-400">{String(t.data?.uniques ?? "—")} người dùng</p>
+                <Sparkline values={viewsSeries.map((d) => d.views)} color="fill-emerald-500" />
               </CardContent>
             </Card>
           ))}
@@ -317,6 +353,7 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-500">{c.label}</p>
               <p className="mt-2 font-mono text-[32px] font-bold leading-none tabular-nums text-slate-900">{String(c.value)}</p>
               <p className="mt-2 text-xs text-slate-500">{c.sub}</p>
+              {c.series && <Sparkline values={c.series} color={c.color ?? "fill-emerald-500"} />}
             </CardContent>
           </Card>
         ))}

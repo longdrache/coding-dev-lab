@@ -35,13 +35,13 @@ export class ProblemsService {
       orderBy: { createdAt: 'asc' },
     });
     // ẩn hiddenTests với client
-    return rows.map(({ hiddenTests, ...rest }) => rest);
+    return rows.map(({ hiddenTests: _hiddenTests, ...rest }) => rest);
   }
 
   async findBySlug(slug: string) {
     const row = await this.db.problem.findUnique({ where: { slug } });
     if (!row || (row as Record<string, unknown>).status !== 'published') return null;
-    const { hiddenTests, ...rest } = row as Record<string, unknown>;
+    const { hiddenTests: _hiddenTests, ...rest } = row as Record<string, unknown>;
     return rest;
   }
 

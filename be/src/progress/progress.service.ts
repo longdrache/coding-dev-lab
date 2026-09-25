@@ -118,7 +118,7 @@ export class ProgressService {
 
   async getBadges(clerkId: string) {
     const stored = await this.db.userBadge.findMany({ where: { clerkId } });
-    const unlockedIds = new Set(stored.map((b) => b.badgeId));
+    const _unlockedIds = new Set(stored.map((b) => b.badgeId));
     // đảm bảo đánh giá lại trước khi trả
     await this.evaluateBadges(clerkId);
     const refreshed = await this.db.userBadge.findMany({ where: { clerkId } });
@@ -136,7 +136,7 @@ export class ProgressService {
     for (const r of activityRows) map[formatKey(r.date)] = r.count;
     const streak = calcStreakFromMap(map);
     const solved = await this.getSolvedMap(clerkId);
-    const topicsCovered = await this.db.solvedProblem.findMany({ where: { clerkId }, distinct: ['slug'] });
+    const _topicsCovered = await this.db.solvedProblem.findMany({ where: { clerkId }, distinct: ['slug'] });
     // điều kiện
     const checks: Record<string, boolean> = {
       streak_3: streak >= 3,

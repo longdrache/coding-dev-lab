@@ -1,6 +1,5 @@
-import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { Module, NestModule } from '@nestjs/common';
+import rateLimit from 'express-rate-limit';
 import { AppController } from './app.controller.ts';
 import { AppService } from './app.service.ts';
 import { Judge0Controller } from './judge0.controller.ts';
@@ -18,11 +17,18 @@ import { ProblemsModule } from './problems/problems.module.ts';
 import { SubmissionsModule } from './submissions/submissions.module.ts';
 import { QnaModule } from './qna/qna.module.ts';
 import { AdminModule } from './admin/admin.module.ts';
+
+const rateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 100,
+  message: 'Quá nhiều yêu cầu, vui lòng thử lại sau 1 phút',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 @Module({
   imports: [
     ConfigModule.forRoot({ envFilePath: '.env', isGlobal: true }),
-    // Giới hạn chung 100 req/phút/IP (bộ nhớ theo instance — đủ chặn abuse cơ bản)
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     DatabaseModule,
     AdminModule,
     PresenceModule,
@@ -39,7 +45,10 @@ import { AdminModule } from './admin/admin.module.ts';
     ClerkAuthGuard,
     RolesGuard,
     PremiumService,
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: any) {
+    consumer.apply(rateLimiter).forRoutes('*');
+  }
+}

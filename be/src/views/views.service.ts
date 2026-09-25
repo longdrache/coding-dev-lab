@@ -16,9 +16,13 @@ export class ViewsService {
     return createHash('sha256').update(`${salt}:${ip}`).digest('hex');
   }
 
-  async track(ipHash: string, path: string) {
+  async track(ipHash: string, path: string, clerkId?: string) {
     return this.db.pageView.create({
-      data: { ipHash, path: path.slice(0, 200) || '/' },
+      data: {
+        ipHash,
+        path: path.slice(0, 200) || '/',
+        clerkId: typeof clerkId === 'string' && clerkId ? clerkId.slice(0, 64) : null,
+      },
     });
   }
 
@@ -36,14 +40,24 @@ export class ViewsService {
     const yearStart = new Date(Date.UTC(vn.getUTCFullYear(), 0, 1) - VN_OFFSET_MS);
     const seriesStart = new Date(dayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
 
-    const [dayRows, monthRows, yearRows, series] = await Promise.all([
-      this.db.pageView.groupBy({ by: ['ipHash'], _count: { ipHash: true }, where: { createdAt: { gte: dayStart } } }),
-      this.db.pageView.groupBy({ by: ['ipHash'], _count: { ipHash: true }, where: { createdAt: { gte: monthStart } } }),
-      this.db.pageView.groupBy({ by: ['ipHash'], _count: { ipHash: true }, where: { createdAt: { gte: yearStart } } }),
+    // Unique = user khác nhau: ưu tiên clerkId (đăng nhập), khách thì hash IP.
+    // Nhiều user chung 1 IP (NAT/công ty) vẫn đếm riêng từng người.
+    type UniqueRow = { uniques: number };
+    const uniqueSince = (start: Date) =>
+      this.db.$queryRaw<UniqueRow[]>`
+        SELECT COUNT(DISTINCT COALESCE("clerkId", "ipHash"))::int AS uniques
+        FROM "PageView"
+        WHERE "createdAt" >= ${start}
+      `.then((rows) => rows[0]?.uniques ?? 0);
+
+    const [dayU, monthU, yearU, series] = await Promise.all([
+      uniqueSince(dayStart),
+      uniqueSince(monthStart),
+      uniqueSince(yearStart),
       this.db.$queryRaw<DayRow[]>`
         SELECT to_char((("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS views,
-               COUNT(DISTINCT "ipHash")::int AS uniques
+               COUNT(DISTINCT COALESCE("clerkId", "ipHash"))::int AS uniques
         FROM "PageView"
         WHERE "createdAt" >= ${seriesStart}
         GROUP BY 1
@@ -57,9 +71,9 @@ export class ViewsService {
     ]);
 
     return {
-      today: { views: dayViews, uniques: dayRows.length },
-      month: { views: monthViews, uniques: monthRows.length },
-      year: { views: yearViews, uniques: yearRows.length },
+      today: { views: dayViews, uniques: dayU },
+      month: { views: monthViews, uniques: monthU },
+      year: { views: yearViews, uniques: yearU },
       series30d: series,
     };
   }

@@ -17,13 +17,14 @@ export class ViewsController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async track(
     @Req() req: TrackRequest,
-    @Body() body: { path?: unknown },
+    @Body() body: { path?: unknown; clerkId?: unknown },
   ) {
     const forwarded = req.headers?.['x-forwarded-for'];
     const first = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0]?.trim();
     const ip = first || req.ip || 'unknown';
     const path = typeof body?.path === 'string' ? body.path : '/';
-    await this.views.track(this.views.hashIp(ip), path);
+    const clerkId = typeof body?.clerkId === 'string' ? body.clerkId : undefined;
+    await this.views.track(this.views.hashIp(ip), path, clerkId);
     return { ok: true };
   }
 }

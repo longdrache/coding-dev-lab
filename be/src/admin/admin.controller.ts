@@ -16,7 +16,24 @@ import { AdminService } from './admin.service.ts';
 import { AdminGuard } from './admin.guard.ts';
 import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
-import type { Response, Request } from 'express';
+
+type CookieOptions = {
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'lax' | 'strict' | 'none';
+  maxAge?: number;
+  path?: string;
+};
+
+type CookieResponse = {
+  cookie(name: string, value: string, options?: CookieOptions): unknown;
+  clearCookie(name: string, options?: CookieOptions): unknown;
+};
+
+type QueryRequest = {
+  url?: string;
+  headers?: Record<string, string | string[] | undefined>;
+};
 
 @Controller('api/admin')
 export class AdminController {
@@ -25,7 +42,7 @@ export class AdminController {
   @Post('login')
   @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  async login(@Body() b: { email: string; password: string }, @Res({ passthrough: true }) res: Response) {
+  async login(@Body() b: { email: string; password: string }, @Res({ passthrough: true }) res: CookieResponse) {
     const token = await this.svc.login(b.email, b.password);
     // Trả token trong body để admin proxy (khác domain BE) tự set cookie
     // trên domain admin; giữ Set-Cookie cho client cùng-site/local.
@@ -43,7 +60,7 @@ export class AdminController {
   }
 
   @Post('logout')
-  logout(@Res({ passthrough: true }) res: Response) {
+  logout(@Res({ passthrough: true }) res: CookieResponse) {
     const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
     res.clearCookie('admin_token', {
       path: '/',
@@ -56,7 +73,7 @@ export class AdminController {
 
   @Get('me')
   @UseGuards(AdminGuard)
-  me(@Req() req: Request) {
+  me(@Req() req: QueryRequest) {
     return (req as any).admin;
   }
 
@@ -86,8 +103,8 @@ export class AdminController {
 
   @Get('users')
   @UseGuards(AdminGuard)
-  listUsers(@Req() req: Request) {
-    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+  listUsers(@Req() req: QueryRequest) {
+    const url = new URL(req.url ?? "", `http://${req.headers?.host ?? "localhost"}`);
     const limit = Number(url.searchParams.get("limit") ?? "20");
     const offset = Number(url.searchParams.get("offset") ?? "0");
     const q = url.searchParams.get("q") ?? url.searchParams.get("query") ?? undefined;
@@ -96,8 +113,8 @@ export class AdminController {
 
   @Get('submissions')
   @UseGuards(AdminGuard)
-  listSubmissions(@Req() req: Request) {
-    const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+  listSubmissions(@Req() req: QueryRequest) {
+    const url = new URL(req.url ?? "", `http://${req.headers?.host ?? "localhost"}`);
     const limit = Number(url.searchParams.get("limit") ?? "20");
     const offset = Number(url.searchParams.get("offset") ?? "0");
     const problemSlug = url.searchParams.get("problemSlug") ?? undefined;

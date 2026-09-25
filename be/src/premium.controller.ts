@@ -8,14 +8,16 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { AuthenticatedRequest } from './auth/auth.types.ts';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
 import { Roles } from './auth/roles.decorator.ts';
-import type { AuthenticatedRequest } from './auth/auth.types.ts';
 import { PremiumService, type PremiumPlan } from './premium.service.ts';
 
-type RawBodyRequest = Request & { rawBody?: Buffer };
+type RawBodyRequest = {
+  rawBody?: Buffer;
+  body?: unknown;
+};
 
 @Controller('api/premium')
 export class PremiumController {
@@ -116,7 +118,7 @@ export class PremiumController {
 
   @Post('sweep-expired')
   async sweepExpired(
-    @Req() request: Request,
+    @Req() request: RawBodyRequest,
     @Headers('x-cron-secret') cronSecret?: string,
   ) {
     // Chỉ cron server (giữ CRON_SECRET) được gọi. Bỏ nhánh dryRun ẩn danh

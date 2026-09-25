@@ -31,6 +31,8 @@ function isPublicIp(ip: string): boolean {
   if (ip === '::1' || ip === '::ffff:127.0.0.1') return false;
   return ip.includes(':');
 }
+
+function toDateOnly(key: string): Date {
   // key dd-mm-yyyy -> yyyy-mm-dd for Date
   const [day, month, year] = key.split('-');
   return new Date(`${year}-${month}-${day}T00:00:00.000Z`);

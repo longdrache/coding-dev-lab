@@ -16,6 +16,26 @@ function toDateOnly(key: string): Date {
   return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
 }
 
+function isPublicIp(ip: string): boolean {
+  if (ip === 'unknown') return false;
+  const v4 = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) {
+    const [, a, b] = v4.map(Number);
+    if (a === 10) return false;
+    if (a === 127) return false;
+    if (a === 172 && b >= 16 && b <= 31) return false;
+    if (a === 192 && b === 168) return false;
+    if (a === 0 || a >= 224) return false;
+    return true;
+  }
+  if (ip === '::1' || ip === '::ffff:127.0.0.1') return false;
+  return ip.includes(':');
+}
+  // key dd-mm-yyyy -> yyyy-mm-dd for Date
+  const [day, month, year] = key.split('-');
+  return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+}
+
 function formatKey(date: Date): string {
   const day = String(date.getUTCDate()).padStart(2, '0');
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -45,8 +65,31 @@ export class ActivityService {
       });
       if (!recent) {
         const salt = process.env.IP_HASH_SALT ?? 'gocode-views';
-        const ipHash = createHash('sha256').update(`${salt}:${meta?.ip ?? 'unknown'}`).digest('hex');
-        const country = (meta?.country ?? '').toUpperCase().slice(0, 2);
+        const ip = meta?.ip ?? 'unknown';
+        const ipHash = createHash('sha256').update(`${salt}:${ip}`).digest('hex');
+        // Ưu tiên header Vercel (miễn phí, chính xác); không có thì tra
+        // từ IP qua ip-api (public IP mới tra được, localhost luôn XX)
+        let country = (meta?.country ?? '').toUpperCase().slice(0, 2);
+        if (!country && isPublicIp(ip)) {
+          try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 3000);
+            const res = await fetch(
+              `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,countryCode`,
+              { signal: ctrl.signal },
+            );
+            clearTimeout(timer);
+            const data = (await res.json().catch(() => null)) as {
+              status?: string;
+              countryCode?: string;
+            } | null;
+            if (data?.status === 'success' && data.countryCode) {
+              country = data.countryCode.toUpperCase().slice(0, 2);
+            }
+          } catch {
+            // tra cứu lỗi thì để trống, không vỡ login
+          }
+        }
         await this.db.loginEvent.create({
           data: { clerkId, ipHash, country },
         });

@@ -51,41 +51,41 @@ export class ActivityService {
       create: { clerkId, date, count: 0 },
       update: {},
     });
-    // Log lần đăng nhập + quốc gia (tối đa 1 dòng/user/giờ để khỏi spam
-    // vì FE gọi endpoint này mỗi lần vào trang khi đã đăng nhập)
+    // Log lần đăng nhập + quốc gia. Chống spam: bỏ qua nếu đã có dòng
+    // trong 1h qua, TRỪ khi quốc gia đổi (đi nước khác/bật VPN thì vẫn ghi)
     try {
+      const salt = process.env.IP_HASH_SALT ?? 'gocode-views';
+      const ip = meta?.ip ?? 'unknown';
+      const ipHash = createHash('sha256').update(`${salt}:${ip}`).digest('hex');
+      // Ưu tiên header Vercel (miễn phí, chính xác); không có thì tra
+      // từ IP qua ip-api (public IP mới tra được, localhost luôn XX)
+      let country = (meta?.country ?? '').toUpperCase().slice(0, 2);
+      if (!country && isPublicIp(ip)) {
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 3000);
+          const res = await fetch(
+            `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,countryCode`,
+            { signal: ctrl.signal },
+          );
+          clearTimeout(timer);
+          const data = (await res.json().catch(() => null)) as {
+            status?: string;
+            countryCode?: string;
+          } | null;
+          if (data?.status === 'success' && data.countryCode) {
+            country = data.countryCode.toUpperCase().slice(0, 2);
+          }
+        } catch {
+          // tra cứu lỗi thì để trống, không vỡ login
+        }
+      }
       const since = new Date(Date.now() - 60 * 60 * 1000);
       const recent = await this.db.loginEvent.findFirst({
         where: { clerkId, createdAt: { gte: since } },
         orderBy: { createdAt: 'desc' },
       });
-      if (!recent) {
-        const salt = process.env.IP_HASH_SALT ?? 'gocode-views';
-        const ip = meta?.ip ?? 'unknown';
-        const ipHash = createHash('sha256').update(`${salt}:${ip}`).digest('hex');
-        // Ưu tiên header Vercel (miễn phí, chính xác); không có thì tra
-        // từ IP qua ip-api (public IP mới tra được, localhost luôn XX)
-        let country = (meta?.country ?? '').toUpperCase().slice(0, 2);
-        if (!country && isPublicIp(ip)) {
-          try {
-            const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 3000);
-            const res = await fetch(
-              `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,countryCode`,
-              { signal: ctrl.signal },
-            );
-            clearTimeout(timer);
-            const data = (await res.json().catch(() => null)) as {
-              status?: string;
-              countryCode?: string;
-            } | null;
-            if (data?.status === 'success' && data.countryCode) {
-              country = data.countryCode.toUpperCase().slice(0, 2);
-            }
-          } catch {
-            // tra cứu lỗi thì để trống, không vỡ login
-          }
-        }
+      if (!recent || (country && recent.country !== country)) {
         await this.db.loginEvent.create({
           data: { clerkId, ipHash, country },
         });

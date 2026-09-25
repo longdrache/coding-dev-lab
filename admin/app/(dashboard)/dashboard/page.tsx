@@ -261,7 +261,7 @@ export default function DashboardPage() {
     { label: "Đang trực tuyến", value: stats.online ?? "—", sub: "người dùng online" },
     { label: "Bài tập", value: stats.counts.problems, sub: "thử thách xuất bản" },
     { label: "Hỏi đáp", value: stats.counts.qna, sub: "câu hỏi chờ xem" },
-    { label: "Lượt nộp", value: stats.counts.submissions, sub: "bài đã nộp", series: daily.map((d) => d.submits), color: "fill-slate-900" },
+    { label: "Lượt nộp", value: stats.counts.submissions, sub: `+${stats.todaySubmits ?? daily[daily.length - 1]?.submits ?? 0} hôm nay`, series: daily.map((d) => d.submits), color: "fill-slate-900" },
     { label: "Lượt chạy", value: runs30d, sub: `+${stats.todayRuns ?? daily[daily.length - 1]?.runs ?? 0} hôm nay`, series: daily.map((d) => d.runs), color: "fill-emerald-500" },
   ];
 

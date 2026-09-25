@@ -12,7 +12,7 @@ type ViewDay = { date: string; views: number; uniques: number };
 
 function ChartViews({ series }: { series: ViewDay[] }) {
   const [hover, setHover] = useState<number | null>(null);
-  const max = series.length ? Math.max(...series.map((d) => d.views), 1) : 1;
+  const max = series.length ? Math.max(...series.flatMap((d) => [d.views, d.uniques]), 1) : 1;
   const ticks = [max, Math.ceil(max / 2), 0];
   const hovered = hover !== null ? series[hover] : null;
   const hoverLabel = hovered?.date
@@ -49,14 +49,16 @@ function ChartViews({ series }: { series: ViewDay[] }) {
           )}
           <div className="relative flex h-48 items-end gap-[3px] pt-6">
             {series.map((d, idx) => {
-              const h = Math.max(2, Math.round((d.views / max) * 100));
+              const hv = Math.max(2, Math.round((d.views / max) * 100));
+              const hu = Math.max(2, Math.round((d.uniques / max) * 100));
               return (
                 <div
                   key={idx}
-                  className={`flex h-full flex-1 cursor-crosshair items-end justify-center rounded transition-colors ${hover === idx ? "bg-slate-100" : ""}`}
+                  className={`flex h-full flex-1 cursor-crosshair items-end justify-center gap-[2px] rounded transition-colors ${hover === idx ? "bg-slate-100" : ""}`}
                   onMouseEnter={() => setHover(idx)}
                 >
-                  <div className="w-full max-w-4 rounded-t bg-emerald-600" style={{ height: `${h}%`, minHeight: 2 }} />
+                  <div className="w-full max-w-3 rounded-t bg-emerald-600" style={{ height: `${hv}%`, minHeight: 2 }} />
+                  <div className="w-full max-w-3 rounded-t bg-sky-500" style={{ height: `${hu}%`, minHeight: 2 }} />
                 </div>
               );
             })}

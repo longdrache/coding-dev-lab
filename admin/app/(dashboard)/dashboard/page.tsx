@@ -218,42 +218,10 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ))}
-      <Card className="border-slate-200 bg-white md:col-span-3">
-        <CardHeader className="pb-2">
-          <CardTitle className="font-display text-xl font-semibold text-slate-900">Truy cập gần đây</CardTitle>
-          <p className="mt-1 text-sm text-slate-500">Cả user lẫn khách vãng lai</p>
-        </CardHeader>
-        <CardContent className="pt-2">
-          {(recentViews?.length ?? 0) === 0 ? (
-            <p className="py-4 text-center text-sm text-slate-500">Chưa có lượt truy cập nào.</p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {recentViews!.map((r, i) => (
-                <li key={`${r.path}-${i}`} className="flex h-11 items-center justify-between gap-3 px-2 text-sm">
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px] font-bold ${r.kind === "user" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                      {r.kind === "user" ? "USER" : "KHÁCH"}
-                    </span>
-                    <span className="truncate font-mono text-slate-900">{r.path}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-3">
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-600">
-                      {r.country === "XX" ? "—" : r.country}
-                    </span>
-                    <span className="font-mono text-xs tabular-nums text-slate-500">
-                      {new Date(r.at).toLocaleString("vi-VN", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   const daily = stats.daily ?? [];
   const maxDaily = daily.length
@@ -453,6 +421,39 @@ export default function DashboardPage() {
                     <span className="truncate font-medium text-slate-900">{r.name}</span>
                   </span>
                   <span className="flex items-center gap-3">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-600">
+                      {r.country === "XX" ? "—" : r.country}
+                    </span>
+                    <span className="font-mono text-xs tabular-nums text-slate-500">
+                      {new Date(r.at).toLocaleString("vi-VN", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200 bg-white md:col-span-3">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-display text-xl font-semibold text-slate-900">Truy cập gần đây</CardTitle>
+          <p className="mt-1 text-sm text-slate-500">Cả user lẫn khách vãng lai</p>
+        </CardHeader>
+        <CardContent className="pt-2">
+          {(recentViews?.length ?? 0) === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-500">Chưa có lượt truy cập nào.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {recentViews!.map((r, i) => (
+                <li key={`${r.path}-${i}`} className="flex h-11 items-center justify-between gap-3 px-2 text-sm">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px] font-bold ${r.kind === "user" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                      {r.kind === "user" ? "USER" : "KHÁCH"}
+                    </span>
+                    <span className="truncate font-mono text-slate-900">{r.path}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-600">
                       {r.country === "XX" ? "—" : r.country}
                     </span>

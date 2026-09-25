@@ -32,12 +32,6 @@ function isPublicIp(ip: string): boolean {
   return ip.includes(':');
 }
 
-function toDateOnly(key: string): Date {
-  // key dd-mm-yyyy -> yyyy-mm-dd for Date
-  const [day, month, year] = key.split('-');
-  return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
-}
-
 function formatKey(date: Date): string {
   const day = String(date.getUTCDate()).padStart(2, '0');
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');

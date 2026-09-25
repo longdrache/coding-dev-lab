@@ -1,4 +1,5 @@
 import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { clientIp } from '../common/geo.ts';
 import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { ViewsService } from './views.service.ts';
 
@@ -19,13 +20,11 @@ export class ViewsController {
     @Req() req: TrackRequest,
     @Body() body: { path?: unknown; clerkId?: unknown; visitorId?: unknown },
   ) {
-    const forwarded = req.headers?.['x-forwarded-for'];
-    const first = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0]?.trim();
-    const ip = first || req.ip || 'unknown';
+    const ip = clientIp(req.headers, req.ip);
     const path = typeof body?.path === 'string' ? body.path : '/';
     const clerkId = typeof body?.clerkId === 'string' ? body.clerkId : undefined;
     const visitorId = typeof body?.visitorId === 'string' ? body.visitorId : undefined;
-    await this.views.track(this.views.hashIp(ip), path, clerkId, visitorId);
+    await this.views.track(this.views.hashIp(ip), path, clerkId, visitorId, req.headers, ip);
     return { ok: true };
   }
 }

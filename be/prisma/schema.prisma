@@ -139,6 +139,7 @@ model PageView {
   clerkId   String?
   visitorId String?
   ipHash    String
+  country   String   @default("")
   path      String   @default("/")
   createdAt DateTime @default(now())
 

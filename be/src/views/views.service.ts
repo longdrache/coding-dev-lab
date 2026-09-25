@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { DatabaseService } from '../database/database.service.ts';
+import { headerCountry, lookupCountry } from '../common/geo.ts';
 
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 
@@ -16,15 +17,25 @@ export class ViewsService {
     return createHash('sha256').update(`${salt}:${ip}`).digest('hex');
   }
 
-  async track(ipHash: string, path: string, clerkId?: string, visitorId?: string) {
+  async track(
+    ipHash: string,
+    path: string,
+    clerkId?: string,
+    visitorId?: string,
+    headers?: Record<string, string | string[] | undefined>,
+    ip?: string,
+  ) {
     const clean = (v: unknown) =>
       typeof v === 'string' && v ? v.slice(0, 64) : null;
+    let country = headerCountry(headers);
+    if (!country && ip) country = await lookupCountry(ip);
     return this.db.pageView.create({
       data: {
         ipHash,
         path: path.slice(0, 200) || '/',
         clerkId: clean(clerkId),
         visitorId: clean(visitorId),
+        country,
       },
     });
   }

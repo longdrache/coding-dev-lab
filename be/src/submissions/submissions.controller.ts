@@ -1,11 +1,11 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
 import { SubmissionsService, type CreateSubmissionDto } from './submissions.service.ts';
 
 @Controller('api/history')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, ThrottleGuard)
 export class SubmissionsController {
   constructor(private readonly subs: SubmissionsService) {}
 

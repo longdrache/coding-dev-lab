@@ -12,9 +12,9 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
 import { AdminService } from './admin.service.ts';
 import { AdminGuard } from './admin.guard.ts';
+import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
 import type { Response, Request } from 'express';
 
@@ -23,6 +23,7 @@ export class AdminController {
   constructor(private svc: AdminService) {}
 
   @Post('login')
+  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async login(@Body() b: { email: string; password: string }, @Res({ passthrough: true }) res: Response) {
     const token = await this.svc.login(b.email, b.password);

@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottleGuard } from './common/throttle.guard.ts';
 import { Judge0Service } from './judge0.service.ts';
 import type {
   BatchSubmissionItem,
@@ -35,7 +35,7 @@ function assertValidItem(item: BatchSubmissionItem) {
 }
 
 @Controller('api/submissions')
-@UseGuards(ClerkAuthGuard, RolesGuard)
+@UseGuards(ClerkAuthGuard, RolesGuard, ThrottleGuard)
 @Roles('user', 'admin', 'vip')
 export class Judge0Controller {
   constructor(private readonly judge0Service: Judge0Service) {}

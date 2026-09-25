@@ -1,5 +1,5 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Req, UseGuards } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { ProblemsService } from './problems.service.ts';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
@@ -21,7 +21,7 @@ export class ProblemsController {
   }
 
   @Post(':slug/submit')
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, ThrottleGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async submit(
     @Param('slug') slug: string,

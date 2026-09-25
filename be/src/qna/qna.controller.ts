@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { QnaService } from './qna.service.ts';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
@@ -9,6 +9,7 @@ export class QnaController {
   constructor(private readonly qna: QnaService) {}
 
   @Post()
+  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async create(
     @Body() body: { name: string; email: string; question: string; message?: string },

@@ -139,6 +139,10 @@ export class Judge0Service {
   private async request(path: string, options?: RequestInit) {
     let response: Response;
 
+    // Token auth cho reverse-proxy trước Judge0 (nginx check X-Auth-Token).
+    // Không có token = Judge0 public, ai cũng chấm ké được.
+    const apiToken = process.env.JUDGE0_API_TOKEN?.trim();
+
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
         ...options,
@@ -146,6 +150,7 @@ export class Judge0Service {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
+          ...(apiToken ? { 'X-Auth-Token': apiToken } : {}),
           ...options?.headers,
         },
       });
@@ -156,6 +161,12 @@ export class Judge0Service {
     }
 
     const body = await response.json().catch(() => null);
+
+    if (response.status === 401) {
+      throw new BadGatewayException(
+        'Judge0 từ chối (401) — sai/thiếu JUDGE0_API_TOKEN',
+      );
+    }
 
     if (response.status === 404) {
       throw new NotFoundException('Không tìm thấy submission trong Judge0');

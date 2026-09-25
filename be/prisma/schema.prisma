@@ -137,6 +137,7 @@ model StripeEvent {
 model PageView {
   id        String   @id @default(cuid())
   clerkId   String?
+  visitorId String?
   ipHash    String
   path      String   @default("/")
   createdAt DateTime @default(now())
@@ -144,4 +145,5 @@ model PageView {
   @@index([createdAt])
   @@index([ipHash, createdAt])
   @@index([clerkId, createdAt])
+  @@index([visitorId, createdAt])
 }

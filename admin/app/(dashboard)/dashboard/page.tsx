@@ -285,17 +285,24 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {[
-          { label: "Runs hôm nay", value: stats.todayRuns ?? 0 },
-          { label: "Submits hôm nay", value: stats.todaySubmits ?? 0 },
-          { label: "Runs tháng này", value: stats.monthRuns ?? 0 },
-          { label: "Submits tháng này", value: stats.monthSubmits ?? 0 },
+          { label: "Lượt chạy", today: stats.todayRuns ?? 0, month: stats.monthRuns ?? 0 },
+          { label: "Lượt nộp", today: stats.todaySubmits ?? 0, month: stats.monthSubmits ?? 0 },
         ].map((c) => (
           <Card key={c.label} className="border-slate-200 bg-white">
-            <CardContent className="flex items-baseline justify-between gap-2 p-5">
+            <CardContent className="p-5">
               <p className="text-sm text-slate-500">{c.label}</p>
-              <p className="font-mono text-[28px] font-bold leading-none tabular-nums text-slate-900">{String(c.value)}</p>
+              <div className="mt-2 flex items-baseline gap-6">
+                <p className="font-mono text-[28px] font-bold leading-none tabular-nums text-slate-900">
+                  {String(c.today)}
+                  <span className="ml-2 align-middle font-sans text-xs font-medium text-slate-400">hôm nay</span>
+                </p>
+                <p className="font-mono text-[28px] font-bold leading-none tabular-nums text-slate-400">
+                  {String(c.month)}
+                  <span className="ml-2 align-middle font-sans text-xs font-medium text-slate-400">tháng này</span>
+                </p>
+              </div>
             </CardContent>
           </Card>
         ))}

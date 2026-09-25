@@ -19,5 +19,6 @@
     "strictPropertyInitialization": false,
     "rewriteRelativeImportExtensions": true,
     "types": ["vitest/globals", "node"]
-  }
+  },
+  "include": ["src/**/*", "src/common/types/express-extensions.ts"]
 }

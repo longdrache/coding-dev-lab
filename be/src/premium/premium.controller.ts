@@ -8,10 +8,10 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import type { AuthenticatedRequest } from './auth/auth.types.ts';
-import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
-import { RolesGuard } from './auth/roles.guard.ts';
-import { Roles } from './auth/roles.decorator.ts';
+import type { AuthenticatedRequest } from '../auth/auth.types.ts';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
+import { RolesGuard } from '../auth/roles.guard.ts';
+import { Roles } from '../auth/roles.decorator.ts';
 import { PremiumService, type PremiumPlan } from './premium.service.ts';
 
 type RawBodyRequest = {

@@ -22,15 +22,15 @@ function ChartViews({ series }: { series: ViewDay[] }) {
   return (
     <div className="flex gap-3">
       <div className="flex h-48 w-8 shrink-0 flex-col justify-between py-0 text-right font-mono text-[12px] tabular-nums text-slate-500">
-        {ticks.map((t) => (
-          <span key={t}>{t}</span>
+        {ticks.map((t, i) => (
+          <span key={`tick-${i}`}>{t}</span>
         ))}
       </div>
       <div className="min-w-0 flex-1">
         <div className="relative" onMouseLeave={() => setHover(null)}>
           <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
-            {ticks.map((t) => (
-              <div key={t} className="border-t border-slate-100" />
+            {ticks.map((t, i) => (
+              <div key={`grid-${i}`} className="border-t border-slate-100" />
             ))}
           </div>
           {hovered && (
@@ -90,15 +90,15 @@ function ChartRunsSubmits({ daily, maxDaily }: { daily: DayStat[]; maxDaily: num
   return (
     <div className="flex gap-3">
       <div className="flex h-48 w-8 shrink-0 flex-col justify-between py-0 text-right font-mono text-[12px] tabular-nums text-slate-500">
-        {ticks.map((t) => (
-          <span key={t}>{t}</span>
+        {ticks.map((t, i) => (
+          <span key={`tick-${i}`}>{t}</span>
         ))}
       </div>
       <div className="min-w-0 flex-1">
         <div className="relative" onMouseLeave={() => setHover(null)}>
           <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
-            {ticks.map((t) => (
-              <div key={t} className="border-t border-slate-100" />
+            {ticks.map((t, i) => (
+              <div key={`grid-${i}`} className="border-t border-slate-100" />
             ))}
           </div>
           {hovered && (

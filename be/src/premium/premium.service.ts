@@ -7,7 +7,7 @@ import {
 import { createClerkClient } from '@clerk/backend';
 import Stripe from 'stripe';
 import 'dotenv/config';
-import { DatabaseService } from './database/database.service.ts';
+import { DatabaseService } from '../database/database.service.ts';
 export type PremiumPlan = 'daily' | 'monthly' | 'yearly';
 
 const plans: Record<

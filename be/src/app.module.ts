@@ -6,8 +6,8 @@ import { Judge0Controller } from './judge0/judge0.controller.ts';
 import { Judge0Service } from './judge0/judge0.service.ts';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
-import { PremiumController } from './premium.controller.ts';
-import { PremiumService } from './premium.service.ts';
+import { PremiumController } from './premium/premium.controller.ts';
+import { PremiumService } from './premium/premium.service.ts';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './database/database.module.ts';
 import { PresenceModule } from './presence/presence.module.ts';
@@ -41,8 +41,9 @@ const rateLimiter = rateLimit({
     ViewsModule,
     QnaModule,
     Judge0Module,
+    PresenceModule
   ],
-  controllers: [AppController, PremiumController],
+  controllers: [AppController],
   providers: [
     AppService,
     ClerkAuthGuard,

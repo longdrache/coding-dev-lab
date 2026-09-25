@@ -111,6 +111,3 @@ FE: Next.js 16, React 19, TypeScript, Tailwind v4, shadcn, Clerk, SWR, R3F, Fram
 GSAP, Monaco • BE: NestJS 12, Prisma 7, Neon Postgres, Stripe, Nodemailer/Mailtrap •
 Infra: Vercel, pnpm, Judge0 Docker
 
-## License
-
-MIT

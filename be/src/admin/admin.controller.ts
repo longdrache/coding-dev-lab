@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { AdminService } from './admin.service.ts';
 import { AdminGuard } from './admin.guard.ts';
+import { ViewsService } from '../views/views.service.ts';
 import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
 
@@ -37,7 +38,10 @@ type QueryRequest = {
 
 @Controller('api/admin')
 export class AdminController {
-  constructor(private svc: AdminService) {}
+  constructor(
+    private svc: AdminService,
+    private views: ViewsService,
+  ) {}
 
   @Post('login')
   @UseGuards(ThrottleGuard)
@@ -81,6 +85,12 @@ export class AdminController {
   @UseGuards(AdminGuard)
   getStats() {
     return this.svc.getStats();
+  }
+
+  @Get('analytics/views')
+  @UseGuards(AdminGuard)
+  getViewsAnalytics() {
+    return this.views.getAnalytics();
   }
 
   @Get('qna')

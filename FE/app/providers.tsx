@@ -1,6 +1,7 @@
 "use client";
 
 import { SWRConfig, type Cache } from "swr";
+import ViewTracker from "./ui/ViewTracker";
 
 const CACHE_KEY = "gocode-swr-cache-v2";
 const TTL_MS = 24 * 60 * 60 * 1000; // cache dùng trong 1 ngày
@@ -84,6 +85,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+      <ViewTracker />
     </SWRConfig>
   );
 }

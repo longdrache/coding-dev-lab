@@ -8,6 +8,77 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 type DayStat = { date: string; runs: number; submits: number };
 
+type ViewDay = { date: string; views: number; uniques: number };
+
+function ChartViews({ series }: { series: ViewDay[] }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const max = series.length ? Math.max(...series.map((d) => d.views), 1) : 1;
+  const ticks = [max, Math.ceil(max / 2), 0];
+  const hovered = hover !== null ? series[hover] : null;
+  const hoverLabel = hovered?.date
+    ? new Date(hovered.date).toLocaleDateString("vi-VN", { weekday: "short", day: "numeric", month: "short" })
+    : "";
+
+  return (
+    <div className="flex gap-3">
+      <div className="flex h-48 w-8 shrink-0 flex-col justify-between py-0 text-right font-mono text-[12px] tabular-nums text-slate-500">
+        {ticks.map((t) => (
+          <span key={t}>{t}</span>
+        ))}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="relative" onMouseLeave={() => setHover(null)}>
+          <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
+            {ticks.map((t) => (
+              <div key={t} className="border-t border-slate-100" />
+            ))}
+          </div>
+          {hovered && (
+            <div
+              className="pointer-events-none absolute -top-1 z-10 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-slate-50 shadow-[0_8px_32px_rgba(15,23,42,0.1)]"
+              style={{ left: `min(max(${(hover! + 0.5) * (100 / series.length)}%, 70px), calc(100% - 70px))` }}
+            >
+              <p className="font-medium">{hoverLabel}</p>
+              <p className="mt-1 flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-emerald-500" /> {hovered.views} lượt xem
+              </p>
+              <p className="mt-0.5 flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-sky-500" /> {hovered.uniques} IP riêng
+              </p>
+            </div>
+          )}
+          <div className="relative flex h-48 items-end gap-[3px] pt-6">
+            {series.map((d, idx) => {
+              const h = Math.max(2, Math.round((d.views / max) * 100));
+              return (
+                <div
+                  key={idx}
+                  className={`flex h-full flex-1 cursor-crosshair items-end justify-center rounded transition-colors ${hover === idx ? "bg-slate-100" : ""}`}
+                  onMouseEnter={() => setHover(idx)}
+                >
+                  <div className="w-full max-w-4 rounded-t bg-emerald-600" style={{ height: `${h}%`, minHeight: 2 }} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mt-1 flex gap-[3px]">
+          {series.map((d, idx) => {
+            const show = idx % 5 === 0 || idx === series.length - 1;
+            return (
+              <span key={idx} className="flex-1 truncate text-center text-[12px] text-slate-500">
+                {show && d.date
+                  ? new Date(d.date).toLocaleDateString("vi-VN", { day: "numeric", month: "numeric" })
+                  : ""}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChartRunsSubmits({ daily, maxDaily }: { daily: DayStat[]; maxDaily: number }) {
   const [hover, setHover] = useState<number | null>(null);
   const ticks = [maxDaily, Math.ceil(maxDaily / 2), 0];
@@ -90,9 +161,19 @@ type Stats = {
   topProblems?: Array<{ problemSlug: string; _count?: { problemSlug: number }; count?: number }>;
 };
 
+type ViewsAnalytics = {
+  today: { views: number; uniques: number };
+  month: { views: number; uniques: number };
+  year: { views: number; uniques: number };
+  series30d: ViewDay[];
+};
+
 export default function DashboardPage() {
   const { data: stats, error } = useSWR<Stats>("/api/admin/stats", swrFetcher, {
     refreshInterval: 30000, // online counter tự tươi mỗi 30s
+  });
+  const { data: views } = useSWR<ViewsAnalytics>("/api/admin/analytics/views", swrFetcher, {
+    refreshInterval: 60000,
   });
 
   if (error) {
@@ -142,11 +223,62 @@ export default function DashboardPage() {
 
   const topProblems = stats.topProblems ?? [];
 
+  // Lấp đủ 30 ngày cho chart visits (ngày không data = 0)
+  const viewsSeries: ViewDay[] = (() => {
+    const map = new Map((views?.series30d ?? []).map((d) => [d.date, d]));
+    const out: ViewDay[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      out.push(map.get(key) ?? { date: key, views: 0, uniques: 0 });
+    }
+    return out;
+  })();
+
+  const visitTiles = [
+    { label: "Hôm nay", views: views?.today.views ?? "—", uniques: views?.today.uniques ?? "—" },
+    { label: "Tháng này", views: views?.month.views ?? "—", uniques: views?.month.uniques ?? "—" },
+    { label: "Năm nay", views: views?.year.views ?? "—", uniques: views?.year.uniques ?? "—" },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Dashboard</h1>
         <p className="mt-1 text-sm text-slate-500">Tổng quan hoạt động hệ thống</p>
+      </div>
+
+      {/* Bento: chart visits lớn + 3 ô ngày/tháng/năm */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <Card className="border-slate-200 bg-white md:col-span-3">
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle className="font-display text-xl font-semibold text-slate-900">Lượt truy cập 30 ngày</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">Pageview theo IP (lưu hash, không lưu IP thô)</p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                <span className="size-2 rounded-full bg-emerald-600" /> Views
+                <span className="size-2 rounded-full bg-sky-500" /> IP riêng
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ChartViews series={viewsSeries} />
+          </CardContent>
+        </Card>
+        <div className="grid grid-cols-3 gap-4 md:grid-cols-1">
+          {visitTiles.map((t) => (
+            <Card key={t.label} className="border-slate-200 bg-slate-900 text-white">
+              <CardContent className="p-5">
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{t.label}</p>
+                <p className="mt-1 font-mono text-[28px] font-bold leading-none tabular-nums">{String(t.views)}</p>
+                <p className="mt-1.5 font-mono text-xs tabular-nums text-slate-400">{String(t.uniques)} IP riêng</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
@@ -161,7 +293,8 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <Card className="border-slate-200 bg-white">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <Card className="border-slate-200 bg-white md:col-span-2">
         <CardHeader className="pb-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -213,6 +346,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   );
 }

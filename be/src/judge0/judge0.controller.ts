@@ -8,15 +8,15 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle, ThrottleGuard } from './common/throttle.guard.ts';
+import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { Judge0Service } from './judge0.service.ts';
 import type {
   BatchSubmissionItem,
   CreateSubmissionInput,
 } from './judge0.service.ts';
-import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
-import { Roles } from './auth/roles.decorator.ts';
-import { RolesGuard } from './auth/roles.guard.ts';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
+import { Roles } from '../auth/roles.decorator.ts';
+import { RolesGuard } from '../auth/roles.guard.ts';
 
 const MAX_BATCH_SIZE = 10;
 const MAX_SOURCE_CODE_LENGTH = 64_000;

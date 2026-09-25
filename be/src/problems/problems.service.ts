@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
-import { Judge0Service } from '../judge0.service.ts';
+import { Judge0Service } from '../judge0/judge0.service.ts';
 
 function normalizeOutput(value: string): string {
   return value

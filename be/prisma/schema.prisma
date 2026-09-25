@@ -131,3 +131,14 @@ model StripeEvent {
 
   @@index([createdAt])
 }
+
+// Lượt xem trang theo IP (lưu hash, không lưu IP thô) cho analytics admin
+model PageView {
+  id        String   @id @default(cuid())
+  ipHash    String
+  path      String   @default("/")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([ipHash, createdAt])
+}

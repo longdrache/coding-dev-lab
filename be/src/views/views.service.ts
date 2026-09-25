@@ -46,8 +46,22 @@ export class ViewsService {
     return new Date(Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth(), vn.getUTCDate()) - VN_OFFSET_MS);
   }
 
-  async getAnalytics() {
-    const now = new Date();
+  /** 15 lượt truy cập gần nhất (cả user lẫn khách) cho admin */
+  async getRecent() {
+    const rows = await this.db.pageView.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+      select: { clerkId: true, country: true, path: true, createdAt: true },
+    });
+    return rows.map((r) => ({
+      kind: r.clerkId ? 'user' : 'guest',
+      path: r.path,
+      country: r.country || 'XX',
+      at: r.createdAt,
+    }));
+  }
+
+  async getAnalytics() {    const now = new Date();
     const vn = new Date(now.getTime() + VN_OFFSET_MS);
     const dayStart = this.vnDayStart(now);
     const monthStart = new Date(Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth(), 1) - VN_OFFSET_MS);

@@ -93,6 +93,12 @@ export class AdminController {
     return this.views.getAnalytics();
   }
 
+  @Get('analytics/views/recent')
+  @UseGuards(AdminGuard)
+  getViewsRecent() {
+    return this.views.getRecent();
+  }
+
   @Get('analytics/logins')
   @UseGuards(AdminGuard)
   getLoginsAnalytics() {

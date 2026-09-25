@@ -173,7 +173,7 @@ type ViewsAnalytics = {
 };
 
 type LoginsAnalytics = {
-  recent: Array<{ user: string; country: string; at: string }>;
+  recent: Array<{ key: string; name: string; avatar: string | null; country: string; at: string }>;
   byCountry: Array<{ country: string; count: number }>;
 };
 
@@ -402,9 +402,19 @@ export default function DashboardPage() {
             <p className="py-4 text-center text-sm text-slate-500">Chưa có lượt đăng nhập nào.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {logins!.recent.map((r, i) => (
-                <li key={`${r.user}-${i}`} className="flex h-11 items-center justify-between px-2 text-sm">
-                  <span className="font-mono text-slate-900">{r.user}</span>
+              {logins!.recent.map((r) => (
+                <li key={r.key} className="flex h-12 items-center justify-between gap-3 px-2 text-sm">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    {r.avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.avatar} alt="" className="size-7 shrink-0 rounded-full object-cover ring-1 ring-slate-200" />
+                    ) : (
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 font-mono text-[11px] font-bold text-slate-500">
+                        {r.name.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="truncate font-medium text-slate-900">{r.name}</span>
+                  </span>
                   <span className="flex items-center gap-3">
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-600">
                       {r.country === "XX" ? "—" : r.country}

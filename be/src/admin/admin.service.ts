@@ -264,12 +264,39 @@ export class AdminService {
         LIMIT 12
       `,
     ]);
+    // Enrich tên + avatar từ Clerk (1 gọi batch, lỗi thì fallback id ngắn)
+    const profiles = new Map<string, { name: string; avatar: string | null }>();
+    try {
+      const { createClerkClient } = await import('@clerk/backend');
+      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY ?? '' });
+      const ids = [...new Set(recent.map((r) => r.clerkId))];
+      if (ids.length > 0) {
+        const res = (await clerk.users.getUserList({ userId: ids })) as unknown as
+          | Array<{ id: string; firstName?: string | null; lastName?: string | null; username?: string | null; imageUrl?: string }>
+          | { data?: Array<{ id: string; firstName?: string | null; lastName?: string | null; username?: string | null; imageUrl?: string }> };
+        const users = Array.isArray(res) ? res : (res.data ?? []);
+        for (const u of users) {
+          const name =
+            [u.firstName, u.lastName].filter(Boolean).join(' ') ||
+            u.username ||
+            `user_${u.id.slice(-6)}`;
+          profiles.set(u.id, { name, avatar: u.imageUrl ?? null });
+        }
+      }
+    } catch {
+      // Clerk lỗi thì hiện id ngắn, không vỡ dashboard
+    }
     return {
-      recent: recent.map((r) => ({
-        user: r.clerkId.slice(0, 10) + '…',
-        country: r.country || 'XX',
-        at: r.createdAt,
-      })),
+      recent: recent.map((r, i) => {
+        const p = profiles.get(r.clerkId);
+        return {
+          key: `${r.clerkId}-${i}`,
+          name: p?.name ?? `user_${r.clerkId.slice(-6)}`,
+          avatar: p?.avatar ?? null,
+          country: r.country || 'XX',
+          at: r.createdAt,
+        };
+      }),
       byCountry,
     };
   }

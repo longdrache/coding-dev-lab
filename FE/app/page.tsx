@@ -113,9 +113,9 @@ export default function Home() {
   // Guard hydration: server và lần render đầu của client phải giống nhau.
   // Clerk chỉ biết trạng thái đăng nhập ở client, nên chờ mounted mới
   // phân nhánh SignedIn/SignedOut để tránh mismatch.
-  if (!mounted || !minTime) {
-    return <PageLoader />;
-  }
+  // if (!mounted || !minTime) {
+  //   return <PageLoader />;
+  // }
 
   return (
     <main className="relative min-h-screen overflow-hidden" suppressHydrationWarning>
@@ -130,9 +130,11 @@ export default function Home() {
             backgroundSize: "44px 44px",
           }}
         />
-        <div className="absolute left-1/2 top-[28%] h-[480px] w-[720px] -translate-x-1/2 rounded-full bg-emerald-200/30 blur-[120px]" />
-        <div className="absolute -left-40 top-[55%] h-[420px] w-[420px] rounded-full bg-violet-200/30 blur-[120px]" />
-        <div className="absolute -right-40 top-[80%] h-[420px] w-[420px] rounded-full bg-teal-200/30 blur-[120px]" />
+        {/* Glow neo theo chiều dài trang — dùng radial-gradient thay vì
+            blur filter để browser không phải repaint vùng mờ khổng lồ khi cuộn */}
+        <div className="absolute left-1/2 top-[28%] h-[480px] w-[720px] -translate-x-1/2 bg-[radial-gradient(closest-side,rgba(167,243,208,0.35),transparent)]" />
+        <div className="absolute -left-40 top-[55%] h-[420px] w-[420px] bg-[radial-gradient(closest-side,rgba(221,214,254,0.4),transparent)]" />
+        <div className="absolute -right-40 top-[80%] h-[420px] w-[420px] bg-[radial-gradient(closest-side,rgba(153,246,228,0.35),transparent)]" />
       </div>
       <div className="relative mx-auto  px-6 pb-7 sm:px-6 lg:px-8">
         <SignedOut>
@@ -326,7 +328,7 @@ export default function Home() {
             </div>
           </section>
           <TechMarquee />
-          <StatsStrip />
+          {/* <StatsStrip /> */}
           <section
             id="features"
             className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"

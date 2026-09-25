@@ -26,7 +26,7 @@ export default function NavBar() {
     }`;
 
   return (
-    <header className="sticky top-0 z-50 w-full backdrop-blur-md border-b border-zinc-200/80 bg-white/80">
+    <header className="sticky top-0 z-50 w-full border-b border-zinc-200/80 bg-white/95">
       <div className="mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <Logo withVersion />

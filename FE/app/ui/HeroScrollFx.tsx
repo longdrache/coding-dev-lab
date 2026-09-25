@@ -6,7 +6,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 // Parallax scroll cho hero: nền 3D trôi chậm + mờ dần, cột chữ và
 // terminal trôi với tốc độ khác nhau tạo chiều sâu. Chạy 1 lần sau mount,
-// cleanup qua gsap.context.
+// cleanup qua gsap.context. Tự disable khi hero khuất để khỏi tốn frame cuộn.
 export default function HeroScrollFx() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -30,7 +30,23 @@ export default function HeroScrollFx() {
         scrollTrigger: { trigger: "#hero", start: "top top", end: "bottom top", scrub: 1 },
       });
     });
-    return () => ctx.revert();
+    // Khi hero ra khỏi viewport thì tắt hết trigger (khỏi tính toán mỗi frame cuộn)
+    const hero = document.querySelector("#hero");
+    const io =
+      hero &&
+      new IntersectionObserver(
+        ([entry]) => {
+          ScrollTrigger.getAll().forEach((st) =>
+            entry.isIntersecting ? st.enable() : st.disable(false),
+          );
+        },
+        { threshold: 0 },
+      );
+    if (hero && io) io.observe(hero);
+    return () => {
+      io?.disconnect();
+      ctx.revert();
+    };
   }, []);
   return null;
 }

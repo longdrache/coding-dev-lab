@@ -225,6 +225,7 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
   return (
     <main className="min-h-screen bg-wash px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1400px]">
+        <h1 className="sr-only">Bài tập luyện thuật toán — GoCode</h1>
         <Breadcrumbs
           className="mb-4"
           items={[{ label: "Trang chủ", href: "/" }, { label: "Bài tập" }]}

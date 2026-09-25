@@ -10,16 +10,16 @@ export default function FinalCta() {
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
       <Reveal>
         <div className="relative overflow-hidden rounded-3xl bg-zinc-950 px-6 py-14 text-center sm:px-12">
-          {/* Glow blobs trôi chậm */}
+          {/* Glow blobs trôi chậm — radial-gradient (không blur filter để rẻ paint) */}
           <motion.div
             aria-hidden
-            className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-emerald-500/20 blur-3xl"
+            className="pointer-events-none absolute -left-24 -top-24 size-72 bg-[radial-gradient(closest-side,rgba(16,185,129,0.25),transparent)]"
             animate={{ x: [0, 40, 0], y: [0, 24, 0] }}
             transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
           />
           <motion.div
             aria-hidden
-            className="pointer-events-none absolute -bottom-24 -right-24 size-72 rounded-full bg-violet-500/20 blur-3xl"
+            className="pointer-events-none absolute -bottom-24 -right-24 size-72 bg-[radial-gradient(closest-side,rgba(139,92,246,0.25),transparent)]"
             animate={{ x: [0, -36, 0], y: [0, -20, 0] }}
             transition={{ duration: 11, repeat: Infinity, ease: "easeInOut", delay: 1 }}
           />

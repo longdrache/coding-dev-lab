@@ -13,14 +13,16 @@ export default function Reveal({
   className?: string;
 }) {
   const reduce = useReducedMotion();
+  // Chỉ y + opacity (compositor-only, rẻ). Bỏ blur/scale vì animate filter
+  // gây khựng khi cuộn nhanh qua nhiều section.
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y: reduce ? 0 : 56, scale: reduce ? 1 : 0.98, filter: "blur(6px)" }}
-      whileInView={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+      initial={{ opacity: 0, y: reduce ? 0 : 40 }}
+      whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "0px 0px -40px 0px" }}
       transition={{
-        duration: reduce ? 0 : 0.8,
+        duration: reduce ? 0 : 0.7,
         delay: delay / 1000,
         ease: [0.22, 1, 0.36, 1],
       }}

@@ -29,13 +29,13 @@ export default function TechMarquee() {
           <img
             src={`https://cdn.simpleicons.org/${tech.slug}`}
             alt=""
-            width={25}
-            height={25}
+            width={28}
+            height={28}
             loading="lazy"
             onError={hideBroken}
             className="size-[22px] object-contain"
           />
-          <span className="font-mono text-[15px] font-semibold tracking-wide text-zinc-700">
+          <span className="font-mono text-[18px] font-semibold tracking-wide text-zinc-700">
             {tech.name}
           </span>
           <span className="ml-7 size-1 shrink-0 rounded-full bg-zinc-300" />
@@ -45,7 +45,7 @@ export default function TechMarquee() {
   );
 
   return (
-    <section aria-label="Công nghệ sử dụng" className="relative py-6">
+    <section aria-label="Công nghệ sử dụng" className="relative py-2">
       <p className="mb-4 text-center font-mono text-[11px] tracking-[0.25em] text-zinc-400">
         Công nghệ sử dụng 
       </p>

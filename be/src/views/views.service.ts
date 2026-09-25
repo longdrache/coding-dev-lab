@@ -93,6 +93,15 @@ export class ViewsService {
         ORDER BY 1 ASC
       `,
     ]);
+    const byCountry = await this.db.$queryRaw<Array<{ country: string; count: number }>>`
+      SELECT COALESCE(NULLIF("country", ''), 'XX') AS country,
+             COUNT(*)::int AS count
+      FROM "PageView"
+      WHERE "createdAt" >= ${seriesStart}
+      GROUP BY 1
+      ORDER BY 2 DESC
+      LIMIT 8
+    `;
     const [dayViews, monthViews, yearViews] = await Promise.all([
       this.db.pageView.count({ where: { createdAt: { gte: dayStart } } }),
       this.db.pageView.count({ where: { createdAt: { gte: monthStart } } }),
@@ -104,6 +113,7 @@ export class ViewsService {
       month: { views: monthViews, uniques: monthU },
       year: { views: yearViews, uniques: yearU },
       series30d: series,
+      byCountry,
     };
   }
 }

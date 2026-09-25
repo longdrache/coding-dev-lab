@@ -170,6 +170,7 @@ type ViewsAnalytics = {
   month: { views: number; uniques: number };
   year: { views: number; uniques: number };
   series30d: ViewDay[];
+  byCountry: Array<{ country: string; count: number }>;
 };
 
 type LoginsAnalytics = {
@@ -283,6 +284,16 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <ChartViews series={viewsSeries} />
+            {(views?.byCountry?.length ?? 0) > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                {views!.byCountry.map((c) => (
+                  <span key={c.country} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-xs font-bold text-slate-700">
+                    {c.country === "XX" ? "—" : c.country}
+                    <span className="font-normal text-slate-500">{c.count}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
         <div className="grid grid-cols-3 gap-4 md:grid-cols-1">
@@ -298,29 +309,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {[
-          { label: "Lượt chạy", today: stats.todayRuns ?? 0, month: stats.monthRuns ?? 0 },
-          { label: "Lượt nộp", today: stats.todaySubmits ?? 0, month: stats.monthSubmits ?? 0 },
-        ].map((c) => (
-          <Card key={c.label} className="border-slate-200 bg-white">
-            <CardContent className="p-5">
-              <p className="text-sm text-slate-500">{c.label}</p>
-              <div className="mt-2 flex items-baseline gap-6">
-                <p className="font-mono text-[28px] font-bold leading-none tabular-nums text-slate-900">
-                  {String(c.today)}
-                  <span className="ml-2 align-middle font-sans text-xs font-medium text-slate-400">hôm nay</span>
-                </p>
-                <p className="font-mono text-[28px] font-bold leading-none tabular-nums text-slate-400">
-                  {String(c.month)}
-                  <span className="ml-2 align-middle font-sans text-xs font-medium text-slate-400">tháng này</span>
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
+     
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         {cards.map((c) => (
           <Card key={c.label} className="border-slate-200 bg-white">

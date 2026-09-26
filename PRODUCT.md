@@ -28,7 +28,7 @@ Luyện tập cá nhân, thường mỗi ngày một lần để giữ chuỗi n
 - Chấm batch tức thì; không test ẩn nào lộ ra cho client.
 - 12 huy hiệu, streak, lịch sử nộp bài, yêu thích bài, bản đồ nhiệt 35 ngày.
 - Có gói trả phí (VIP) và bảng quản trị tách riêng, đăng nhập riêng.
-- Mật khẩu và phiên do hệ thống tự quản lý; hệ thống không lưu IP thô, chỉ lưu hash.
+- Mật khẩu và phiên do hệ thống tự quản lý; có đặt lại mật khẩu qua email. Hệ thống không lưu IP thô, chỉ lưu hash.
 - Vai trò và hạn VIP lưu trong bảng `User` (`role`, `vipExpiresAt`), không nằm ở dịch vụ xác thực bên ngoài. Chi tiết ở `docs/superpowers/specs/2026-09-27-custom-auth-design.md`.
 
 ## Brand Commitments

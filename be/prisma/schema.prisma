@@ -14,13 +14,45 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  name      String?
-  nothing   String?
-  clerkId   String?  @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                   Int       @id @default(autoincrement())
+  email                String    @unique
+  name                 String?
+  passwordHash         String?
+  role                 String    @default("user")
+  vipExpiresAt         DateTime?
+  emailVerifiedAt      DateTime?
+  stripeSubscriptionId String?
+  premiumPlan          String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  tokens        UserToken[]
+  activityDays  ActivityDay[]
+  solvedProblems SolvedProblem[]
+  favorites     FavoriteProblem[]
+  submissions   Submission[]
+  badges        UserBadge[]
+  pageViews     PageView[]
+  loginEvents   LoginEvent[]
+}
+
+model UserToken {
+  id             String    @id @default(cuid())
+  userId         Int
+  type           String
+  tokenHash      String
+  prevTokenHash  String?
+  prevValidUntil DateTime?
+  userAgent      String?
+  lastUsedAt     DateTime  @default(now())
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, type])
+  @@index([tokenHash])
 }
 
 model Test {
@@ -29,45 +61,53 @@ model Test {
 
 model ActivityDay {
   id        String   @id @default(cuid())
-  clerkId   String
+  userId    Int
   date      DateTime @db.Date
   count     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([clerkId, date])
-  @@index([clerkId])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+  @@index([userId])
 }
 
 model SolvedProblem {
   id         String   @id @default(cuid())
-  clerkId    String
+  userId     Int
   slug       String
   difficulty String?
   solvedAt   DateTime @default(now())
 
-  @@unique([clerkId, slug])
-  @@index([clerkId])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, slug])
+  @@index([userId])
 }
 
 model FavoriteProblem {
   id        String   @id @default(cuid())
-  clerkId   String
+  userId    Int
   slug      String
   createdAt DateTime @default(now())
 
-  @@unique([clerkId, slug])
-  @@index([clerkId])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, slug])
+  @@index([userId])
 }
 
 model UserBadge {
   id         String   @id @default(cuid())
-  clerkId    String
+  userId     Int
   badgeId    String
   unlockedAt DateTime @default(now())
 
-  @@unique([clerkId, badgeId])
-  @@index([clerkId])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, badgeId])
+  @@index([userId])
 }
 
 model Problem {
@@ -92,23 +132,25 @@ model Problem {
 }
 
 model Submission {
-  id          String   @id @default(cuid())
-  clerkId     String
-  problemSlug String
-  languageId  Int
-  sourceCode  String   @db.Text
-  status      String?
-  statusId    Int?
-  passed      Boolean?
-  passedCount Int?
-  totalCount  Int?
-  time        String?
-  memory      Int?
-  createdAt   DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       Int
+  problemSlug  String
+  languageId   Int
+  sourceCode   String   @db.Text
+  status       String?
+  statusId     Int?
+  passed       Boolean?
+  passedCount  Int?
+  totalCount   Int?
+  time         String?
+  memory       Int?
+  createdAt    DateTime @default(now())
 
-  @@index([clerkId])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
   @@index([problemSlug])
-  @@index([clerkId, problemSlug])
+  @@index([userId, problemSlug])
 }
 
 model QnaQuestion {
@@ -132,32 +174,36 @@ model StripeEvent {
   @@index([createdAt])
 }
 
-// Lượt xem trang: định danh user đăng nhập (clerkId), khách vãng lai
+// Lượt xem trang: định danh user đăng nhập (userId), khách vãng lai
 // thì dùng hash IP (không lưu IP thô) — cho analytics admin
 model PageView {
   id        String   @id @default(cuid())
-  clerkId   String?
+  userId    Int?
   visitorId String?
   ipHash    String
   country   String   @default("")
   path      String   @default("/")
   createdAt DateTime @default(now())
 
+  user User? @relation(fields: [userId], references: [id])
+
   @@index([createdAt])
   @@index([ipHash, createdAt])
-  @@index([clerkId, createdAt])
+  @@index([userId, createdAt])
   @@index([visitorId, createdAt])
 }
 
 // Lần đăng nhập: ai, từ quốc gia nào (Vercel header), IP hash — cho admin
 model LoginEvent {
   id        String   @id @default(cuid())
-  clerkId   String
+  userId    Int?
   ipHash    String
   country   String   @default("")
   createdAt DateTime @default(now())
 
+  user User? @relation(fields: [userId], references: [id])
+
   @@index([createdAt])
-  @@index([clerkId, createdAt])
+  @@index([userId, createdAt])
   @@index([country, createdAt])
 }

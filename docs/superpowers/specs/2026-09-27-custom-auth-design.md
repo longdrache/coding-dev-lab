@@ -153,6 +153,8 @@ Bước 1 là bắt buộc và không tự động hoá — không có bản sao
 
 **Hệ quả:** lịch sử migration không đủ để `migrate deploy` lên database mới. Khi dựng lại database từ file backup, phải dùng `prisma db push`.
 
+**Migration này chỉ chạy được trên database đã xoá sạch dữ liệu user.** Nó phát sinh `ADD COLUMN "userId" INTEGER NOT NULL` trên 5 bảng, nên bất kỳ môi trường nào còn dữ liệu `clerkId` cũ sẽ fail. Nếu sau này cần chạy trên môi trường có dữ liệu, phải làm theo thứ tự khác: thêm cột nullable, backfill, rồi mới đặt `NOT NULL`. Hiện chưa cần vì chỉ có một database production đã xoá.
+
 ## Kiểm thử
 
 - Unit: hash và so mật khẩu, ký và xác minh token, xoay vòng refresh kèm đệm, chữa token quá hạn, `AuthGuard` với cookie thiếu / hỏng / hết hạn. Mã dùng một lần và mã hết hạn theo từng loại. Nhiều thiết bị: hai lần đăng nhập cho hai dòng riêng, xoay vòng trên một thiết bị không ảnh hưởng thiết bị khác, chạm ngưỡng 10 thì xoá dòng cũ nhất.

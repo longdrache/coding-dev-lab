@@ -46,10 +46,28 @@ describe('API (e2e)', () => {
       expect(p).not.toHaveProperty('hiddenTests');
       expect(p.slug).toBeTruthy();
     }
+    expect(res.headers['cache-control']).toBe(
+      'public, max-age=0, s-maxage=60, stale-while-revalidate=300',
+    );
+  });
+
+  it('GET /api/problems/:slug trả bài kèm Cache-Control dài hạn', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/problems/two-sum')
+      .expect(200);
+    expect(res.body).not.toHaveProperty('hiddenTests');
+    expect(res.headers['cache-control']).toBe(
+      'public, max-age=0, s-maxage=300, stale-while-revalidate=600',
+    );
   });
 
   it('GET /api/problems/:slug 404 khi không tồn tại', async () => {
-    await request(app.getHttpServer()).get('/api/problems/no-such-slug').expect(404);
+    const res = await request(app.getHttpServer()).get('/api/problems/no-such-slug').expect(404);
+    // Tài liệu hành vi đã đánh đổi: Nest ghi header trước khi gọi handler
+    // nên 404 cũng mang Cache-Control và bị CDN giữ tới hết TTL.
+    expect(res.headers['cache-control']).toBe(
+      'public, max-age=0, s-maxage=300, stale-while-revalidate=600',
+    );
   });
 
   it('POST /api/problems/:slug/submit 401 khi thiếu token', async () => {

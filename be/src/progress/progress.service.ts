@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
+import { TtlCache } from '../common/ttl-cache.ts';
+
+// Suy ra từ computeDashboard để đổi shape response không phải sửa type
+// thủ công ở hai chỗ.
+type Dashboard = Awaited<ReturnType<ProgressService['computeDashboard']>>;
 
 export type BadgeDef = {
   id: string;
@@ -63,6 +68,11 @@ export function calcStreakFromMap(map: Record<string, number>): number {
 
 @Injectable()
 export class ProgressService {
+  // Khoá theo clerkId: dashboard là dữ liệu riêng của từng user, dùng chung
+  // một key sẽ lộ dữ liệu chéo. Field để giữ nguyên lời gọi
+  // `new ProgressService(db)` của test cũ.
+  private readonly dashboardCache = new TtlCache<Dashboard>(200);
+
   constructor(private readonly db: DatabaseService) {}
 
   async recordSolved(clerkId: string, slug: string, difficulty: string | null) {
@@ -163,6 +173,18 @@ export class ProgressService {
   }
 
   async getDashboard(clerkId: string) {
+    // Dashboard đọc nặng (activityMap + solved + badges + heatmap) và được
+    // gọi lại liên tục. TTL rất ngắn chỉ để gom các lần gọi sát nhau, không
+    // phải cache dài hạn — sau POST /solve có thể hiện dữ liệu cũ tối đa
+    // 200ms, không người dùng nào nhận ra.
+    const hit = this.dashboardCache.get(clerkId);
+    if (hit) return hit;
+    const out = await this.computeDashboard(clerkId);
+    this.dashboardCache.set(clerkId, out);
+    return out;
+  }
+
+  private async computeDashboard(clerkId: string) {
     const activityMap = await this.getActivityMap(clerkId);
     const streak = calcStreakFromMap(activityMap);
     const solved = await this.getSolvedMap(clerkId);

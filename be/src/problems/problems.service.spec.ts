@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProblemsService } from './problems.service.ts';
 
 function makeService(overrides?: {
@@ -57,6 +57,76 @@ describe('ProblemsService.findBySlug', () => {
     });
     const p = await svc.findBySlug('a');
     expect(p).not.toHaveProperty('hiddenTests');
+  });
+});
+
+describe('cache bài toán', () => {
+  const published = { slug: 'a', status: 'published', hiddenTests: [{ stdin: 'x', expected: 'y' }] };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('findAll chỉ query DB một lần trong TTL', async () => {
+    const { svc, db } = makeService({ problems: [published] });
+    await svc.findAll();
+    await svc.findAll();
+    await svc.findAll();
+    expect(db.problem.findMany).toHaveBeenCalledOnce();
+  });
+
+  it('findAll query lại khi hết TTL 60s', async () => {
+    const { svc, db } = makeService({ problems: [published] });
+    await svc.findAll();
+    vi.advanceTimersByTime(59_999);
+    await svc.findAll();
+    expect(db.problem.findMany).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(1);
+    await svc.findAll();
+    expect(db.problem.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('findBySlug chỉ query DB một lần trong TTL', async () => {
+    const { svc, db } = makeService({ problem: published });
+    await svc.findBySlug('a');
+    await svc.findBySlug('a');
+    expect(db.problem.findUnique).toHaveBeenCalledOnce();
+  });
+
+  it('findBySlug query lại khi hết TTL 300s', async () => {
+    const { svc, db } = makeService({ problem: published });
+    await svc.findBySlug('a');
+    vi.advanceTimersByTime(299_999);
+    await svc.findBySlug('a');
+    expect(db.problem.findUnique).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(1);
+    await svc.findBySlug('a');
+    expect(db.problem.findUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it('không cache null: bài draft vừa publish là thấy ngay', async () => {
+    const { svc, db } = makeService({ problem: null });
+    await expect(svc.findBySlug('a')).resolves.toBeNull();
+    await expect(svc.findBySlug('a')).resolves.toBeNull();
+    expect(db.problem.findUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it('mỗi slug một entry riêng, không đụng nhau', async () => {
+    const { svc, db } = makeService({ problem: published });
+    await svc.findBySlug('a');
+    await svc.findBySlug('b');
+    expect(db.problem.findUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it('dữ liệu lấy từ cache vẫn ẩn hiddenTests', async () => {
+    const { svc } = makeService({ problem: published });
+    const first = await svc.findBySlug('a');
+    expect(first).not.toHaveProperty('hiddenTests');
+    const second = await svc.findBySlug('a');
+    expect(second).not.toHaveProperty('hiddenTests');
   });
 });
 

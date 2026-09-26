@@ -1,6 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
 import { Judge0Service } from '../judge0/judge0.service.ts';
+import { TtlCache } from '../common/ttl-cache.ts';
+
+type PublicProblem = Record<string, unknown>;
+
+const LIST_KEY = 'all';
+// Danh sách đổi thường xuyên hơn (bài mới publish) nên TTL ngắn; chi tiết
+// bài gần như bất biến nên để lâu. Không có invalidation thủ công: admin
+// sửa xong tối đa phải chờ TTL mới thấy.
+const LIST_TTL_MS = 60_000;
+const SLUG_TTL_MS = 300_000;
 
 function normalizeOutput(value: string): string {
   return value
@@ -23,25 +33,39 @@ function rawOutputOf(s: Record<string, unknown>): string {
 
 @Injectable()
 export class ProblemsService {
+  // Field chứ không phải constructor dep: giữ nguyên lời gọi
+  // `new ProblemsService(db, judge0)` của test cũ.
+  private readonly listCache = new TtlCache<PublicProblem[]>(LIST_TTL_MS);
+  private readonly slugCache = new TtlCache<PublicProblem>(SLUG_TTL_MS);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly judge0: Judge0Service,
   ) {}
 
   // Public: chỉ bài đã xuất bản mới hiện cho user
-  async findAll() {
+  async findAll(): Promise<PublicProblem[]> {
+    const hit = this.listCache.get(LIST_KEY);
+    if (hit) return hit;
     const rows = await this.db.problem.findMany({
       where: { status: 'published' },
       orderBy: { createdAt: 'asc' },
     });
     // ẩn hiddenTests với client
-    return rows.map(({ hiddenTests: _hiddenTests, ...rest }) => rest);
+    const out = rows.map(({ hiddenTests: _hiddenTests, ...rest }) => rest as PublicProblem);
+    this.listCache.set(LIST_KEY, out);
+    return out;
   }
 
-  async findBySlug(slug: string) {
+  async findBySlug(slug: string): Promise<PublicProblem | null> {
+    const hit = this.slugCache.get(slug);
+    if (hit) return hit;
     const row = await this.db.problem.findUnique({ where: { slug } });
     if (!row || (row as Record<string, unknown>).status !== 'published') return null;
     const { hiddenTests: _hiddenTests, ...rest } = row as Record<string, unknown>;
+    // Không cache null: bài vừa publish sẽ thấy ngay ở request kế tiếp
+    // thay vì phải chờ hết TTL.
+    this.slugCache.set(slug, rest);
     return rest;
   }
 

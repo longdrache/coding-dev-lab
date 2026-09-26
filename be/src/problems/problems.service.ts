@@ -63,6 +63,10 @@ export class ProblemsService {
 
     const started = Date.now();
     let submissions: Record<string, unknown>[] = [];
+    // Fail-fast: mỗi lần poll duyệt theo thứ tự test; gặp test đã xong
+    // mà rớt thì dừng ngay, không đợi các test sau (đỡ tốn thời gian chờ).
+    // Chỉ kết luận khi mọi test TRƯỚC nó đã xong và đúng.
+    let failedIndex: number | null = null;
     for (;;) {
       if (Date.now() - started > 90_000) throw new Error('Quá thời gian chờ Judge0 (90s)');
       await new Promise((r) => setTimeout(r, 1500));
@@ -70,16 +74,32 @@ export class ProblemsService {
         submissions?: Record<string, unknown>[];
       };
       submissions = body.submissions ?? [];
-      const done = submissions.filter((s) => {
-        const st = s['status'] as { id?: number } | undefined;
-        return st?.id === undefined || st.id > 2;
-      }).length;
-      if (submissions.length === tokens.length && done === tokens.length) break;
+      let decided = submissions.length === tokens.length;
+      if (decided) {
+        for (let i = 0; i < hiddenTests.length; i++) {
+          const sub = submissions[i] ?? {};
+          const st = sub['status'] as { id?: number } | undefined;
+          const done = st?.id === undefined || st.id > 2;
+          if (!done) {
+            decided = false;
+            break;
+          }
+          const statusId = st?.id;
+          const ok =
+            statusId === 3 &&
+            normalizeOutput(rawOutputOf(sub)) === normalizeOutput(hiddenTests[i].expected);
+          if (!ok) {
+            failedIndex = i + 1;
+            break;
+          }
+        }
+      }
+      if (decided) break;
     }
 
     let passed = 0;
-    let failedIndex: number | null = null;
     for (let i = 0; i < hiddenTests.length; i++) {
+      if (failedIndex !== null && i + 1 >= failedIndex) break;
       const expected = hiddenTests[i].expected;
       const actual = rawOutputOf(submissions[i] ?? {});
       const statusId = (submissions[i]?.['status'] as { id?: number })?.id;

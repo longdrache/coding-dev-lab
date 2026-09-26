@@ -8,15 +8,33 @@ const db = new PrismaClient({
 
 async function main() {
   // Xoá dữ liệu user. `Problem` và toàn bộ nội dung bài giữ nguyên.
-  await db.userBadge.deleteMany({});
-  await db.solvedProblem.deleteMany({});
-  await db.favoriteProblem.deleteMany({});
-  await db.submission.deleteMany({});
-  await db.activityDay.deleteMany({});
-  await db.pageView.deleteMany({});
-  await db.loginEvent.deleteMany({});
-  await db.user.deleteMany({});
+  // Một transaction duy nhất: lỗi giữa chừng thì rollback hết, không để lại
+  // dữ liệu xoá dở.
+  await db.$transaction([
+    db.userBadge.deleteMany({}),
+    db.solvedProblem.deleteMany({}),
+    db.favoriteProblem.deleteMany({}),
+    db.submission.deleteMany({}),
+    db.activityDay.deleteMany({}),
+    db.pageView.deleteMany({}),
+    db.loginEvent.deleteMany({}),
+    db.user.deleteMany({}),
+  ]);
+
+  const problems = await db.problem.count();
   console.log('Đã xoá dữ liệu user. Kiểm tra lại số bài:');
-  console.log('problems =', await db.problem.count());
+  console.log('problems =', problems);
+  if (problems === 0) {
+    console.error(
+      'Cảnh báo: bảng Problem đang rỗng — nhiều khả năng đã xoá nhầm nội dung bài. Dừng lại, hãy khôi phục từ file backup.',
+    );
+    process.exit(1);
+  }
 }
-main().finally(() => db.$disconnect());
+
+main()
+  .catch((err: unknown) => {
+    console.error('Xoá dữ liệu user thất bại:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  })
+  .finally(() => db.$disconnect());

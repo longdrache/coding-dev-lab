@@ -20,6 +20,7 @@
 - Token dùng một lần: dùng xong đặt `usedAt`, dùng lần hai trả 400.
 - `DESIGN.md` và `FE/app/ui/AuthShell.tsx` **không được sửa**. Inter là font đã ghim, đừng đổi.
 - Trước mỗi lần commit phải chạy: `npx vitest run`, `npx vitest run --config ./vitest.config.e2e.ts`, `pnpm run lint`, `pnpm run build` trong `be/`. FE: `pnpm run lint` trong `admin/`, `pnpm test` trong `FE/`.
+- **Mọi lệnh grep tìm "clerk" phải loại trừ file do Prisma sinh ra.** `be/src/` chứa sẵn `class.ts`, `models.ts`, `enums.ts`, `client.ts`, `browser.ts`, `prismaNamespace.ts`, `prismaNamespaceBrowser.ts` và các file model `User.ts`, `ActivityDay.ts`, `PageView.ts`… Đều do `prisma generate` sinh và sẽ khớp "clerkId" hoàn toàn bình thường. Chỉ grep thư mục viết tay: `src/auth`, `src/admin`, `src/premium`, `src/activity`, `src/progress`, `src/problems`, `src/submissions`, `src/qna`, `src/views`, `src/common`, cùng `src/app.module.ts`, `src/main.ts`, `src/cors.ts`.
 
 ---
 
@@ -1388,11 +1389,14 @@ pnpm run build
 
 - [ ] **Step 5: Grep xem còn sót Clerk ở BE không**
 
+Grep trong `src/premium` và `src/auth` (xem Global Constraints về file Prisma sinh ra):
+
 ```bash
-cd be; Get-ChildItem -Path src -Recurse -File -Filter "*.ts" | Select-String -Pattern "clerk|Clerk" -CaseSensitive:$false | Group-Object Filename | ForEach-Object { "$($_.Name): $($_.Count)" }
+cd be
+Get-ChildItem -Path src/premium,src/auth -Recurse -File -Filter "*.ts" | Select-String -Pattern "clerk|Clerk" -CaseSensitive:$false
 ```
 
-Kỳ vọng chỉ còn `clerk-auth.guard.ts` (Task 11 sẽ xoá).
+Kỳ vọng trong `src/premium`: không còn kết quả nào. Trong `src/auth` còn `clerk-auth.guard.ts` — Task 11 sẽ xoá. `src/admin/admin.service.ts` cũng còn, để Task 15.
 
 - [ ] **Step 6: Commit**
 
@@ -1611,12 +1615,14 @@ Trong `package.json`, xoá dòng `"@clerk/backend": "^2.33.7",`. Chạy `pnpm in
 
 - [ ] **Step 3: Grep toàn repo**
 
+Grep các thư mục viết tay, xem Global Constraints:
+
 ```bash
-cd E:\github\coding-dev-lab
-Get-ChildItem -Path be -Recurse -File -Include "*.ts","*.json" | Where-Object { $_.FullName -notmatch "node_modules" } | Select-String -Pattern "clerk|Clerk" -CaseSensitive:$false
+cd be
+Get-ChildItem -Path src/auth,src/admin,src/premium,src/activity,src/progress,src/problems,src/submissions,src/qna,src/views,src/common -Recurse -File -Filter "*.ts" | Select-String -Pattern "clerk|Clerk" -CaseSensitive:$false | Group-Object Filename | ForEach-Object { "$($_.Name): $($_.Count)" }
 ```
 
-Kỳ vọng: không còn kết quả nào trong `be/` ngoài `pnpm-lock.yaml`.
+Kỳ vọng: chỉ còn `clerk-auth.guard.ts` (đang bị xoá ở task này) và `admin.service.ts` — cái thứ hai để Task 15 dọn. **Không** kỳ vọng zero ở bước này.
 
 - [ ] **Step 4: Chạy toàn bộ gate**
 
@@ -1864,15 +1870,13 @@ export default function AuthForm({ mode }: { mode: "signin" | "signup" }) {
           Đã có tài khoản?{" "}
           <Link href="/sign-in" className="font-medium text-zinc-900 underline underline-offset-4">Đăng nhập</Link>
         </p>
-      ) : (
-        <p className="text-center text-xs text-zinc-500">
-          <Link href="/forgot-password" className="font-medium text-zinc-900 underline underline-offset-4">Quên mật khẩu?</Link>
-        </p>
-      )}
+      ) : null}
     </form>
   );
 }
 ```
+
+Task này **không** thêm link "Quên mật khẩu?" — link đó thuộc Task 14 cùng với trang `/forgot-password`, để mỗi task đều tự chạy được mà không có link chết.
 
 - [ ] **Step 2: Nối vào hai trang**
 
@@ -2047,17 +2051,34 @@ export default function ResetPasswordPage() {
 
 Tạo `FE/app/reset-password/page.tsx` chỉ để `export { default } from "./ResetForm";`.
 
-- [ ] **Step 3: Thay `useUser()` ở các file còn lại**
+- [ ] **Step 3: Thêm link "Quên mật khẩu?" vào form đăng nhập**
+
+Trong `FE/app/ui/AuthForm.tsx`, ở nhánh `mode === "signup"` thay bằng khối có cả hai link:
+
+```tsx
+{mode === "signup" ? (
+  <p className="text-center text-xs text-zinc-500">
+    Đã có tài khoản?{" "}
+    <Link href="/sign-in" className="font-medium text-zinc-900 underline underline-offset-4">Đăng nhập</Link>
+  </p>
+) : (
+  <p className="text-center text-xs text-zinc-500">
+    <Link href="/forgot-password" className="font-medium text-zinc-900 underline underline-offset-4">Quên mật khẩu?</Link>
+  </p>
+)}
+```
+
+- [ ] **Step 4: Thay `useUser()` ở các file còn lại**
 
 Với mỗi file trong `Navbar.tsx`, `PremiumGuard.tsx`, `ViewTracker.tsx`, `page.tsx`, `useDashboard.ts`: bỏ import từ `@clerk/nextjs`, thay `useUser()` bằng `useSession()` và `user` thành `session.user`. Ở `ViewTracker.tsx:45` chỗ gửi `clerkId` đổi thành `userId: session.user?.id ?? null`.
 
 Với `authedFetcher(getToken)` — bỏ tham số.
 
-- [ ] **Step 4: Gỡ dependency**
+- [ ] **Step 5: Gỡ dependency**
 
 Trong `FE/package.json` xoá `"@clerk/nextjs"`, chạy `pnpm install`.
 
-- [ ] **Step 5: Grep xem còn sót Clerk ở FE không**
+- [ ] **Step 6: Grep xem còn sót Clerk ở FE không**
 
 ```bash
 cd E:\github\coding-dev-lab
@@ -2066,13 +2087,13 @@ Get-ChildItem -Path FE,admin -Recurse -File -Include "*.ts","*.tsx" | Where-Obje
 
 Kỳ vọng: không còn kết quả nào.
 
-- [ ] **Step 6: Chạy test FE**
+- [ ] **Step 7: Chạy test FE**
 
 ```bash
 cd FE; npx vitest run 2>&1 | Select-String "Tests |Test Files "
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add FE

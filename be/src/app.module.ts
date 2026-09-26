@@ -2,12 +2,8 @@ import { Module, NestModule } from '@nestjs/common';
 import rateLimit from 'express-rate-limit';
 import { AppController } from './app.controller.ts';
 import { AppService } from './app.service.ts';
-import { Judge0Controller } from './judge0/judge0.controller.ts';
-import { Judge0Service } from './judge0/judge0.service.ts';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
-import { PremiumController } from './premium/premium.controller.ts';
-import { PremiumService } from './premium/premium.service.ts';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './database/database.module.ts';
 import { PresenceModule } from './presence/presence.module.ts';
@@ -19,6 +15,7 @@ import { ViewsModule } from './views/views.module.ts';
 import { QnaModule } from './qna/qna.module.ts';
 import { AdminModule } from './admin/admin.module.ts';
 import { Judge0Module } from './judge0/judge0.module.ts';
+import { PremiumModule } from './premium/premium.module.ts';
 
 const rateLimiter = rateLimit({
   windowMs: 60_000,
@@ -41,14 +38,13 @@ const rateLimiter = rateLimit({
     ViewsModule,
     QnaModule,
     Judge0Module,
-    PresenceModule
+    PremiumModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
     ClerkAuthGuard,
     RolesGuard,
-    PremiumService,
   ],
 })
 export class AppModule implements NestModule {

@@ -44,7 +44,7 @@ function formatKey(date: Date): string {
   return `${day}-${month}-${year}`;
 }
 
-function calcStreakFromMap(map: Record<string, number>): number {
+export function calcStreakFromMap(map: Record<string, number>): number {
   let streak = 0;
   const cursor = new Date(toDateOnly(todayKeyVietnam()));
   // nếu hôm nay chưa có thì lùi 1 ngày

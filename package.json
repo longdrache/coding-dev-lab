@@ -14,7 +14,8 @@
     "build:fe": "pnpm --dir FE build",
     "start": "concurrently -n BE,FE -c blue,green \"pnpm run start:be\" \"pnpm run start:fe\"",
     "start:be": "pnpm --dir be start:prod",
-    "start:fe": "pnpm --dir FE start"
+    "start:fe": "pnpm --dir FE start",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

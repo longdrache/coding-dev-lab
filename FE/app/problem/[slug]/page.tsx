@@ -1083,7 +1083,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
             <div ref={testCardRef} className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 text-[15px] font-semibold text-zinc-900">
-                  {casesStatus === "running" ? (
+                  {!submitting &&casesStatus === "running" ? (
                     <Loader2 className="size-4 animate-spin text-zinc-400" />
                   ) : casesStatus === "pass" ? (
                     <CheckCircle2 className="size-4 text-emerald-500" />
@@ -1207,10 +1207,37 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
                   Kết quả:
                 </span>
                 <span className="font-mono text-xs text-zinc-400">
-                  {resultStatusText}
+                  {submitting ||resultStatusText}
                 </span>
               </div>
               <div className="space-y-4 p-4">
+              {(runningTests || submitting) && (
+                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-zinc-200/80 px-6 py-10 text-center">
+                  <Loader2 className="size-8 animate-spin text-emerald-500" />
+                  <p className="text-sm font-semibold text-zinc-700">
+                    {submitting
+                      ? "Đang chấm trên test ẩn..."
+                      : `Đang chấm ${progress.done}/${progress.total}...`}
+                  </p>
+                  <div className="h-1.5 w-48 overflow-hidden rounded-full bg-zinc-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                      style={{
+                        width: submitting
+                          ? "45%"
+                          : progress.total
+                            ? `${Math.round((progress.done / progress.total) * 100)}%`
+                            : "10%",
+                      }}
+                    />
+                  </div>
+                  <p className="max-w-xs text-xs leading-relaxed text-zinc-400">
+                    {submitting
+                      ? "Đúng hết mới Accepted — sai 1 test là dừng ngay."
+                      : "Test nào xong trước hiện trước, không cần đợi hết."}
+                  </p>
+                </div>
+              )}
               {isEmptyResult && (
                 <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-zinc-200/80 px-6 py-10 text-center">
                   <Terminal className="size-7 text-zinc-300" />

@@ -130,13 +130,19 @@ model UserToken {
 }
 ```
 
-Trong 7 bảng `ActivityDay`, `SolvedProblem`, `FavoriteProblem`, `Submission`, `UserBadge`, `PageView`, `LoginEvent`: đổi `clerkId String` thành `userId Int?` (khuyến nghị `Int?` vì `PageView` và `LoginEvent` nhận giá trị rỗng cho khách chưa đăng nhập), thêm `@@index([userId])`, và khai báo quan hệ `user User? @relation(fields: [userId], references: [id])`.
+Đổi `clerkId String` thành `userId Int?` (khuyến nghị `Int?` vì `PageView` và `LoginEvent` nhận giá trị rỗng cho khách chưa đăng nhập), thêm `@@index([userId])`, và khai báo quan hệ `user User? @relation(fields: [userId], references: [id])`.
 
-Với 6 bảng còn lại (không phải PageView/LoginEvent) dùng `userId Int` không nullable.
+Với 5 bảng bắt buộc (`ActivityDay`, `SolvedProblem`, `FavoriteProblem`, `Submission`, `UserBadge`) cùng `UserToken`: dùng `userId Int` và `user User @relation(fields: [userId], references: [id], onDelete: Cascade)`. Cascade là bắt buộc — nếu không, `db.user.deleteMany()` sẽ fail khi user đã có dữ liệu.
+
+`PageView`, `LoginEvent`, `QnaQuestion` giữ `userId Int?` với `onDelete` mặc định. Xem lý do ở mục Ruling của ledger.
+
+**`QnaQuestion` cũng có `clerkId` và là bảng thứ tám** bị sót trong bản plan đầu. Đổi nó sang `userId Int?` và khai báo `user User? @relation(...)`. Đây là bảng câu hỏi hỗ trợ từ user, không phải bảng dữ liệu luyện tập, nên vẫn nullable.
 
 Xoá cột `nothing` khỏi `User`.
 
-- [ ] **Step 5: Viết script migrate chạy một lần**
+Ba trường quan hệ mà `prisma validate` bắt buộc phải có, không có trong bản plan đầu và phải giữ: `User.pageViews`, `User.loginEvents`, `UserToken.user`.
+
+- [ ] **Step 5: Viết script wipe chạy một lần**
 
 `be/scripts/migrate-auth.ts`:
 
@@ -150,31 +156,45 @@ const db = new PrismaClient({
 });
 
 async function main() {
+  // Thứ tự BẮT BUỘC: xoá trước, migrate sau. Ngược lại migration sẽ sinh
+  // câu `ADD COLUMN "userId" INTEGER NOT NULL` lên bảng đang có dữ liệu và
+  // migrate sẽ fail vì không có giá trị mặc định.
   // Xoá dữ liệu user. `Problem` và toàn bộ nội dung bài giữ nguyên.
   await db.userBadge.deleteMany({});
   await db.solvedProblem.deleteMany({});
   await db.favoriteProblem.deleteMany({});
   await db.submission.deleteMany({});
   await db.activityDay.deleteMany({});
+  await db.qnaQuestion.deleteMany({});
   await db.pageView.deleteMany({});
   await db.loginEvent.deleteMany({});
   await db.user.deleteMany({});
-  console.log('Đã xoá dữ liệu user. Kiểm tra lại số bài:');
+  console.log('Đã xoá dữ liệu user. Số bài còn lại:');
   console.log('problems =', await db.problem.count());
 }
 main().finally(() => db.$disconnect());
 ```
 
-- [ ] **Step 6: Sinh client và áp migration**
+- [ ] **Step 6: Áp migration**
 
 ```bash
 cd be
 npx prisma generate
-npx prisma migrate dev --name replace_clerk_with_local_auth
-npx tsx scripts/migrate-auth.ts
+npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script > be/prisma/migrations/<timestamp>_replace_clerk_with_local_auth/migration.sql
 ```
 
-Kỳ vọng: `problems = 56` (hoặc số bài thật của bạn — dừng lại nếu ra 0).
+**Không dùng `prisma migrate dev`.** Lịch sử migration của repo đã thiếu từ đầu: `20260916153647_update_name` chỉ tạo `User` và `Test`, 11 bảng còn lại không có migration nào tạo ra, vì DB production được dựng bằng `db push`. Prisma sẽ thấy drift và đòi reset, mà reset sẽ mất 56 bài.
+
+Áp SQL bằng `psql` trong một transaction, rồi đánh dấu đã áp dụng:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f be/prisma/migrations/<timestamp>_replace_clerk_with_local_auth/migration.sql
+npx prisma migrate resolve --applied <timestamp>_replace_clerk_with_local_auth
+```
+
+**Hệ quả phải biết:** lịch sử migration không đủ để `prisma migrate deploy` lên database mới. Khi dựng lại DB từ file backup, phải dùng `npx prisma db push` chứ không dùng `migrate deploy`.
+
+Kỳ vọng: `problems = 56`. Nếu ra 0 thì dừng lại ngay và báo cáo.
 
 - [ ] **Step 7: Cập nhật auth.types.ts**
 
@@ -394,13 +414,14 @@ git commit -m "feat(auth): hash mat khau va ky access token RS256"
 ### Task 3: Đổi chữ ký service từ `clerkId` sang `userId`
 
 **Files:**
-- Modify: `be/src/activity/activity.service.ts`, `be/src/progress/progress.service.ts`, `be/src/submissions/submissions.service.ts`, `be/src/problems/problems.service.ts`, `be/src/views/views.service.ts`, `be/src/qna/qna.service.ts`
-- Modify: `be/src/premium/premium.service.ts` (chữ ký thôi, logic Clerk để Task 9)
+- Modify: `be/src/activity/activity.service.ts`, `be/src/progress/progress.service.ts`, `be/src/submissions/submissions.service.ts`, `be/src/problems/problems.service.ts`, `be/src/views/views.service.ts`, `be/src/qna/qna.service.ts`, `be/src/premium/premium.service.ts`, `be/src/admin/admin.service.ts` (chữ ký thôi, logic Clerk để Task 15)
 - Modify: file `.spec.ts` tương ứng của từng service
 
 **Interfaces:**
 - Consumes: `db.user` và `db.userToken` từ Task 1.
-- Produces: mọi service nhận `userId: number` thay cho `clerkId: string`. Cụ thể: `activity.recordLogin(userId: number, meta?)`, `activity.recordRun(userId: number)`, `activity.getMap(userId: number)`, `progress.getDashboard(userId: number)`, `progress.getSolvedMap(userId: number)`, `progress.getBadges(userId: number)`, `progress.recordSolved(userId, slug, difficulty)`, `progress.getFavorites(userId)`, `progress.addFavorite(userId, slug)`, `progress.removeFavorite(userId, slug)`, `submissions.*(userId: number, ...)`, `problems.submit(slug, userId: number, languageId, sourceCode)`, `qna.*(userId: number, ...)`, `views.track(ipHash, path, userId?: number, visitorId?, headers?, ip?)`.
+- Produces: mọi service nhận `userId: number` thay cho `clerkId: string`. Cụ thể: `activity.recordLogin(userId: number, meta?)`, `activity.recordRun(userId: number)`, `activity.getMap(userId: number)`, `progress.getDashboard(userId: number)`, `progress.getSolvedMap(userId: number)`, `progress.getBadges(userId: number)`, `progress.recordSolved(userId, slug, difficulty)`, `progress.getFavorites(userId)`, `progress.addFavorite(userId, slug)`, `progress.removeFavorite(userId, slug)`, `submissions.*(userId: number, ...)`, `problems.submit(slug, userId: number, languageId, sourceCode)`, `qna.*(userId: number, ...)` — gồm cả `QnaQuestion`, `views.track(ipHash, path, userId?: number, visitorId?, headers?, ip?)`.
+
+**Tám bảng, không phải bảy.** `QnaQuestion` cũng có `clerkId` và bị sót trong bản plan đầu. Nó là bảng câu hỏi hỗ trợ, `userId` kiểu `Int?` nullable, quan hệ `user User? @relation(fields: [userId], references: [id])`.
 
 - [ ] **Step 1: Đổi activity.service.ts**
 

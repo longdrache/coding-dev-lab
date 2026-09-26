@@ -64,9 +64,14 @@ Chỉ lưu hash, không lưu token gốc. Một chỗ lưu, một chỗ có inde
 
 Bảng `User` **không** còn cột `refreshTokenHash` nào. Số dòng `type = 'refresh'` chính là số thiết bị đang đăng nhập.
 
-Bảng `User` hiện chưa có quan hệ với 7 bảng kia. Đổi `clerkId String` → `userId Int` trỏ `User.id` ở: `ActivityDay`, `SolvedProblem`, `FavoriteProblem`, `Submission`, `UserBadge`, `PageView`, `LoginEvent`. Thêm index trên `userId` cho từng bảng.
+Bảng `User` hiện chưa có quan hệ với các bảng kia. Đổi `clerkId String` → `userId` trỏ `User.id` ở **tám** bảng: `ActivityDay`, `SolvedProblem`, `FavoriteProblem`, `Submission`, `UserBadge`, `PageView`, `LoginEvent`, `QnaQuestion`.
 
-`PageView.clerkId` chỉ dùng để đo "người dùng" trong analytics; khách chưa đăng nhập vẫn ghi `null` như hiện tại.
+- `ActivityDay`, `SolvedProblem`, `FavoriteProblem`, `Submission`, `UserBadge` → `userId Int` bắt buộc, `onDelete: Cascade`. Cascade là bắt buộc: nếu không, xoá một user đã có dữ liệu sẽ fail.
+- `PageView`, `LoginEvent`, `QnaQuestion` → `userId Int?` nullable, quan hệ `user User?`. `PageView` và `LoginEvent` nhận giá trị rỗng cho khách chưa đăng nhập, và `QnaQuestion` là câu hỏi hỗ trợ nên không bắt buộc gắn tài khoản.
+
+Thêm index trên `userId` cho từng bảng.
+
+`PageView.userId` chỉ dùng để đo "người dùng" trong analytics; khách chưa đăng nhập vẫn ghi `null` như hiện tại. `QnaQuestion` vốn đã nullable nên hành vi không đổi.
 
 ## Hợp đồng API
 
@@ -136,11 +141,17 @@ Xoá `@clerk/backend` khỏi BE sau khi không còn chỗ nào gọi. Biến mô
 ## Kế hoạch chuyển dữ liệu
 
 1. `pg_dump` toàn bộ database ra file `.sql` đặt ngoài repo.
-2. Xoá dữ liệu user ở 7 bảng và bảng `User`.
+2. Xoá dữ liệu user ở tám bảng và bảng `User`.
 3. Đổi schema, chạy migration.
 4. Giữ nguyên `Problem` và toàn bộ nội dung bài.
 
 Bước 1 là bắt buộc và không tự động hoá — không có bản sao thì mất vĩnh viễn.
+
+**Thứ tự bắt buộc: xoá trước, migrate sau.** Nếu migrate trước, SQL sinh ra sẽ là `ADD COLUMN "userId" INTEGER NOT NULL` trên bảng đang có dữ liệu, và không có giá trị mặc định để điền nên migration fail.
+
+**Không dùng `prisma migrate dev`.** Lịch sử migration của repo đã thiếu từ trước: migration `20260916153647_update_name` chỉ tạo `User` và `Test`, 11 bảng còn lại không có migration nào tạo ra, vì database production được dựng bằng `db push`. Prisma thấy drift và đòi reset, mà reset sẽ mất 56 bài. Phải dùng `prisma migrate diff` sinh SQL, áp bằng `psql --single-transaction`, rồi `prisma migrate resolve --applied`.
+
+**Hệ quả:** lịch sử migration không đủ để `migrate deploy` lên database mới. Khi dựng lại database từ file backup, phải dùng `prisma db push`.
 
 ## Kiểm thử
 

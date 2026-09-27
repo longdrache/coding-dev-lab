@@ -33,6 +33,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_TAKEN = 'Email này đã được dùng để đăng ký';
 /** Một câu duy nhất cho mọi lý do từ chối đăng nhập, không lộ email nào tồn tại. */
 const BAD_CREDENTIALS = 'Email hoặc mật khẩu không đúng';
+/**
+ * Hash bcrypt cost 10 sinh một lần từ 32 byte ngẫu nhiên đã bị bỏ đi, dùng làm
+ * "đối thủ" khi không có mật khẩu thật để so. Phải là hash **hợp lệ** và cùng
+ * cost factor với `hashPassword`: `bcrypt.compare` với chuỗi sai dạng trả về
+ * sau ~0,08ms thay vì ~65ms, tức là nhanh hơn 800 lần và lệch thời gian vẫn lộ
+ * ra email nào đã đăng ký. Giá trị này không phải bí mật (mật khẩu gốc đã bị
+ * bỏ) nhưng cũng không được log ra bất cứ đâu.
+ */
+const TIMING_EQUALIZER_HASH = '$2b$10$b4pTuLSFB9UWPmXDOcV9Pei0s.dOb8rVP50fuAAW.bqvkWAjSpalO';
 
 @Injectable()
 export class AuthService {
@@ -136,9 +145,21 @@ export class AuthService {
   }
 
   /**
+   * Tốn đúng một lần `bcrypt.compare` với một hash giả trị giá, dùng cho các
+   * nhánh **không có mật khẩu thật để so** (email không tồn tại, user chưa có
+   * `passwordHash`). Không có bước này thì nhánh đó trả về sau ~1ms còn nhánh có
+   * mật khẩu thật sau ~65ms: dù câu báo lỗi đã dùng chung, kẻ dò email chỉ cần
+   * đo thời gian là biết email nào đã đăng ký.
+   */
+  private async burnCompare(password: string): Promise<void> {
+    await verifyPassword(String(password ?? ''), TIMING_EQUALIZER_HASH);
+  }
+
+  /**
    * Đăng nhập bằng email + mật khẩu. Mọi lý do từ chối (email không tồn tại, sai
    * mật khẩu, chưa xác minh email) đều ném cùng một `UnauthorizedException` với
-   * cùng một câu, để không lộ ra email nào đã đăng ký.
+   * cùng một câu, và đều tốn cùng một lần bcrypt, để không lộ ra email nào đã
+   * đăng ký qua cả câu thông báo lẫn độ trễ.
    */
   async login(
     email: string,
@@ -147,8 +168,14 @@ export class AuthService {
   ): Promise<{ accessToken: string; refreshToken: string; user: PublicUser }> {
     const mail = String(email ?? '').trim().toLowerCase();
     const user = await this.db.user.findUnique({ where: { email: mail } });
-    if (!user) this.denyCredentials();
-    if (!user.passwordHash) this.denyCredentials();
+    if (!user) {
+      await this.burnCompare(password);
+      this.denyCredentials();
+    }
+    if (!user.passwordHash) {
+      await this.burnCompare(password);
+      this.denyCredentials();
+    }
     if (!(await verifyPassword(String(password ?? ''), user.passwordHash))) this.denyCredentials();
     if (!user.emailVerifiedAt) this.denyCredentials();
 
@@ -158,11 +185,17 @@ export class AuthService {
     return { accessToken, refreshToken, user: this.toPublic(user) };
   }
 
-  /** Chỉ giữ `MAX_SESSIONS` phiên mới nhất, xoá phần còn lại. Không đụng mã xác minh. */
+  /**
+   * Chỉ giữ `MAX_SESSIONS` phiên mới nhất, xoá phần còn lại. Không đụng mã xác minh.
+   *
+   * `orderBy` phải có tie-break `id`: hai lần đăng nhập trong cùng một mili giây
+   * có cùng `createdAt`, mà Postgres không bảo đảm thứ tự khi đó — không có
+   * `id` thì phiên vừa cấp có thể bị xoá ngay và người dùng bị đuổi lập tức.
+   */
   private async trimSessions(userId: number): Promise<void> {
     const rows = await this.db.userToken.findMany({
       where: { userId, type: 'refresh' },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
     const stale = rows.slice(MAX_SESSIONS).map((r) => r.id);
     if (stale.length > 0) await this.db.userToken.deleteMany({ where: { id: { in: stale } } });

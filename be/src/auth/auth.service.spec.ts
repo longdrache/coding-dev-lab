@@ -48,12 +48,27 @@ function tokenMatches(t: any, where: any): boolean {
   return where.OR ? where.OR.some(scalar) : scalar(where);
 }
 
-/** `createdAt` mới trước; khi trùng thì dòng tạo sau đứng trước (giống tie-break DB). */
-function newestFirst(rows: any[]): any[] {
-  return rows
-    .map((r, i) => ({ r, i }))
-    .sort((a, b) => b.r.createdAt.getTime() - a.r.createdAt.getTime() || b.i - a.i)
-    .map((x) => x.r);
+/**
+ * Sắp xếp y hệt thứ mà DB làm theo `orderBy` service truyền vào, kể cả
+ * tie-break. Phải đọc từ `orderBy` chứ không tự quyết thứ tự: nếu db giả cứ sắp
+ * theo thứ tự chèn, thì bỏ tie-break trong query cũng không làm test đỏ, tức là
+ * test không còn canh được thứ nó tưởng canh. Khi hết khoá sắp xếp, trả về 0 để
+ * `Array.sort` (ổn định) giữ thứ tự chèn — giống heap order của Postgres khi
+ * không có tie-break, tức là phiên mới nằm cuối và bị xoá trước.
+ */
+function sortByOrder(rows: any[], orderBy: any): any[] {
+  // Prisma viết thứ tự là `{ createdAt: 'desc' }` — tên cột là chính tên khoá.
+  const keys: [string, boolean][] = ([] as any[]).concat(orderBy ?? []).map((k: any) => {
+    const field = Object.keys(k)[0];
+    return [field, k[field] === 'desc'];
+  });
+  return rows.sort((a, b) => {
+    for (const [field, desc] of keys) {
+      if (a[field] > b[field]) return desc ? -1 : 1;
+      if (a[field] < b[field]) return desc ? 1 : -1;
+    }
+    return 0;
+  });
 }
 
 // `any` cố ý: đây là db giả, không phải DatabaseService thật.
@@ -78,8 +93,14 @@ function makeDb(): any {
     },
     userToken: {
       // `createdAt`/`lastUsedAt` có default ở schema, db giả phải dựng y như DB.
+      // `id` đệm 4 chữ số để thứ tự chuỗi trùng thứ tự tạo, giống cách `cuid()`
+      // của Prisma xếp theo thời điểm sinh — nhờ vậy tie-break `id` của service
+      // được mô phỏng trung thực.
       create: vi.fn(async ({ data }: any) => {
-        const r = { id: 't' + state.userToken.length, createdAt: new Date(), lastUsedAt: new Date(), ...data };
+        const r = {
+          id: 't' + String(state.userToken.length).padStart(4, '0'),
+          createdAt: new Date(), lastUsedAt: new Date(), ...data,
+        };
         state.userToken.push(r); return r;
       }),
       findFirst: vi.fn(async ({ where }: any) => {
@@ -88,7 +109,9 @@ function makeDb(): any {
         }
         return state.userToken.find((t) => t.tokenHash === where.tokenHash) ?? null;
       }),
-      findMany: vi.fn(async ({ where }: any) => newestFirst(state.userToken.filter((t) => tokenMatches(t, where)))),
+      findMany: vi.fn(async ({ where, orderBy }: any) => (
+        sortByOrder(state.userToken.filter((t) => tokenMatches(t, where)), orderBy)
+      )),
       update: vi.fn(async ({ where, data }: any) => {
         const t = state.userToken.find((x) => x.id === where.id)!; Object.assign(t, data); return t;
       }),
@@ -318,6 +341,44 @@ describe('đăng nhập', () => {
     await expect(svc.login('a@b.co', 'matkhau123', 'UA')).rejects.toMatchObject({ status: 401 });
   });
 
+  it('email không tồn tại vẫn chạy bcrypt, không lộ qua độ trễ', async () => {
+    const spy = vi.spyOn(tokens, 'verifyPassword');
+    const { svc } = await seedVerified();
+    const truoc = spy.mock.calls.length;
+
+    const e = await svc.login('khong-ton-tai@b.co', 'matkhau123', 'UA').catch((x) => x);
+    expect(e.status).toBe(401);
+    // Không có lời gọi này thì nhánh trả về sau ~1ms còn nhánh có mật khẩu thật
+    // sau ~65ms, và kẻ dò email chỉ cần đo thời gian là biết email nào tồn tại.
+    expect(spy).toHaveBeenCalledTimes(truoc + 1);
+    expect(spy.mock.calls.at(-1)![1]).toMatch(/^\$2[aby]\$10\$/);
+  });
+
+  it('tài khoản chưa có mật khẩu cũng chạy bcrypt, không lộ qua độ trễ', async () => {
+    const spy = vi.spyOn(tokens, 'verifyPassword');
+    const { db, svc } = await seedVerified();
+    db.state.user[0].passwordHash = null;
+    const truoc = spy.mock.calls.length;
+
+    await expect(svc.login('a@b.co', 'matkhau123', 'UA')).rejects.toMatchObject({ status: 401 });
+    expect(spy).toHaveBeenCalledTimes(truoc + 1);
+    expect(spy.mock.calls.at(-1)![1]).toMatch(/^\$2[aby]\$10\$/);
+  });
+
+  it('cả ba nhánh từ chối đều tốn đúng một lần bcrypt', async () => {
+    const spy = vi.spyOn(tokens, 'verifyPassword');
+    const { svc } = await seedVerified();
+    const chuaXacMinh = makeDb();
+    const svcChuaXacMinh = new AuthService(chuaXacMinh, { send: async () => {} } as any);
+    await svcChuaXacMinh.register('b@b.co', 'matkhau123');
+
+    const moc = spy.mock.calls.length;
+    await svc.login('khong-ton-tai@b.co', 'matkhau123', 'UA').catch(() => {}); // không có user
+    await svc.login('a@b.co', 'sai-mat-khau', 'UA').catch(() => {}); // sai mật khẩu
+    await svcChuaXacMinh.login('b@b.co', 'matkhau123', 'UA').catch(() => {}); // chưa xác minh
+    expect(spy.mock.calls.length - moc).toBe(3);
+  });
+
   it('đăng nhập thành công trả access token, refresh token và user công khai', async () => {
     const { db, svc } = await seedVerified();
     const r = await svc.login('a@b.co', 'matkhau123', 'may-tinh');
@@ -506,6 +567,32 @@ describe('giới hạn phiên', () => {
     for (let i = 1; i <= 11; i++) await svc.login('a@b.co', 'matkhau123', 'may-' + i);
     expect(db.state.userToken.filter((t: any) => t.type === 'refresh')).toHaveLength(10);
     expect(db.state.userToken.filter((t: any) => t.type === 'verify_email')).toHaveLength(1);
+  });
+
+  it('trimSessions truyền tie-break id xuống DB', async () => {
+    const { db, svc } = await seedVerified();
+    await svc.login('a@b.co', 'matkhau123', 'may-1');
+    expect(db.userToken.findMany).toHaveBeenCalledWith({
+      where: { userId: db.state.user[0].id, type: 'refresh' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  });
+
+  it('khi mọi phiên trùng createdAt thì phiên vừa cấp vẫn được giữ', async () => {
+    freezeAt('2026-03-01T00:00:00Z');
+    const { db, svc } = await seedVerified();
+    const phien: string[] = [];
+    for (let i = 1; i <= 11; i++) {
+      phien.push((await svc.login('a@b.co', 'matkhau123', 'may-' + i)).refreshToken);
+    }
+    const dong = db.state.userToken.filter((t: any) => t.type === 'refresh');
+    expect(dong).toHaveLength(10);
+    // Điều kiện để tie-break là thứ quyết định ở test này: createdAt trùng tuyệt đối,
+    // nên Postgres không có lý do nào xếp `createdAt` theo ý muốn.
+    expect(new Set(dong.map((t: any) => t.createdAt.getTime())).size).toBe(1);
+    // Không có tie-break thì phiên vừa cấp rơi vào cuối danh sách và bị xoá ngay.
+    await expect(svc.refresh(phien[10], 'may-11')).resolves.not.toBeNull();
+    await expect(svc.refresh(phien[0], 'may-1')).resolves.toBeNull();
   });
 });
 

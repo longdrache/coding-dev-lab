@@ -1,0 +1,249 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+import Link from "next/link";
+import { CircleAlert, LoaderCircle, MailCheck } from "lucide-react";
+import {
+  MIN_PASSWORD_LENGTH,
+  VERIFY_LINK_HOURS,
+  normalizeEmail,
+  submitCredentials,
+  type AuthMode,
+} from "@/lib/auth-form";
+import { useSession } from "./AuthProvider";
+
+/**
+ * Form đăng nhập / đăng ký, thay `<SignIn>` / `<SignUp>` của Clerk.
+ *
+ * Trang là **Operate**: người tới đây đã biết GoCode và chỉ muốn vào dùng. Phần
+ * thuyết phục đã nằm hết ở cột trái `AuthShell`, nên form này không lặp lại
+ * một lời quảng cáo nào. Nó làm đúng ba việc: nhận email + mật khẩu, nói rõ
+ * **trước khi** bấm đăng ký rằng sẽ phải xác minh email, và đưa người dùng tới
+ * chỗ cần tới sau khi xong.
+ *
+ * Mọi quyết định về endpoint và về việc dịch lỗi BE sang tiếng Việt nằm ở
+ * `@/lib/auth-form` — file .ts thuần, test được. Ở trong component thì một bản
+ * đồ lỗi bỏ sót một câu sẽ không bị test nào báo, vì `vitest.config.ts` chỉ có
+ * `environment: 'node'`, không jsdom (`api.ts` tách `commitSession` ra cũng vì
+ * đúng lý do này).
+ */
+export default function AuthForm({ mode }: { mode: AuthMode }) {
+  const { refresh } = useSession();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  /** Màn kết quả: `sent` = link đã đi, `signedin` = đã có phiên. */
+  const [done, setDone] = useState<"sent" | "signedin" | null>(null);
+
+  const isSignup = mode === "signup";
+  const submitLabel = isSignup ? "Tạo tài khoản" : "Đăng nhập";
+  const toggleHref = isSignup ? "/sign-in" : "/sign-up";
+  const toggleLabel = isSignup ? "Đã có tài khoản?" : "Chưa có tài khoản?";
+  const toggleAction = isSignup ? "Đăng nhập" : "Đăng ký";
+
+  /**
+   * Một đường duy nhất cho cả lần bấm đầu và lần bấm "gửi lại", nên hai màn
+   * kết quả không thể lệch nhau vì copy-paste.
+   */
+  async function run() {
+    setError("");
+    setBusy(true);
+    try {
+      const r = await submitCredentials(mode, email, password);
+      if (r.kind === "error") {
+        setError(r.message);
+      } else if (isSignup) {
+        // `/register` trả 200 **không** kèm cookie phiên (`auth.controller.ts:123`):
+        // tài khoản mới chỉ dùng được sau khi mở link xác nhận. Gọi `refresh()`
+        // ở đây sẽ đọc `/me` ra `null` và bỏ người dùng ở trang trắng không có
+        // một dòng giải thích nào.
+        setDone("sent");
+      } else {
+        // `refresh` đọc lại `/me` nên `useSession().user` có giá trị ngay, và
+        // `AuthProvider` tự hẹn lịch làm mới token từ `expiresIn` vừa nhận.
+        await refresh();
+        setDone("signedin");
+      }
+    } catch {
+      // `submitCredentials` tự dịch lỗi mạng thành `kind: "error"` rồi, nên
+      // nhánh này chỉ còn để đỡ `refresh()`. `loadSession` tự nuốt lỗi nên
+      // hiện chưa tới được — nhưng một lần reject ở đây không được nổi ra ngoài
+      // và biến thành màn trắng.
+      setError("Không đăng nhập được. Thử lại sau.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void run();
+  }
+
+  if (done === "sent") {
+    return (
+      // Hai màn kết quả dùng **margin tường minh** chứ không `space-y-*`: ở đây ta
+      // cần heading có khoảng trên rộng hơn khoảng dưới, mà `space-y-4 > *` thắng
+      // `mt-2.5` về độ ưu tiên nên không dùng chung được hai kiểu.
+      <div className={CARD}>
+        <p className={KICKER}>{"// check your inbox"}</p>
+        <h2 className={TITLE}>Kiểm tra hộp thư</h2>
+        <p className={BODY}>
+          Mình vừa gửi link xác nhận tới{" "}
+          <span className="break-all font-medium text-zinc-900">{normalizeEmail(email)}</span>. Mở link đó là vào
+          được luôn — không mở thì tài khoản chưa dùng được. Link hết hạn sau {VERIFY_LINK_HOURS} giờ.
+        </p>
+
+        {error && (
+          <div className="mt-4">
+            <ErrorNote message={error} />
+          </div>
+        )}
+
+        <button type="button" onClick={() => void run()} disabled={busy} className={`${SECONDARY} mt-5`}>
+          {busy && <LoaderCircle aria-hidden className={SPINNER} />}
+          {busy ? "Đang gửi lại…" : "Gửi lại link"}
+        </button>
+
+        <p className={`${FOOTER} mt-4`}>
+          Xác minh xong rồi?{" "}
+          <Link href="/sign-in" className={FOOTER_LINK}>
+            Đăng nhập
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
+  if (done === "signedin") {
+    return (
+      <div className={CARD}>
+        <p className={KICKER}>{"// signed in"}</p>
+        <h2 className={TITLE}>Đã đăng nhập</h2>
+        <p className={BODY}>Tài khoản đã mở. Vào trang chủ để luyện tiếp bài đang dở.</p>
+        <Link href="/" className={`${PRIMARY} mt-5`}>
+          Vào trang chủ
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={onSubmit} className={`${CARD} space-y-5`} aria-busy={busy}>
+      <div className="space-y-1.5">
+        <label htmlFor="auth-email" className="block text-sm font-medium text-zinc-800">
+          Email
+        </label>
+        <input
+          id="auth-email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className={INPUT}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="auth-password" className="block text-sm font-medium text-zinc-800">
+          Mật khẩu
+        </label>
+        <input
+          id="auth-password"
+          name="password"
+          type="password"
+          autoComplete={isSignup ? "new-password" : "current-password"}
+          // Chỉ ràng ở chế độ đăng ký: ở chế độ đăng nhập, một tài khoản cũ tạo
+          // từ Clerk có thể còn mật khẩu ngắn hơn, và chặn ở trình duyệt sẽ
+          // chặn nhầm người dùng hợp lệ với một câu không giải thích được.
+          minLength={isSignup ? MIN_PASSWORD_LENGTH : undefined}
+          aria-describedby={isSignup ? "auth-password-hint" : undefined}
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className={INPUT}
+        />
+        {isSignup && (
+          <p id="auth-password-hint" className="text-xs text-zinc-500">
+            Ít nhất {MIN_PASSWORD_LENGTH} ký tự.
+          </p>
+        )}
+      </div>
+
+      {isSignup && (
+        // Nói TRƯỚC khi bấm, không phải chỉ sau khi đăng ký xong. Bấm xong thì
+        // tài khoản đã tồn tại và cách vào duy nhất là mở link — biết hạn 24
+        // giờ từ trước là thứ tiết kiệm được một lượt đi lại với support.
+        <p className="flex gap-2.5 text-xs leading-relaxed text-zinc-600">
+          <MailCheck aria-hidden className="mt-px size-4 shrink-0 text-emerald-600" />
+          <span>
+            GoCode gửi link xác nhận tới email này. Phải mở link đó mới đăng nhập được, và link hết hạn sau{" "}
+            {VERIFY_LINK_HOURS} giờ.
+          </span>
+        </p>
+      )}
+
+      {error && <ErrorNote message={error} />}
+
+      <button type="submit" disabled={busy} className={PRIMARY}>
+        {busy && <LoaderCircle aria-hidden className={SPINNER} />}
+        {busy ? "Đang xử lý…" : submitLabel}
+      </button>
+
+      {/* Cặp trang này chỉ trỏ tới nhau. Link "Quên mật khẩu?" thuộc `/forgot-password`
+          nên chưa đặt ở đây — đặt sớm là một link chết. */}
+      <p className={FOOTER}>
+        {toggleLabel}{" "}
+        <Link href={toggleHref} className={FOOTER_LINK}>
+          {toggleAction}
+        </Link>
+      </p>
+    </form>
+  );
+}
+
+function ErrorNote({ message }: { message: string }) {
+  return (
+    // `role="alert"` để screen reader đọc ngay khi câu xuất hiện, không cần
+    // người dùng đi tìm lại nó.
+    <p role="alert" className="flex gap-2 text-sm leading-relaxed text-rose-600">
+      <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+      <span>{message}</span>
+    </p>
+  );
+}
+
+/** Thẻ trắng viền hairline + một bóng rất mềm — đúng card của app, không nặng hơn. */
+const CARD = "w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm";
+/**
+ * `tracking-wide` chứ không phải `tracking-widest` như brief gợi ý: `DESIGN.md`
+ * ghim `letterSpacing: 0.04em` cho mono-label, và 0.1em làm nhãn rời rạc khỏi
+ * câu nó dẫn. `emerald-700` (5.5:1) thay vì `emerald-600` (3.8:1) vì nhãn này
+ * nhỏ — cần mức tương phản của chữ thường, không phải của chữ lớn.
+ */
+const KICKER = "font-mono text-xs font-medium uppercase tracking-wide text-emerald-700";
+const TITLE = "mt-2.5 font-display text-xl font-bold tracking-tight text-zinc-950";
+const BODY = "mt-2 text-sm leading-relaxed text-zinc-600";
+/** `bg-white` + `ring-offset-white` để vòng focus nhìn thấy trên nền thẻ. */
+const INPUT =
+  "w-full rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2.5 text-sm text-zinc-950 " +
+  "transition-colors focus:border-zinc-400 focus:bg-white focus:outline-none " +
+  "focus-visible:ring-2 focus-visible:ring-zinc-900/15";
+const PRIMARY =
+  "inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2.5 " +
+  "text-sm font-semibold text-white transition hover:bg-zinc-800 active:scale-[0.97] " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 " +
+  "focus-visible:ring-offset-2 focus-visible:ring-offset-white " +
+  "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-zinc-900";
+const SECONDARY =
+  "inline-flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 " +
+  "py-2.5 text-sm font-semibold text-zinc-800 transition hover:border-zinc-300 hover:bg-zinc-50 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/20 " +
+  "focus-visible:ring-offset-2 focus-visible:ring-offset-white " +
+  "disabled:cursor-not-allowed disabled:opacity-60";
+const FOOTER = "text-center text-xs text-zinc-500";
+const FOOTER_LINK = "font-medium text-zinc-900 underline underline-offset-4 hover:text-emerald-700";
+const SPINNER = "size-4 animate-spin motion-reduce:animate-none";

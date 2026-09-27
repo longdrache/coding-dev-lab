@@ -1,4 +1,4 @@
-import { SignIn } from "@clerk/nextjs";
+import AuthForm from "@/app/ui/AuthForm";
 import AuthShell from "@/app/ui/AuthShell";
 import type { Metadata } from "next";
 
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function SignInPage() {
   return (
     <AuthShell kicker="// welcome back" title="Chào mừng trở lại sân luyện.">
-      <SignIn />
+      <AuthForm mode="signin" />
     </AuthShell>
   );
 }

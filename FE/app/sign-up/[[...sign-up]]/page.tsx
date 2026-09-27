@@ -1,4 +1,4 @@
-import { SignUp } from "@clerk/nextjs";
+import AuthForm from "@/app/ui/AuthForm";
 import AuthShell from "@/app/ui/AuthShell";
 import type { Metadata } from "next";
 
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function SignUpPage() {
   return (
     <AuthShell kicker="// join_56_bai" title="Tạo tài khoản, giải bài đầu tiên hôm nay.">
-      <SignUp />
+      <AuthForm mode="signup" />
     </AuthShell>
   );
 }

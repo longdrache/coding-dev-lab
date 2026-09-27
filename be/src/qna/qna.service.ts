@@ -5,13 +5,14 @@ import { DatabaseService } from '../database/database.service.ts';
 export class QnaService {
   constructor(private readonly db: DatabaseService) {}
 
-  async create(data: { name: string; email: string; question: string; clerkId?: string }) {
+  async create(data: { name: string; email: string; question: string; userId?: number | null }) {
     return this.db.qnaQuestion.create({
       data: {
         name: data.name,
         email: data.email,
         question: data.question,
-        clerkId: data.clerkId,
+        // Khách không đăng nhập thì userId = null, KHÔNG phải 0 — cột nullable.
+        userId: data.userId ?? null,
       },
     });
   }

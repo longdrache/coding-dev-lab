@@ -34,6 +34,7 @@ model User {
   badges        UserBadge[]
   pageViews     PageView[]
   loginEvents   LoginEvent[]
+  qnaQuestions  QnaQuestion[]
 }
 
 model UserToken {
@@ -153,16 +154,21 @@ model Submission {
   @@index([userId, problemSlug])
 }
 
+// Câu hỏi hỗ trợ từ user. Khách không đăng nhập cũng gửi được nên `userId`
+// nullable — cố ý KHÔNG `onDelete: Cascade` như 6 bảng dữ liệu chính, để
+// câu hỏi của khách không bị mất khi tài khoản bị xoá.
 model QnaQuestion {
   id        String   @id @default(cuid())
-  clerkId   String?
+  userId    Int?
   name      String
   email     String
   question  String   @db.Text
   createdAt DateTime @default(now())
 
+  user User? @relation(fields: [userId], references: [id])
+
   @@index([email])
-  @@index([clerkId])
+  @@index([userId])
 }
 
 // Log event Stripe đã xử lý — chống retry gia hạn VIP vô hạn

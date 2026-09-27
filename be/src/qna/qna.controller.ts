@@ -24,16 +24,18 @@ export class QnaController {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new BadRequestException('Email không hợp lệ');
     }
-    // thử lấy clerkId nếu có token, không bắt buộc
-    let clerkId: string | undefined;
+    // thử lấy userId nếu có token, không bắt buộc — khách vãng lai thì null
+    let userId: number | null = null;
     const auth = req.headers.authorization;
     if (auth?.startsWith('Bearer ')) {
       try {
-        // nếu có guard optional, clerkId có thể không có, bỏ qua
-        clerkId = (req as unknown as { user?: { userId: string } }).user?.userId;
+        // nếu có guard optional, userId có thể không có, bỏ qua
+        const raw = (req as unknown as { user?: { userId?: unknown } }).user?.userId;
+        if (typeof raw === 'number' && Number.isInteger(raw)) userId = raw;
+        else if (typeof raw === 'string' && /^\d+$/.test(raw)) userId = Number(raw);
       } catch {}
     }
-    const saved = await this.qna.create({ name, email, question, clerkId });
+    const saved = await this.qna.create({ name, email, question, userId });
     return { ok: true, id: saved.id };
   }
 

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller.ts';
 import { AppService } from './app.service.ts';
-import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
+import { AuthGuard } from './auth/auth.guard.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
 import { AdminGuard } from './admin/admin.guard.ts';
 import { AdminService } from './admin/admin.service.ts';
@@ -14,7 +14,7 @@ describe('AppController', () => {
       controllers: [AppController],
       providers: [
         AppService,
-        ClerkAuthGuard,
+        AuthGuard,
         RolesGuard,
         AdminGuard,
         { provide: AdminService, useValue: {} },

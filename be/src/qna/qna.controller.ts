@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { QnaService } from './qna.service.ts';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
+import { AuthGuard } from '../auth/auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
 
 @Controller('api/qna')
@@ -40,7 +40,7 @@ export class QnaController {
   }
 
   @Get()
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(AuthGuard)
   async list() {
     return this.qna.findAll();
   }

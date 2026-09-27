@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
+import { AuthGuard } from '../auth/auth.guard.ts';
 import { RolesGuard } from '../auth/roles.guard.ts';
 import { Roles } from '../auth/roles.decorator.ts';
 import { PremiumService, type PremiumPlan } from './premium.service.ts';
@@ -24,7 +24,7 @@ export class PremiumController {
   constructor(private readonly premiumService: PremiumService) {}
 
   @Post('checkout')
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(AuthGuard)
   createCheckout(
     @Req() request: AuthenticatedRequest,
     @Body('plan') plan: PremiumPlan,
@@ -35,7 +35,7 @@ export class PremiumController {
   }
 
   @Post('grant-vip')
-  @UseGuards(ClerkAuthGuard, RolesGuard)
+  @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
   async grantVip(
     @Req() request: AuthenticatedRequest,
@@ -56,7 +56,7 @@ export class PremiumController {
   }
 
   @Post('cancel-vip')
-  @UseGuards(ClerkAuthGuard, RolesGuard)
+  @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
   async cancelVip(
     @Req() request: AuthenticatedRequest,
@@ -93,7 +93,7 @@ export class PremiumController {
   // ========== VIP hết hạn ==========
 
   @Get('status')
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(AuthGuard)
   async getStatus(@Req() request: AuthenticatedRequest) {
     const userId = request.user?.userId;
     if (!userId) throw new BadRequestException('Không xác định được user');
@@ -101,7 +101,7 @@ export class PremiumController {
   }
 
   @Post('check-expired')
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(AuthGuard)
   async checkExpired(
     @Req() request: AuthenticatedRequest,
     @Body('userId') targetUserId?: string,
@@ -135,7 +135,7 @@ export class PremiumController {
   }
 
   @Post('sweep-expired-admin')
-  @UseGuards(ClerkAuthGuard, RolesGuard)
+  @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
   async sweepExpiredAsAdmin(@Body() body: { limit?: number; dryRun?: boolean }) {
     return this.premiumService.sweepExpiredVips({

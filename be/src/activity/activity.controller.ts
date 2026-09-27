@@ -1,10 +1,10 @@
 import { Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
+import { AuthGuard } from '../auth/auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
 import { ActivityService } from './activity.service.ts';
 
 @Controller('api/activity')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(AuthGuard)
 export class ActivityController {
   constructor(private readonly activity: ActivityService) {}
 

@@ -1,6 +1,6 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { AppService } from './app.service.ts';
-import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
+import { AuthGuard } from './auth/auth.guard.ts';
 import { Roles } from './auth/roles.decorator.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
 import { AdminGuard } from './admin/admin.guard.ts';
@@ -21,7 +21,7 @@ export class AppController {
   }
 
   @Get('api/vip/health')
-  @UseGuards(ClerkAuthGuard, RolesGuard)
+  @UseGuards(AuthGuard, RolesGuard)
   @Roles('vip', 'admin')
   getVipHealth(): { ok: true } {
     return { ok: true };

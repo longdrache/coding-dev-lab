@@ -1,10 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
+import { AuthGuard } from '../auth/auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
 import { ProgressService } from './progress.service.ts';
 
 @Controller('api/progress')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(AuthGuard)
 export class ProgressController {
   constructor(private readonly progress: ProgressService) {}
 

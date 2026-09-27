@@ -160,6 +160,7 @@ async function main() {
   // câu `ADD COLUMN "userId" INTEGER NOT NULL` lên bảng đang có dữ liệu và
   // migrate sẽ fail vì không có giá trị mặc định.
   // Xoá dữ liệu user. `Problem` và toàn bộ nội dung bài giữ nguyên.
+  await db.userToken.deleteMany({});
   await db.userBadge.deleteMany({});
   await db.solvedProblem.deleteMany({});
   await db.favoriteProblem.deleteMany({});
@@ -219,19 +220,9 @@ export type AuthenticatedRequest = {
 };
 ```
 
-Bỏ trường `claims` vì không còn dùng. Viết `be/src/auth/auth.types.spec.ts`:
+Bỏ trường `claims` vì không còn dùng. **Không viết test cho `auth.types.ts`** — bản plan đầu có một test khẳng định điều hiển nhiên (tự viết literal rồi ép kiểu, nên luôn đúng), đã bị xoá trong vòng sửa. Kiểu đã được `tsc` canh; muốn test thì test hành vi thật ở task sau.
 
-```ts
-import { describe, expect, it } from 'vitest';
-import type { AuthenticatedRequest } from './auth.types.ts';
-
-describe('AuthenticatedRequest', () => {
-  it('userId là chuỗi để các service khác dùng được', () => {
-    const req = { headers: {}, user: { userId: '7', roles: ['user'] } } as AuthenticatedRequest;
-    expect(typeof req.user!.userId).toBe('string');
-  });
-});
-```
+Không thêm `be/src/auth/auth.types.spec.ts` vào lệnh `git add` ở Step 9.
 
 - [ ] **Step 8: Chạy toàn bộ gate**
 
@@ -246,7 +237,7 @@ Kỳ vọng: schema generate thành công. **Các test cũ sẽ đỏ** ở Task
 - [ ] **Step 9: Commit**
 
 ```bash
-git add be/prisma be/scripts be/src/auth/auth.types.ts be/src/auth/auth.types.spec.ts
+git add be/prisma be/scripts be/src/auth/auth.types.ts
 git commit -m "feat(auth): schema User + UserToken, bo cot clerkId, xoa du lieu user"
 ```
 

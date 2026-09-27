@@ -47,7 +47,7 @@ async function signRac(userId: number, role: UserRole): Promise<string> {
   }
 }
 
-function ctx(headers: Record<string, string> = {}, cookies?: Record<string, string>) {
+function ctx(headers: Record<string, unknown> = {}, cookies?: Record<string, string>) {
   const req: any = { headers };
   if (cookies) req.cookies = cookies;
   return {
@@ -170,6 +170,17 @@ describe('từ chối token không hợp lệ', () => {
   it('cookie hỏng dấu phần trăm thì 401 chứ không phải 500', async () => {
     const { c } = ctx({ cookie: 'session=%E0%A4%A' });
     await expect(guard().canActivate(c)).rejects.toMatchObject({ status: 401 });
+  });
+
+  // Characterization test: Node luôn gộp header trùng thành chuỗi, nên mảng là
+  // đầu vào mà http parser không tạo ra. Ghi lại để canh đúng điều guard hứa:
+  // header sai kiểu thì từ chối 401, không để lỗi TypeError nổi lên thành 500.
+  it('header sai kiểu thì 401 chứ không phải 500', async () => {
+    const jwt = await signAccessToken(7, 'admin');
+    for (const headers of [{ authorization: [`Bearer ${jwt}`] }, { cookie: [`session=${jwt}`] }]) {
+      const { c } = ctx(headers);
+      await expect(guard().canActivate(c)).rejects.toMatchObject({ status: 401 });
+    }
   });
 
   it('thông báo 401 không rò token ra ngoài', async () => {

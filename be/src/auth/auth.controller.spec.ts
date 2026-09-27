@@ -15,6 +15,8 @@ const OLD_ENV = { ...process.env };
 
 const USER = { id: 7, email: 'a@b.co', name: null, role: 'user' as UserRole };
 const REFRESH = 'r'.repeat(64);
+/** Câu duy nhất `forgotPassword` được phép trả về — controller chỉ chuyển tiếp. */
+const RESET_MSG = 'Nếu email đó có tài khoản, chúng tôi đã gửi link đặt lại mật khẩu.';
 
 function ctl() {
   const auth = {
@@ -25,6 +27,8 @@ function ctl() {
     logout: vi.fn().mockResolvedValue(undefined),
     logoutAll: vi.fn().mockResolvedValue(undefined),
     me: vi.fn().mockResolvedValue(USER),
+    forgotPassword: vi.fn().mockResolvedValue({ message: RESET_MSG }),
+    resetPassword: vi.fn().mockResolvedValue(true),
   };
   const res = { cookie: vi.fn(), clearCookie: vi.fn() };
   return { c: new AuthController(auth as never), auth, res };
@@ -328,6 +332,59 @@ describe('đăng ký', () => {
 });
 
 /**
+ * Controller hai route mới **không** đụng cookie: sau khi đổi mật khẩu thì mọi
+ * phiên cũ đã bị xoá ở tầng service, cookie cũ trên máy người dùng chỉ còn là
+ * rác và sẽ bị server từ chối ở lần gọi kế tiếp.
+ */
+describe('quên và đặt lại mật khẩu', () => {
+  it('forgot truyền email xuống service và trả nguyên câu của service', async () => {
+    const { c, auth } = ctl();
+    const r = await c.forgot({ email: 'a@b.co' });
+    expect(auth.forgotPassword).toHaveBeenCalledWith('a@b.co');
+    // Controller không được tự thêm hay bớt câu: đó là câu không lộ email nào tồn tại.
+    expect(r).toEqual({ message: RESET_MSG });
+  });
+
+  it('forgot nhận body rỗng hoặc thiếu body thì truyền chuỗi rỗng, không ném 500', async () => {
+    const { c, auth } = ctl();
+    await c.forgot({});
+    expect(auth.forgotPassword).toHaveBeenLastCalledWith('');
+    await c.forgot(undefined as never);
+    expect(auth.forgotPassword).toHaveBeenLastCalledWith('');
+    await c.forgot({ email: ['a', 'b'] as never });
+    expect(auth.forgotPassword).toHaveBeenLastCalledWith('a,b');
+  });
+
+  it('reset truyền token và mật khẩu xuống service, thành công thì báo tiếng Việt', async () => {
+    const { c, auth } = ctl();
+    const r = await c.reset({ token: 'ma', password: 'matkhaumoi123' });
+    expect(auth.resetPassword).toHaveBeenCalledWith('ma', 'matkhaumoi123');
+    expect(r).toEqual({ message: 'Đã đổi mật khẩu. Vui lòng đăng nhập lại.' });
+  });
+
+  it('mã sai hoặc hết hạn thì 400 kèm thông báo tiếng Việt, không rò mã ra ngoài', async () => {
+    // 400 chứ không phải 200: giống `verify`, cùng một lý do — 200 khiến client tưởng
+    // đã đổi mật khẩu xong rồi hỏi lại mãi với một mã đã chết.
+    const { c, auth } = ctl();
+    auth.resetPassword.mockResolvedValue(false);
+    const e = await c.reset({ token: 'mat-khau-bi-lo', password: 'matkhaumoi123' }).catch((x) => x);
+    expect(e.status).toBe(400);
+    expect(e.message).toBe('Mã đặt lại không hợp lệ hoặc đã hết hạn');
+    expect(String(e.message)).not.toContain('mat-khau-bi-lo');
+  });
+
+  it('lỗi của service đi nguyên vẹn ra ngoài, không bị controller nuốt', async () => {
+    const { c, auth } = ctl();
+    auth.resetPassword.mockRejectedValue(
+      Object.assign(new Error('Mật khẩu phải có ít nhất 8 ký tự'), { status: 400 }),
+    );
+    await expect(
+      c.reset({ token: 'ma', password: 'ngan' }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+/**
  * Nest đọc guard của route từ metadata `__guards__` (hằng `GUARDS_METADATA` trong
  * `@nestjs/common/constants`), nên đây là chỗ duy nhất để chứng minh route nào thật
  * sự được bảo vệ. Phần "có thật sự chạy không" thì test bên dưới dùng `ThrottleGuard`
@@ -338,7 +395,9 @@ function guardsOf(handler: (...args: never[]) => unknown): unknown[] {
 }
 
 /** Cùng logic với `guardsOf`, nhưng đọc metadata của `ThrottleGuard`. */
-function throttleOf(name: 'register' | 'verify' | 'login' | 'refresh') {
+function throttleOf(
+  name: 'register' | 'verify' | 'login' | 'refresh' | 'forgot' | 'reset',
+) {
   const found = Reflect.getMetadata(THROTTLE_KEY, AuthController.prototype[name]) as
     | { limit: number; ttl: number }
     | undefined;
@@ -376,6 +435,13 @@ describe('guard và giới hạn tần suất', () => {
     }
   });
 
+  it('forgot-password và reset-password dùng ThrottleGuard', () => {
+    // Hai route này là đầu vào để bơm mail và dò mã, không thể thiếu chặn tần suất.
+    for (const h of ['forgot', 'reset'] as const) {
+      expect(guardsOf(AuthController.prototype[h])).toContain(ThrottleGuard);
+    }
+  });
+
   it('logout không dùng AuthGuard — access token hết hạn vẫn phải đăng xuất được', () => {
     expect(guardsOf(AuthController.prototype.logout)).not.toContain(AuthGuard);
   });
@@ -390,6 +456,24 @@ describe('guard và giới hạn tần suất', () => {
     expect(throttleOf('login')).toEqual({ limit: 30, ttl: 15 * 60 * 1000 });
     expect(throttleOf('verify')).toEqual({ limit: 20, ttl: 60 * 1000 });
     expect(throttleOf('refresh')).toEqual({ limit: 120, ttl: 60 * 1000 });
+    // Hai route mới ở đúng mức `register`: 20 lần/giờ. IP dùng chung ở Việt Nam
+    // rất phổ biến nên không thể siết thêm mà không chặn nhầm người thật.
+    expect(throttleOf('forgot')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
+    expect(throttleOf('reset')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
+  });
+
+  it('quên mật khẩu bị chặn sau 20 lần trong 1 giờ', () => {
+    const g = new ThrottleGuard(new Reflector());
+    const ctx = ctxFor(AuthController.prototype.forgot as never, '10.0.0.5');
+    for (let i = 0; i < 20; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    expect(statusOf(() => g.canActivate(ctx))).toBe(429);
+  });
+
+  it('đặt lại mật khẩu bị chặn sau 20 lần trong 1 giờ, không dò được mã', () => {
+    const g = new ThrottleGuard(new Reflector());
+    const ctx = ctxFor(AuthController.prototype.reset as never, '10.0.0.6');
+    for (let i = 0; i < 20; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
 
   it('đăng ký bị chặn sau 20 lần trong 1 giờ', () => {
@@ -538,5 +622,39 @@ describe('route thật qua Nest', () => {
     expect(cookies).toContain('session=;');
     expect(cookies).toContain('refresh=;');
     expect(cookies).toContain('Path=/');
+  });
+
+  it('POST /api/auth/forgot-password trả 200 chứ không 201, và không set cookie', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/auth/forgot-password')
+      .send({ email: 'a@b.co' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: RESET_MSG });
+    expect(auth.forgotPassword).toHaveBeenCalledWith('a@b.co');
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('POST /api/auth/forgot-password thiếu body vẫn 200, không phải 500', async () => {
+    const res = await request(app.getHttpServer()).post('/api/auth/forgot-password');
+    expect(res.status).toBe(200);
+    expect(auth.forgotPassword).toHaveBeenLastCalledWith('');
+  });
+
+  it('POST /api/auth/reset-password với mã hợp lệ thì 200', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/auth/reset-password')
+      .send({ token: 'ma-hop-le', password: 'matkhaumoi123' });
+    expect(res.status).toBe(200);
+    expect(auth.resetPassword).toHaveBeenCalledWith('ma-hop-le', 'matkhaumoi123');
+  });
+
+  it('POST /api/auth/reset-password với mã chết thì 400 kèm thông báo tiếng Việt', async () => {
+    auth.resetPassword.mockResolvedValue(false);
+    const res = await request(app.getHttpServer())
+      .post('/api/auth/reset-password')
+      .send({ token: 'ma-chet', password: 'matkhaumoi123' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Mã đặt lại không hợp lệ hoặc đã hết hạn');
+    auth.resetPassword.mockResolvedValue(true);
   });
 });

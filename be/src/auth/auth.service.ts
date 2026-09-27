@@ -34,9 +34,23 @@ export const MAX_SESSIONS = 10;
 /** Token vừa bị xoay vòng còn dùng được trong 30 giây, để hai tab không giết nhau. */
 const ROTATION_GRACE_MS = 30 * 1000;
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Hạn của mã đặt lại mật khẩu: **1 giờ**, ngắn hơn 24 giờ của mã xác minh email.
+ * Mã xác minh chỉ mở một ô cửa (bật `emailVerifiedAt`), còn mã này mở thẳng quyền
+ * truy cập tài khoản — nên không có lý do để cho nó sống bằng mã xác minh.
+ */
+const RESET_TTL_MS = 60 * 60 * 1000;
 const UA_MAX = 200;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_TAKEN = 'Email này đã được dùng để đăng ký';
+const PASSWORD_TOO_SHORT = 'Mật khẩu phải có ít nhất 8 ký tự';
+/**
+ * Câu duy nhất mà `forgotPassword` được phép trả về, dùng cho **mọi** trường hợp:
+ * email không tồn tại, chưa xác minh, sai định dạng, hay đã có mã còn hạn. Ba trường
+ * hợp đầu trả lời khác nhau chính là công cụ dò email, nên khác biệt phải nằm ở
+ * việc có gửi mail hay không chứ không nằm ở câu trả lời.
+ */
+const RESET_REQUESTED = 'Nếu email đó có tài khoản, chúng tôi đã gửi link đặt lại mật khẩu.';
 /** Một câu duy nhất cho mọi lý do từ chối đăng nhập, không lộ email nào tồn tại. */
 const BAD_CREDENTIALS = 'Email hoặc mật khẩu không đúng';
 /**
@@ -85,7 +99,7 @@ export class AuthService {
       throw new BadRequestException('Email không hợp lệ');
     }
     if (String(password ?? '').length < 8) {
-      throw new BadRequestException('Mật khẩu phải có ít nhất 8 ký tự');
+      throw new BadRequestException(PASSWORD_TOO_SHORT);
     }
     const existing = await this.db.user.findUnique({ where: { email: mail } });
     if (existing) throw new ConflictException(EMAIL_TAKEN);
@@ -266,6 +280,85 @@ export class AuthService {
   /** Đăng xuất mọi thiết bị, ví dụ sau khi đổi mật khẩu. Giữ mã xác minh email. */
   async logoutAll(userId: number): Promise<void> {
     await this.db.userToken.deleteMany({ where: { userId, type: 'refresh' } });
+  }
+
+  /**
+   * Quên mật khẩu: **luôn** trả về cùng một câu, kể cả khi email không tồn tại, chưa
+   * xác minh hay sai định dạng, và cả khi đã có mã còn hạn. Ba nhánh đầu giống
+   * nhau vì trả lời khác nhau là công cụ dò email; nhánh "đã có mã còn hạn" cũng
+   * phải giống vì người gọi không cần biết mình vừa bị chặn.
+   *
+   * Giới hạn theo tài khoản (1 email mỗi `RESET_TTL_MS`) là cần thiết bên cạnh
+   * `ThrottleGuard` bên ngoài: IP dùng chung ở Việt Nam — văn phòng, trường, cả
+   * tầng nhà — rất phổ biến, nên chặn theo IP không chặn được chuyện bơm mail vào
+   * hộp thư của một người đã đăng ký. Ở đây chỉ chặn khi mã **còn hạn và chưa
+   * dùng**: mã hết hạn hoặc đã dùng thì gửi lại được ngay, nên người dùng thật
+   * không bị kẹt vì mail rơi mất.
+   */
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const mail = String(email ?? '').trim().toLowerCase();
+    if (!EMAIL_RE.test(mail)) return { message: RESET_REQUESTED };
+    const user = await this.db.user.findUnique({ where: { email: mail } });
+    if (!user || !user.emailVerifiedAt) return { message: RESET_REQUESTED };
+
+    const conHieu = (await this.db.userToken.findMany({
+      where: { userId: user.id, type: 'reset_password' },
+    })).some((r) => !r.usedAt && Date.now() < r.expiresAt.getTime());
+    if (conHieu) return { message: RESET_REQUESTED };
+
+    const raw = newToken();
+    await this.db.userToken.create({
+      data: {
+        userId: user.id, type: 'reset_password', tokenHash: hashToken(raw),
+        expiresAt: new Date(Date.now() + RESET_TTL_MS),
+      },
+    });
+    // Lỗi gửi mail không được lộ ra ngoài (khác với thông báo "câu này không phụ
+    // thuộc kết quả") và không được chặn lần thử sau: người dùng tự xin lại được.
+    try {
+      await this.mail.send({
+        to: mail,
+        subject: 'Đặt lại mật khẩu GoCode',
+        text: `Chào bạn,\n\nLink này hết hạn sau 1 giờ:\n${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password?token=${raw}\n\nNếu bạn không yêu cầu, hãy bỏ qua email này.\n\nĐội ngũ GoCode`,
+      });
+    } catch {
+      // im lặng có chủ ý: mail hỏng không được lộ ra ngoài
+    }
+    return { message: RESET_REQUESTED };
+  }
+
+  /**
+   * Đặt lại mật khẩu bằng mã một lần, rồi **xoá mọi phiên** chứ không chỉ phiên
+   * đang dùng: nếu kẻ trộm được cookie trước khi chủ tài khoản đổi mật khẩu thì
+   * chỉ đổi mật khẩu không cứu được — hắn vẫn vào app được, đúng lúc người dùng
+   * tin mình đã an toàn.
+   *
+   * **Thứ tự ghi cố ý là `usedAt` → `logoutAll` → đổi mật khẩu.** Nếu đổi mật
+   * khẩu trước rồi mới xoá phiên thì DB chết giữa chừng sẽ để lại đúng trạng
+   * thái tệ nhất: mật khẩu đã đổi (chủ nhà tưởng an toàn) còn cookie của kẻ trộm
+   * vẫn sống. Đảo thứ tự thì mọi nhánh lỗi đều an toàn — hoặc mật khẩu chưa đổi,
+   * hoặc phiên đã xoá và người dùng chỉ cần đăng nhập lại. Không bọc
+   * `$transaction` vì `logoutAll` dùng `this.db` chứ không dùng client của
+   * transaction, nên bọc vào cũng không cho thêm tính nguyên tử nào — chỉ tạo cảm
+   * giác an toàn giả (xem `task-10-report.md`).
+   */
+  async resetPassword(token: string, newPassword: string): Promise<boolean> {
+    const pass = String(newPassword ?? '');
+    // Đo độ dài **trước** khi tra cặp token: mật khẩu quá ngắn là lỗi dữ liệu của
+    // người gọi, không phụ thuộc mã có hợp lệ hay không, nên không được để sau —
+    // nếu sau thì request sai bị trả 400 mà request với mã chết thì trả `false`.
+    if (pass.length < 8) throw new BadRequestException(PASSWORD_TOO_SHORT);
+    const row = await this.db.userToken.findFirst({ where: { tokenHash: hashToken(String(token ?? '')) } });
+    if (!row || row.type !== 'reset_password' || row.usedAt) return false;
+    if (Date.now() >= row.expiresAt.getTime()) return false;
+
+    await this.db.userToken.update({ where: { id: row.id }, data: { usedAt: new Date() } });
+    await this.logoutAll(row.userId);
+    await this.db.user.update({
+      where: { id: row.userId },
+      data: { passwordHash: await hashPassword(pass) },
+    });
+    return true;
   }
 
   async me(userId: number): Promise<PublicUser> {

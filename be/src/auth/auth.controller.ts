@@ -84,6 +84,13 @@ function clearSessionCookies(res: CookieResponse): void {
 type CookieRequest = AuthenticatedRequest & { cookies?: Record<string, string> };
 
 /**
+ * Một câu cho cả ba lý do từ chối (mã sai, đã hết hạn, đã dùng) — cùng logic với
+ * `verify` ở trên, và cùng lý do: câu này không được phép phân biệt nguyên nhân
+ * để không dò được mã nào còn sống.
+ */
+const RESET_DEAD = 'Mã đặt lại không hợp lệ hoặc đã hết hạn';
+
+/**
  * `req.cookies` trước, header thô sau — đúng thứ tự `AuthGuard` dùng, và dùng chung
  * `readCookie` trong `auth.cookies.ts` nên hai route này không lệch với guard.
  */
@@ -211,6 +218,41 @@ export class AuthController {
     // `AuthenticatedUser.userId` là **chuỗi** còn `logoutAll` nhận `number`.
     await this.auth.logoutAll(Number(req.user!.userId));
     return { ok: true };
+  }
+
+  /**
+   * `forgot-password` chỉ chặn theo IP (`ThrottleGuard`); giới hạn theo chính tài
+   * khoản nằm ở `AuthService.forgotPassword` vì IP dùng chung ở Việt Nam rất phổ
+   * biến nên không chặn được chuyện bơm mail vào một hộp thư.
+   *
+   * Không `AuthGuard` và không đụng cookie: câu trả lời phải giống nhau cho mọi
+   * email, còn cookie thì chỉ liên quan tới phiên đang có — mà ở đây người gọi
+   * thường đã quên mật khẩu, tức không có phiên nào cả.
+   */
+  @Post('forgot-password')
+  @HttpCode(200)
+  @UseGuards(ThrottleGuard)
+  @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
+  forgot(@Body() b: { email?: unknown }) {
+    // Chuyển tiếp nguyên văn: mọi quyết định về việc có tồn tại hay không nằm ở
+    // service, controller không được thêm hay bớt câu trả lời đó.
+    return this.auth.forgotPassword(String(b?.email ?? ''));
+  }
+
+  /**
+   * Mã sai, hết hạn hoặc đã dùng trả 400 chứ không phải 200, đúng như route
+   * `verify`: trả 200 khiến client tưởng đã đổi mật khẩu xong rồi hỏi lại mãi
+   * với một mã đã chết. Không `AuthGuard` vì người dùng quên mật khẩu thì không
+   * đăng nhập được, cũng không có cookie phiên nào để guard đọc.
+   */
+  @Post('reset-password')
+  @HttpCode(200)
+  @UseGuards(ThrottleGuard)
+  @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
+  async reset(@Body() b: { token?: unknown; password?: unknown }) {
+    const ok = await this.auth.resetPassword(String(b?.token ?? ''), String(b?.password ?? ''));
+    if (!ok) throw new BadRequestException(RESET_DEAD);
+    return { message: 'Đã đổi mật khẩu. Vui lòng đăng nhập lại.' };
   }
 
   @Get('me')

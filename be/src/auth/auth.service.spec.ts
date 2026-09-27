@@ -639,6 +639,291 @@ describe('đăng xuất', () => {
   });
 });
 
+/**
+ * Câu trả lời duy nhất của `forgotPassword` — ghim thành hằng ở đây để đổi câu là
+ * test đỏ, vì đây chính là câu không được lộ khác nhau giữa các trường hợp.
+ */
+const RESET_MSG = 'Nếu email đó có tài khoản, chúng tôi đã gửi link đặt lại mật khẩu.';
+
+/**
+ * Đăng ký → xác minh email → xin quên mật khẩu, trả về **mã thô đọc từ mail**.
+ * Cố ý không `vi.spyOn(tokens, 'newToken')` như Task 4-6: đọc mã từ nội dung
+ * mail mới chứng minh mã thật sự tới nơi người dùng cần tới — nếu hỏng tình huống
+ * này (link không kèm mã) thì mọi test dùng `newToken` giả vẫn xanh trong khi
+ * không ai đặt lại được mật khẩu.
+ */
+async function seedReset(email = 'a@b.co') {
+  const db = makeDb();
+  const sent: any[] = [];
+  const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+  await svc.register(email, 'matkhau123');
+  await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+  await svc.forgotPassword(email);
+  // Chỉ lấy đúng mail đặt lại. Dùng `sent.at(-1)` thì khi `forgotPassword` quên
+  // gửi mail, helper âm thầm lấy luôn mail xác minh — còn mã 64 ký tự hợp lệ —
+  // và mọi test phía dưới vẫn xanh trong khi không ai nhận được link đặt lại.
+  const mail = sent.find((m) => String(m.text).includes('/reset-password?token='));
+  expect(mail).toBeTruthy();
+  const raw = String(mail!.text).match(/token=([0-9a-f]{64})/)?.[1];
+  expect(raw).toBeTruthy();
+  return { db, svc, sent, raw: raw! };
+}
+
+const resetRows = (db: any) => db.state.userToken.filter((t: any) => t.type === 'reset_password');
+const refreshRows = (db: any) => db.state.userToken.filter((t: any) => t.type === 'refresh');
+
+describe('quên mật khẩu', () => {
+  it('email không tồn tại, chưa xác minh và sai định dạng trả đúng MỘT câu, giống nhau', async () => {
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    // Tài khoản có thật nhưng chưa xác minh: khác email-không-tồn-tại ở chỗ DB có
+    // dòng user, nên nếu chỉ kiểm "user có tồn tại" thì lỡ tay gửi mail cho nó.
+    await svc.register('chua-xac-minh@b.co', 'matkhau123');
+    const mailDaGui = sent.length;
+
+    const r1 = await svc.forgotPassword('khong-ton-tai@b.co');
+    const r2 = await svc.forgotPassword('chua-xac-minh@b.co');
+    const r3 = await svc.forgotPassword('khong-phai-email');
+    const r4 = await svc.forgotPassword('');
+
+    expect(r1.message).toBe(RESET_MSG);
+    expect(r2.message).toBe(r1.message);
+    expect(r3.message).toBe(r1.message);
+    expect(r4.message).toBe(r1.message);
+    // Ba trường hợp trên không được chạm vào bảng token cũng không gửi thêm mail.
+    expect(db.userToken.create).toHaveBeenCalledOnce();
+    expect(sent).toHaveLength(mailDaGui);
+  });
+
+  it('email có thật và đã xác minh thì sinh đúng một dòng reset_password và gửi mail', async () => {
+    const { db, sent } = await seedReset();
+    expect(resetRows(db)).toHaveLength(1);
+    // 1 mail xác minh lúc đăng ký + 1 mail đặt lại mật khẩu.
+    expect(sent).toHaveLength(2);
+    expect(sent.at(-1)!.to).toBe('a@b.co');
+    expect(String(sent.at(-1)!.subject)).toContain('mật khẩu');
+  });
+
+  it('mã đặt lại hạn đúng 1 giờ, ngắn hơn 24 giờ của mã xác minh', async () => {
+    // Đóng băng đồng hồ: `expiresAt` được dựng bằng `Date.now()` lúc tạo, nên với
+    // đồng hồ thật thì phép trừ ở đây lệch 1-2 ms mỗi lần chạy — test nhấp nháy xanh
+    // đỏ theo tải máy. Giống test hạn 24 giờ của mã xác minh.
+    freezeAt('2026-05-01T00:00:00Z');
+    const { db } = await seedReset();
+    const row = resetRows(db)[0];
+    // Ghim đúng số: đổi 1 giờ thành 24 giờ (như VERIFY_TTL_MS) là test đỏ.
+    expect(row.expiresAt.getTime() - Date.now()).toBe(60 * 60 * 1000);
+    expect(resetRows(db)[0].expiresAt.getTime()).not.toBe(
+      db.state.userToken[0].expiresAt.getTime(),
+    );
+  });
+
+  it('email viết HOA và có khoảng trắng vẫn ra mã (thiếu .trim()/.toLowerCase() là hỏng)', async () => {
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+
+    const r = await svc.forgotPassword('  A@B.co  ');
+    expect(resetRows(db)).toHaveLength(1);
+    expect(sent.at(-1)!.to).toBe('a@b.co');
+    expect(r.message).toBe(RESET_MSG);
+  });
+
+  it('DB chỉ nhận hash của mã; mã thô chỉ nằm trong link trong mail', async () => {
+    const { db, raw, sent } = await seedReset();
+    const row = resetRows(db)[0];
+    expect(row.tokenHash).toBe(tokens.hashToken(raw));
+    expect(row.tokenHash).not.toBe(raw);
+    expect(String(sent.at(-1)!.text)).toContain(`/reset-password?token=${raw}`);
+  });
+
+  it('xin lại trong 1 giờ thì không sinh mã thứ hai, không gửi mail thứ hai', async () => {
+    const { db, sent, svc } = await seedReset();
+    const truoc = db.state.userToken.length;
+    const r = await svc.forgotPassword('a@b.co');
+    // Câu trả lời y hệt nên người gọi không biết có bị chặn hay không.
+    expect(r.message).toBe(RESET_MSG);
+    expect(db.state.userToken).toHaveLength(truoc);
+    expect(sent).toHaveLength(2);
+  });
+
+  it('mã đã hết hạn thì xin lại được ngay, mã mới hạn lại 1 giờ', async () => {
+    freezeAt('2026-05-01T00:00:00Z');
+    const { db, svc } = await seedReset();
+    vi.setSystemTime(new Date('2026-05-01T01:00:01Z'));
+    await svc.forgotPassword('a@b.co');
+    expect(resetRows(db)).toHaveLength(2);
+    expect(resetRows(db)[1].expiresAt.getTime() - Date.now()).toBe(60 * 60 * 1000);
+  });
+
+  it('mã đã dùng xong thì xin lại được ngay', async () => {
+    const { db, svc, raw } = await seedReset();
+    expect(await svc.resetPassword(raw, 'matkhaumoi123')).toBe(true);
+    await svc.forgotPassword('a@b.co');
+    expect(resetRows(db)).toHaveLength(2);
+  });
+
+  it('giới hạn theo tài khoản, không chặn nhầm tài khoản khác', async () => {
+    // IP dùng chung ở Việt Nam rất phổ biến nên `ThrottleGuard` (theo IP) không
+    // đủ: phải có thêm giới hạn theo chính tài khoản mới chặn được bơm mail vào
+    // hộp thư một người. Bỏ `userId` khỏi truy vấn là test này đỏ.
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await svc.register('b@b.co', 'matkhau123');
+    for (const u of [0, 1]) {
+      await db.user.update({ where: { id: db.state.user[u].id }, data: { emailVerifiedAt: new Date() } });
+    }
+    await svc.forgotPassword('a@b.co');
+    await svc.forgotPassword('a@b.co');
+    await svc.forgotPassword('b@b.co');
+    expect(resetRows(db).filter((t: any) => t.userId === db.state.user[0].id)).toHaveLength(1);
+    expect(resetRows(db).filter((t: any) => t.userId === db.state.user[1].id)).toHaveLength(1);
+  });
+
+  it('mailer hỏng thì vẫn trả đúng câu đó, không lộ lỗi ra ngoài', async () => {
+    const bom = makeDb();
+    const svcBom = new AuthService(bom, { send: async () => { throw new Error('SMTP chết'); } } as any);
+    await svcBom.register('a@b.co', 'matkhau123');
+    await bom.user.update({ where: { id: bom.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+    const r = await svcBom.forgotPassword('a@b.co');
+    expect(r.message).toBe(RESET_MSG);
+    expect(resetRows(bom)).toHaveLength(1);
+  });
+});
+
+describe('đặt lại mật khẩu', () => {
+  it('mã hợp lệ thì đổi mật khẩu và xoá HẾT mọi phiên', async () => {
+    const { db, svc, raw } = await seedReset();
+    await svc.login('a@b.co', 'matkhau123', 'may-1');
+    await svc.login('a@b.co', 'matkhau123', 'may-2');
+    expect(refreshRows(db)).toHaveLength(2);
+
+    expect(await svc.resetPassword(raw, 'matkhaumoi123')).toBe(true);
+    // Bỏ lời gọi `logoutAll` là test này đỏ: phiên cũ vẫn sống thì kẻ trộm được
+    // cookie trước khi đổi mật khẩu vẫn vào app được.
+    expect(refreshRows(db)).toHaveLength(0);
+    expect(resetRows(db)[0].usedAt).not.toBeNull();
+  });
+
+  it('mật khẩu cũ chết, mật khẩu mới dùng được', async () => {
+    const { svc, raw } = await seedReset();
+    expect(await svc.resetPassword(raw, 'matkhaumoi123')).toBe(true);
+    await expect(svc.login('a@b.co', 'matkhau123', 'UA')).rejects.toMatchObject({ status: 401 });
+    const r = await svc.login('a@b.co', 'matkhaumoi123', 'UA');
+    expect(r.refreshToken).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('mã dùng lần hai bị từ chối và không đụng mật khẩu đã đặt', async () => {
+    const { db, svc, raw } = await seedReset();
+    expect(await svc.resetPassword(raw, 'matkhaumoi123')).toBe(true);
+    const hashDaDoi = db.state.user[0].passwordHash;
+
+    // Bỏ kiểm tra `usedAt` là test này đỏ: lần hai trả true và ghi đè mật khẩu.
+    expect(await svc.resetPassword(raw, 'matkhaumoi1234')).toBe(false);
+    expect(db.state.user[0].passwordHash).toBe(hashDaDoi);
+  });
+
+  it('mã xác minh email và refresh token đưa vào resetPassword thì trả false', async () => {
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+    const maXacNhan = String(sent[0].text).match(/token=([0-9a-f]{64})/)![1];
+    const phien = await svc.login('a@b.co', 'matkhau123', 'may-cu-a');
+    const hashCu = db.state.user[0].passwordHash;
+
+    // Bỏ `row.type !== 'reset_password'` là test này đỏ: mã xác minh email hoặc
+    // refresh token bị trộm sẽ đổi được mật khẩu và đuổi chủ sở hữu ra khỏi app.
+    expect(await svc.resetPassword(maXacNhan, 'matkhaumoi123')).toBe(false);
+    expect(await svc.resetPassword(phien.refreshToken, 'matkhaumoi123')).toBe(false);
+    expect(db.state.user[0].passwordHash).toBe(hashCu);
+    // Dòng xác minh vẫn chưa dùng: `resetPassword` từ chối ở tầng token, không
+    // được "tiện tay" đánh dấu dòng mà nó vừa từ chối.
+    expect(resetRows(db)).toHaveLength(0);
+    expect(refreshRows(db)).toHaveLength(1);
+    expect(db.state.userToken.find((t: any) => t.type === 'verify_email')!.usedAt).toBeFalsy();
+  });
+
+  it('mã còn dùng được ở giây thứ 59:59', async () => {
+    freezeAt('2026-05-01T00:00:00Z');
+    const { svc, raw } = await seedReset();
+    vi.setSystemTime(new Date('2026-05-01T00:59:59Z'));
+    expect(await svc.resetPassword(raw, 'matkhaumoi123')).toBe(true);
+  });
+
+  it('mã hết hạn ở giây thứ 60:00 thì trả false, mật khẩu giữ nguyên', async () => {
+    freezeAt('2026-05-01T00:00:00Z');
+    const { db, svc, raw } = await seedReset();
+    const hashCu = db.state.user[0].passwordHash;
+    vi.setSystemTime(new Date('2026-05-01T01:00:00Z'));
+    expect(await svc.resetPassword(raw, 'matkhaumoi123')).toBe(false);
+    expect(db.state.user[0].passwordHash).toBe(hashCu);
+  });
+
+  it('mã lạ thì trả false, không đụng gì', async () => {
+    const { db, svc } = await seedReset();
+    const hashCu = db.state.user[0].passwordHash;
+    expect(await svc.resetPassword('0'.repeat(64), 'matkhaumoi123')).toBe(false);
+    expect(db.state.user[0].passwordHash).toBe(hashCu);
+  });
+
+  it('mật khẩu mới dưới 8 ký tự bị 400 TRƯỚC khi tra cặp token', async () => {
+    const { db, svc, raw } = await seedReset();
+    const mocToken = db.userToken.findFirst.mock.calls.length;
+    const mocUser = db.user.update.mock.calls.length;
+    const e = await svc.resetPassword(raw, 'ngan').catch((x) => x);
+    expect(e.status).toBe(400);
+    expect(e.message).toBe('Mật khẩu phải có ít nhất 8 ký tự');
+    // Dời phép đo độ dài xuống sau khi tra token là test này đỏ: mật khẩu quá ngắn
+    // là lỗi dữ liệu của người gọi, không phụ thuộc mã có hợp lệ hay không.
+    expect(db.userToken.findFirst).toHaveBeenCalledTimes(mocToken);
+    expect(db.user.update).toHaveBeenCalledTimes(mocUser);
+    expect(db.state.user[0].passwordHash).not.toBe('ngan');
+  });
+
+  it('thiếu body thì 400, không phải 500', async () => {
+    const { svc } = await seedReset();
+    await expect(svc.resetPassword(undefined as never, undefined as never))
+      .rejects.toMatchObject({ status: 400 });
+  });
+
+  it('xoá phiên lỗi thì KHÔNG đổi mật khẩu', async () => {
+    // Đổi mật khẩu trước rồi mới xoá phiên là lỗ hổng: DB chết giữa chừng thì
+    // mật khẩu đã đổi (chủ nhà tưởng an toàn) còn cookie của kẻ trộm vẫn sống.
+    // Vì vậy `logoutAll` phải chạy trước bước ghi mật khẩu.
+    const { db, svc, raw } = await seedReset();
+    const hashCu = db.state.user[0].passwordHash;
+    db.userToken.deleteMany.mockRejectedValueOnce(new Error('DB chết'));
+    await expect(svc.resetPassword(raw, 'matkhaumoi123')).rejects.toThrow('DB chết');
+    expect(db.state.user[0].passwordHash).toBe(hashCu);
+  });
+
+  it('đổi mật khẩu không đụng tài khoản khác', async () => {
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await svc.register('b@b.co', 'matkhau123');
+    for (const u of [0, 1]) {
+      await db.user.update({ where: { id: db.state.user[u].id }, data: { emailVerifiedAt: new Date() } });
+    }
+    await svc.login('b@b.co', 'matkhau123', 'may-b');
+    await svc.forgotPassword('a@b.co');
+    const rawA = String(sent.find((m) => String(m.text).includes('/reset-password?token='))!.text)
+      .match(/token=([0-9a-f]{64})/)![1];
+
+    expect(await svc.resetPassword(rawA, 'matkhaumoi123')).toBe(true);
+    expect(refreshRows(db)).toHaveLength(1);
+    expect(refreshRows(db)[0].userId).toBe(db.state.user[1].id);
+  });
+});
+
 describe('thông tin tài khoản', () => {
   it('trả user công khai, không lộ passwordHash', async () => {
     const { db, svc } = await seedVerified();

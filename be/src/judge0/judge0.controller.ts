@@ -14,7 +14,7 @@ import type {
   BatchSubmissionItem,
   CreateSubmissionInput,
 } from './judge0.service.ts';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.ts';
+import { AuthGuard } from '../auth/auth.guard.ts';
 import { Roles } from '../auth/roles.decorator.ts';
 import { RolesGuard } from '../auth/roles.guard.ts';
 
@@ -35,8 +35,8 @@ function assertValidItem(item: BatchSubmissionItem) {
 }
 
 @Controller('api/submissions')
-@UseGuards(ClerkAuthGuard, RolesGuard, ThrottleGuard)
-@Roles('user', 'admin', 'vip')
+@UseGuards(AuthGuard, RolesGuard, ThrottleGuard)
+@Roles('user', 'vip')
 export class Judge0Controller {
   constructor(private readonly judge0Service: Judge0Service) {}
 

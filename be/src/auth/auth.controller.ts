@@ -8,22 +8,24 @@ import {
   Query,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { AuthService, REFRESH_TTL_MS } from './auth.service.ts';
-import { AuthGuard, readCookie } from './auth.guard.ts';
+import { AuthGuard } from './auth.guard.ts';
+import { readCookie } from './auth.cookies.ts';
 import { ACCESS_TTL_SECONDS } from './tokens.ts';
 import type { AuthenticatedRequest } from './auth.types.ts';
 
 export const SESSION_COOKIE = 'session';
 export const REFRESH_COOKIE = 'refresh';
 
-/** Giống `admin.controller.ts:21-32`: chỉ khai phần `res` mà controller này dùng. */
+/** Giống `admin.controller.ts`: chỉ khai phần `res` mà controller này dùng. */
 type CookieOptions = {
   httpOnly?: boolean;
   secure?: boolean;
-  sameSite?: 'none' | 'lax' | 'strict';
+  sameSite?: 'none' | 'lax';
   maxAge?: number;
   path?: string;
 };
@@ -59,8 +61,9 @@ function cookieOptions(maxAgeMs: number) {
  * khác nhau nên cookie là cross-site: buộc phải `SameSite=None; Secure`, nếu không
  * browser sẽ không gửi cookie nào.
  *
- * `maxAge` của cookie `session` là `ACCESS_TTL_SECONDS` và của `refresh` là
- * `REFRESH_TTL_MS`; hạn thật của refresh token nằm ở cột `expiresAt` ở DB.
+ * `maxAge` tính bằng **mili giây**: cookie `session` sống `ACCESS_TTL_SECONDS * 1000`
+ * (15 phút) và cookie `refresh` sống `REFRESH_TTL_MS` (30 ngày). Hạn thật của refresh
+ * token nằm ở cột `expiresAt` ở DB, không phải ở cookie.
  */
 function setSessionCookies(res: CookieResponse, tokens: { accessToken: string; refreshToken: string }): void {
   res.cookie(SESSION_COOKIE, tokens.accessToken, cookieOptions(ACCESS_TTL_SECONDS * 1000));
@@ -82,7 +85,7 @@ type CookieRequest = AuthenticatedRequest & { cookies?: Record<string, string> }
 
 /**
  * `req.cookies` trước, header thô sau — đúng thứ tự `AuthGuard` dùng, và dùng chung
- * `readCookie` nên hai route này không lệch với guard (xem `auth.guard.ts:23`).
+ * `readCookie` trong `auth.cookies.ts` nên hai route này không lệch với guard.
  */
 function readRefresh(req: CookieRequest): string | undefined {
   return req.cookies?.[REFRESH_COOKIE] ?? readCookie(req.headers.cookie, REFRESH_COOKIE);
@@ -94,6 +97,13 @@ function userAgent(req: AuthenticatedRequest): string | undefined {
   return typeof ua === 'string' ? ua : undefined;
 }
 
+/**
+ * Số giới hạn tần suất dưới đây đều theo IP và đều **cao** có chủ ý: nền tảng cho
+ * học sinh sinh viên ở Việt Nam, IP dùng chung (văn phòng, trường, tầng nhà) rất phổ
+ * biến, nên chặn nhầm người thật tệ hơn là cho qua một lần spam. Chống spam thật sự
+ * nằm ở xác minh email + bcrypt + giới hạn 10 phiên (`MAX_SESSIONS`), không nằm ở
+ * con số này.
+ */
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -102,7 +112,7 @@ export class AuthController {
   @Post('register')
   @HttpCode(200)
   @UseGuards(ThrottleGuard)
-  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
+  @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   register(@Req() req: AuthenticatedRequest, @Body() b: { email?: unknown; password?: unknown }) {
     return this.auth.register(
       String(b?.email ?? ''),
@@ -119,7 +129,7 @@ export class AuthController {
    */
   @Get('verify')
   @UseGuards(ThrottleGuard)
-  @Throttle({ default: { limit: 10, ttl: 60 * 1000 } })
+  @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
   async verify(
     @Query('token') token: unknown,
     @Req() req: AuthenticatedRequest,
@@ -136,7 +146,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   @UseGuards(ThrottleGuard)
-  @Throttle({ default: { limit: 10, ttl: 15 * 60 * 1000 } })
+  @Throttle({ default: { limit: 30, ttl: 15 * 60 * 1000 } })
   async login(
     @Req() req: AuthenticatedRequest,
     @Body() b: { email?: unknown; password?: unknown },
@@ -158,10 +168,16 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(200)
   @UseGuards(ThrottleGuard)
-  @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
+  @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
   async refresh(@Req() req: CookieRequest, @Res({ passthrough: true }) res: CookieResponse) {
     const token = readRefresh(req);
-    if (!token) return { message: 'Không có phiên để làm mới.' };
+    if (!token) {
+      // 401 chứ không phải 200: "không có phiên" là thông tin đăng nhập sai, và
+      // trả 200 sẽ khiến client coi như đã làm mới xong rồi hỏi lại mãi. Dọn cookie
+      // để phiên cũ treo (access token đã hết hạn nhưng cookie vẫn còn) biến mất.
+      clearSessionCookies(res);
+      throw new UnauthorizedException('Không có phiên để làm mới');
+    }
     const r = await this.auth.refresh(token, userAgent(req));
     // Token không dùng được nữa (thu hồi, hết hạn, xoay vòng quá đệm 30 giây) thì
     // dọn cookie để client khỏi gửi lại một token chết mãi.

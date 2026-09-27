@@ -40,13 +40,15 @@ export class ThrottleGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest() as {
       ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
     };
-    const forwarded = req.headers?.['x-forwarded-for'];
-    const ip =
-      req.ip ??
-      (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0]?.trim()) ??
-      'unknown';
+    // Chỉ `req.ip`, **không** tự đọc `x-forwarded-for`: `req.ip` của Express đã là
+    // IP client thật vì `trust proxy` được bật ở cả entry point (xem `trustProxy`
+    // trong `proxy.ts`). Nhánh đọc header thủ công trước đây là code chết — `req.ip`
+    // không bao giờ `undefined` nên `??` không bao giờ rơi xuống — và nó cho ra kết
+    // quả sai khi bật `trust proxy`: `req.ip` (cuối chuỗi, IP thật) lại thắng giá trị
+    // client tự thêm ở đầu chuỗi, tức kẻ spam chỉ cần tiêm một số vào header là lách
+    // được giới hạn theo IP.
+    const ip = req.ip ?? 'unknown';
     const key = `${ip}:${context.getClass().name}:${context.getHandler().name}`;
     const now = Date.now();
 

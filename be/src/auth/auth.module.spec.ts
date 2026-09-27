@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
+import { AppModule } from '../app.module.ts';
 import { AuthModule } from './auth.module.ts';
 import { AuthMailer } from './auth.mailer.ts';
 import { AuthService, AuthMailPort } from './auth.service.ts';
@@ -45,5 +46,18 @@ describe('AuthModule', () => {
     expect(m.get(AuthGuard)).toBeInstanceOf(AuthGuard);
     expect(m.get(AuthService)).toBeInstanceOf(AuthService);
     await m.close();
+  });
+});
+
+/**
+ * Xoá `AuthModule` khỏi `imports` của `app.module.ts` thì mọi test khác vẫn xanh
+ * (chúng compile `AuthModule` trực tiếp) còn production trả 404 cho toàn bộ
+ * `/api/auth`. `AuthModule` **không** tự đăng ký: `imports` của `AppModule` là chỗ
+ * duy nhất nó được nối vào, nên phải có test riêng cho chỗ đó.
+ */
+describe('AuthModule được nối vào AppModule', () => {
+  it('AppModule import AuthModule', () => {
+    const imports = Reflect.getMetadata('imports', AppModule) as unknown[] | undefined;
+    expect(imports ?? []).toContain(AuthModule);
   });
 });

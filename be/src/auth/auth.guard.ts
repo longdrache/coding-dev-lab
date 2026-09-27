@@ -5,42 +5,15 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from './auth.types.ts';
+import { readCookie } from './auth.cookies.ts';
 import { verifyAccessToken } from './tokens.ts';
 
 /**
- * Đọc một cookie từ header `Cookie` thô. Dự án không cài `cookie-parser`
- * (xem `admin.guard.ts:18-28`) nên phải tự tách, và phải tách **giống hệt**
- * cookie-parser: cắt theo `;`, cắt ở dấu `=` đầu tiên, trim hai đầu, rồi mới
- * `decodeURIComponent` — nếu không, cùng một request mà có `req.cookies` thì
- * lọt, không có thì không.
- *
- * Tên cookie so sánh nguyên văn sau khi tách, không dựng `RegExp` động từ tên
- * cookie và không dùng `includes`, nên `mysession` hay `session_id` không bao
- * giờ bị nhận nhầm là `session`. `decodeURIComponent` ném `URIError` với chuỗi
- * `%` hỏng, nên bắt lại và trả giá trị thô: để `verifyAccessToken` từ chối,
- * thay vì làm sập cả request thành 500.
- *
- * `export` vì `auth.controller.ts` đọc cookie `refresh` bằng **chính hàm này**:
- * `refresh` và `logout` không đi qua `AuthGuard` vì access token có thể đã hết hạn,
- * mà đó là lúc người dùng cần hai route đó nhất. Hai bản parse lệch nhau nghĩa là
- * cookie `AuthGuard` đọc được thì `refresh` lại không, tức người dùng bị kẹt.
+ * Đọc cookie `session` (và đọc kèm cookie `refresh` thô cho `logout`) bằng
+ * `readCookie` trong `auth.cookies.ts` — cùng hàm `AuthController` dùng cho cookie
+ * `refresh`. Hai bản parse lệch nhau nghĩa là cookie guard đọc được thì `refresh`
+ * lại không, tức người dùng bị kẹt không làm mới được phiên.
  */
-export function readCookie(header: string | undefined, name: string): string | undefined {
-  if (typeof header !== 'string') return undefined;
-  for (const part of header.split(';')) {
-    const eq = part.indexOf('=');
-    if (eq === -1) continue;
-    if (part.slice(0, eq).trim() !== name) continue;
-    const raw = part.slice(eq + 1).trim();
-    try {
-      return decodeURIComponent(raw);
-    } catch {
-      return raw;
-    }
-  }
-  return undefined;
-}
-
 @Injectable()
 export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {

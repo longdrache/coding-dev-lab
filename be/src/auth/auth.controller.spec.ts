@@ -4,7 +4,7 @@ import type { ExecutionContext, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
 import request from 'supertest';
-import { ThrottleGuard } from '../common/throttle.guard.ts';
+import { ThrottleGuard, THROTTLE_KEY } from '../common/throttle.guard.ts';
 import { AuthController, REFRESH_COOKIE, SESSION_COOKIE } from './auth.controller.ts';
 import { AuthGuard } from './auth.guard.ts';
 import { AuthService, REFRESH_TTL_MS } from './auth.service.ts';
@@ -41,9 +41,23 @@ function names(res: { clearCookie: ReturnType<typeof vi.fn> }) {
   return res.clearCookie.mock.calls.map((c) => c[0]);
 }
 
+/**
+ * `process.env.X = undefined` ghi chuỗi `"undefined"` chứ không xoá biến, nên mọi
+ * thao tác đặt/xoá biến môi trường trong spec này đi qua hai helper này.
+ */
+function setEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+
 afterEach(() => {
-  process.env.NODE_ENV = OLD_ENV.NODE_ENV;
-  process.env.VERCEL = OLD_ENV.VERCEL;
+  restoreEnv('NODE_ENV', OLD_ENV.NODE_ENV);
+  restoreEnv('VERCEL', OLD_ENV.VERCEL);
 });
 
 afterAll(() => {
@@ -95,8 +109,8 @@ describe('cookie phiên', () => {
   });
 
   it('ngoài production thì sameSite lax và secure false', async () => {
-    process.env.NODE_ENV = 'test';
-    process.env.VERCEL = undefined;
+    setEnv('NODE_ENV', 'test');
+    setEnv('VERCEL', undefined);
     const { c, res } = ctl();
     await c.login({ headers: {} }, { email: 'a@b.co', password: 'matkhau123' }, res);
     expect(opts(res, 0).sameSite).toBe('lax');
@@ -104,8 +118,8 @@ describe('cookie phiên', () => {
   });
 
   it('NODE_ENV=production thì sameSite none và secure true', async () => {
-    process.env.NODE_ENV = 'production';
-    process.env.VERCEL = undefined;
+    setEnv('NODE_ENV', 'production');
+    setEnv('VERCEL', undefined);
     const { c, res } = ctl();
     await c.login({ headers: {} }, { email: 'a@b.co', password: 'matkhau123' }, res);
     expect(opts(res, 0).sameSite).toBe('none');
@@ -115,8 +129,8 @@ describe('cookie phiên', () => {
   it('chỉ có VERCEL=1 mà không NODE_ENV thì vẫn sameSite none và secure true', async () => {
     // Trên Vercel `NODE_ENV` có lúc không được set; thiếu nhánh này thì production
     // chạy cookie `lax` không `secure` và browser nuốt mất, ai cũng bị đăng xuất.
-    process.env.NODE_ENV = undefined;
-    process.env.VERCEL = '1';
+    setEnv('NODE_ENV', undefined);
+    setEnv('VERCEL', '1');
     const { c, res } = ctl();
     await c.login({ headers: {} }, { email: 'a@b.co', password: 'matkhau123' }, res);
     expect(opts(res, 0).sameSite).toBe('none');
@@ -134,9 +148,9 @@ describe('cookie phiên', () => {
   });
 
   it('thông báo lỗi tiếng Việt và không rò mã xác nhận ra ngoài', async () => {
-    const { c, auth } = ctl();
+    const { c, auth, res } = ctl();
     auth.verifyEmail.mockResolvedValue(null);
-    const e = await c.verify('mat-khau-bi-lo', { headers: {} }, ctl().res).catch((x) => x);
+    const e = await c.verify('mat-khau-bi-lo', { headers: {} }, res).catch((x) => x);
     expect(e.message).toBe('Mã xác nhận không hợp lệ hoặc đã hết hạn');
     expect(String(e.message)).not.toContain('mat-khau-bi-lo');
   });
@@ -144,43 +158,51 @@ describe('cookie phiên', () => {
 
 describe('đọc cookie refresh', () => {
   it('req.cookies thắng header Cookie thô', async () => {
-    const { c, auth } = ctl();
+    const { c, auth, res } = ctl();
     await c.refresh(
-      { headers: { cookie: `refresh=tu-header` }, cookies: { refresh: 'tu-cookies' } },
-      ctl().res,
+      { headers: { cookie: 'refresh=tu-header' }, cookies: { refresh: 'tu-cookies' } },
+      res,
     );
     expect(auth.refresh).toHaveBeenCalledWith('tu-cookies', undefined);
   });
 
   it('chỉ có header thô vẫn đọc được, kể cả cookie khác đứng trước', async () => {
-    const { c, auth } = ctl();
-    await c.refresh({ headers: { cookie: `session=jwt; refresh=${REFRESH}; flag=1` } }, ctl().res);
+    const { c, auth, res } = ctl();
+    await c.refresh({ headers: { cookie: `session=jwt; refresh=${REFRESH}; flag=1` } }, res);
     expect(auth.refresh).toHaveBeenCalledWith(REFRESH, undefined);
   });
 
   it('tên cookie chỉ chứa chuỗi refresh không được tính là cookie refresh', async () => {
-    const { c, auth } = ctl();
-    const r = await c.refresh(
-      { headers: { cookie: 'xrefresh=gia; my_refresh=gia' } },
-      ctl().res,
-    );
+    const { c, auth, res } = ctl();
+    await expect(
+      c.refresh({ headers: { cookie: 'xrefresh=gia; my_refresh=gia' } }, res),
+    ).rejects.toMatchObject({ status: 401 });
     expect(auth.refresh).not.toHaveBeenCalled();
-    expect(r).toEqual({ message: 'Không có phiên để làm mới.' });
   });
 
   it('giá trị cookie hỏng dấu phần trăm thì vẫn xuống service chứ không thành 500', async () => {
-    const { c, auth } = ctl();
-    await c.refresh({ headers: { cookie: 'refresh=%' } }, ctl().res);
+    const { c, auth, res } = ctl();
+    await c.refresh({ headers: { cookie: 'refresh=%' } }, res);
     expect(auth.refresh).toHaveBeenCalledWith('%', undefined);
   });
 
-  it('không có cookie refresh thì không gọi service và không xoá cookie', async () => {
+  it('không có cookie refresh thì 401 và xoá cả hai cookie', async () => {
+    // Không có cookie `refresh` nghĩa là không có phiên: 401 (không phải 200), và
+    // cookie `session` cũ phải bị dọn để không treo.
     const { c, auth, res } = ctl();
-    const r = await c.refresh({ headers: {} }, res);
+    await expect(c.refresh({ headers: {} }, res)).rejects.toMatchObject({ status: 401 });
     expect(auth.refresh).not.toHaveBeenCalled();
     expect(res.cookie).not.toHaveBeenCalled();
-    expect(res.clearCookie).not.toHaveBeenCalled();
-    expect(r).toEqual({ message: 'Không có phiên để làm mới.' });
+    expect(names(res)).toEqual([SESSION_COOKIE, REFRESH_COOKIE]);
+    for (const call of res.clearCookie.mock.calls) {
+      expect(call[1]).toEqual({ path: '/' });
+    }
+  });
+
+  it('thông báo khi không có phiên là tiếng Việt', async () => {
+    const { c, res } = ctl();
+    const e = await c.refresh({ headers: {} }, res).catch((x) => x);
+    expect(e.message).toBe('Không có phiên để làm mới');
   });
 
   it('refresh token không dùng được thì xoá cả hai cookie ở path /', async () => {
@@ -211,17 +233,14 @@ describe('đăng xuất', () => {
     // `req.refreshToken` chỉ được `AuthGuard` gán mà `logout` không dùng guard
     // (access token có thể đã hết hạn). Nếu controller chỉ tin `req.refreshToken`
     // thì đăng xuất là no-op và token sống tới hạn 30 ngày.
-    const { c, auth } = ctl();
-    await c.logout({ headers: { cookie: `session=jwt; refresh=${REFRESH}` } }, ctl().res);
+    const { c, auth, res } = ctl();
+    await c.logout({ headers: { cookie: `session=jwt; refresh=${REFRESH}` } }, res);
     expect(auth.logout).toHaveBeenCalledWith(REFRESH);
   });
 
   it('có req.refreshToken thì ưu tiên giá trị guard gán', async () => {
-    const { c, auth } = ctl();
-    await c.logout(
-      { headers: { cookie: 'refresh=tu-cookie' }, refreshToken: 'tu-guard' },
-      ctl().res,
-    );
+    const { c, auth, res } = ctl();
+    await c.logout({ headers: { cookie: 'refresh=tu-cookie' }, refreshToken: 'tu-guard' }, res);
     expect(auth.logout).toHaveBeenCalledWith('tu-guard');
   });
 
@@ -273,12 +292,6 @@ describe('đăng ký', () => {
     expect(r).toEqual({ message: 'ok' });
   });
 
-  it('không cấp phiên trước khi xác minh email — method không có cả response', async () => {
-    // `register` không nhận `@Res`, nên về mặt cấu trúc nó không thể đặt cookie;
-    // muốn làm thế phải thêm tham số, và thêm là `.length` thành 3.
-    expect(AuthController.prototype.register.length).toBe(2);
-  });
-
   it('body rỗng hoặc thiếu body thì truyền chuỗi rỗng chứ không ném 500', async () => {
     const { c, auth } = ctl();
     await c.register({ headers: {} }, {});
@@ -324,6 +337,15 @@ function guardsOf(handler: (...args: never[]) => unknown): unknown[] {
   return (Reflect.getMetadata('__guards__', handler) as unknown[] | undefined) ?? [];
 }
 
+/** Cùng logic với `guardsOf`, nhưng đọc metadata của `ThrottleGuard`. */
+function throttleOf(name: 'register' | 'verify' | 'login' | 'refresh') {
+  const found = Reflect.getMetadata(THROTTLE_KEY, AuthController.prototype[name]) as
+    | { limit: number; ttl: number }
+    | undefined;
+  if (!found) throw new Error(`${name} không có @Throttle`);
+  return found;
+}
+
 function ctxFor(handler: (...args: never[]) => unknown, ip: string): ExecutionContext {
   const req = { ip, headers: {} as Record<string, string> };
   return {
@@ -358,38 +380,50 @@ describe('guard và giới hạn tần suất', () => {
     expect(guardsOf(AuthController.prototype.logout)).not.toContain(AuthGuard);
   });
 
-  it('đăng ký bị chặn sau 5 lần trong 1 giờ', () => {
+  /**
+   * Ghim **từng con số** của giới hạn tần suất. Số này là quyết định sản phẩm (xem
+   * docblock trên `AuthController`), không phải chi tiết cài đặt: nền tảng có IP
+   * dùng chung nên số phải rộng, nhưng hở thì mất tác dụng.
+   */
+  it('số giới hạn tần suất đúng như đã chốt', () => {
+    expect(throttleOf('register')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
+    expect(throttleOf('login')).toEqual({ limit: 30, ttl: 15 * 60 * 1000 });
+    expect(throttleOf('verify')).toEqual({ limit: 20, ttl: 60 * 1000 });
+    expect(throttleOf('refresh')).toEqual({ limit: 120, ttl: 60 * 1000 });
+  });
+
+  it('đăng ký bị chặn sau 20 lần trong 1 giờ', () => {
     const g = new ThrottleGuard(new Reflector());
     const ctx = ctxFor(AuthController.prototype.register as never, '10.0.0.1');
-    for (let i = 0; i < 5; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    for (let i = 0; i < 20; i += 1) expect(g.canActivate(ctx)).toBe(true);
     expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
 
-  it('đăng nhập bị chặn sau 10 lần trong 15 phút', () => {
+  it('đăng nhập bị chặn sau 30 lần trong 15 phút', () => {
     const g = new ThrottleGuard(new Reflector());
     const ctx = ctxFor(AuthController.prototype.login as never, '10.0.0.2');
-    for (let i = 0; i < 10; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    for (let i = 0; i < 30; i += 1) expect(g.canActivate(ctx)).toBe(true);
     expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
 
   it('verify bị chặn theo IP, không dò được mã xác nhận', () => {
     const g = new ThrottleGuard(new Reflector());
     const ctx = ctxFor(AuthController.prototype.verify as never, '10.0.0.3');
-    for (let i = 0; i < 10; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    for (let i = 0; i < 20; i += 1) expect(g.canActivate(ctx)).toBe(true);
     expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
 
-  it('refresh bị chặn sau 30 lần trong 1 phút', () => {
+  it('refresh bị chặn sau 120 lần trong 1 phút', () => {
     const g = new ThrottleGuard(new Reflector());
     const ctx = ctxFor(AuthController.prototype.refresh as never, '10.0.0.4');
-    for (let i = 0; i < 30; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    for (let i = 0; i < 120; i += 1) expect(g.canActivate(ctx)).toBe(true);
     expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
 
   it('giới hạn tính theo IP: IP khác thì không dùng chung bộ đếm', () => {
     const g = new ThrottleGuard(new Reflector());
     const a = ctxFor(AuthController.prototype.register as never, '10.0.1.1');
-    for (let i = 0; i < 5; i += 1) g.canActivate(a);
+    for (let i = 0; i < 20; i += 1) g.canActivate(a);
     expect(statusOf(() => g.canActivate(a))).toBe(429);
     const b = ctxFor(AuthController.prototype.register as never, '10.0.1.2');
     expect(g.canActivate(b)).toBe(true);
@@ -443,6 +477,26 @@ describe('route thật qua Nest', () => {
       .post('/api/auth/login')
       .send({ email: 'a@b.co', password: 'matkhau123' });
     expect(res.status).toBe(200);
+  });
+
+  it('POST đăng ký trả 200 và không set cookie nào — chưa xác minh thì chưa có phiên', async () => {
+    // Bản trước của test này assert `AuthController.prototype.register.length === 2`
+    // — đếm số tham số, không đỏ vì bất kỳ lý do hành vi nào, nên không canh được gì.
+    const res = await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({ email: 'a@b.co', password: 'matkhau123' });
+    expect(res.status).toBe(200);
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('POST /api/auth/refresh không có cookie thì 401 kèm Clear-Cookie cả hai', async () => {
+    const res = await request(app.getHttpServer()).post('/api/auth/refresh');
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe('Không có phiên để làm mới');
+    const cookies = (res.headers['set-cookie'] as unknown as string[]).join(' | ');
+    expect(cookies).toContain('session=;');
+    expect(cookies).toContain('refresh=;');
+    expect(cookies).toContain('Path=/');
   });
 
   it('Set-Cookie thật có HttpOnly, Path=/ và Max-Age đúng hạn', async () => {

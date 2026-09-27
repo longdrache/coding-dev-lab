@@ -17,6 +17,8 @@ const USER = { id: 7, email: 'a@b.co', name: null, role: 'user' as UserRole };
 const REFRESH = 'r'.repeat(64);
 /** Câu duy nhất `forgotPassword` được phép trả về — controller chỉ chuyển tiếp. */
 const RESET_MSG = 'Nếu email đó có tài khoản, chúng tôi đã gửi link đặt lại mật khẩu.';
+/** Câu duy nhất `resendVerification` được phép trả về — controller chỉ chuyển tiếp. */
+const RESEND_MSG = 'Nếu email đó có tài khoản chưa xác minh, chúng tôi đã gửi lại link xác nhận.';
 
 function ctl() {
   const auth = {
@@ -29,6 +31,7 @@ function ctl() {
     me: vi.fn().mockResolvedValue(USER),
     forgotPassword: vi.fn().mockResolvedValue({ message: RESET_MSG }),
     resetPassword: vi.fn().mockResolvedValue(true),
+    resendVerification: vi.fn().mockResolvedValue({ message: RESEND_MSG }),
   };
   const res = { cookie: vi.fn(), clearCookie: vi.fn() };
   return { c: new AuthController(auth as never), auth, res };
@@ -384,6 +387,32 @@ describe('quên và đặt lại mật khẩu', () => {
   });
 });
 
+describe('gửi lại link xác nhận', () => {
+  it('truyền email và user-agent xuống service, trả nguyên câu của service', async () => {
+    const { c, auth } = ctl();
+    const r = await c.resend({ headers: { 'user-agent': 'UA' } }, { email: 'a@b.co' });
+    expect(auth.resendVerification).toHaveBeenCalledWith('a@b.co', 'UA');
+    expect(r).toEqual({ message: RESEND_MSG });
+  });
+
+  it('nhận body rỗng hoặc thiếu body thì truyền chuỗi rỗng, không ném 500', async () => {
+    const { c, auth } = ctl();
+    await c.resend({ headers: {} }, {});
+    expect(auth.resendVerification).toHaveBeenLastCalledWith('', undefined);
+    await c.resend({ headers: {} }, undefined as never);
+    expect(auth.resendVerification).toHaveBeenLastCalledWith('', undefined);
+    await c.resend({ headers: {} }, { email: ['a', 'b'] as never });
+    expect(auth.resendVerification).toHaveBeenLastCalledWith('a,b', undefined);
+  });
+
+  it('không đụng cookie: người gửi lại link chưa có phiên nào để set', () => {
+    const { c, res } = ctl();
+    c.resend({ headers: {} }, { email: 'a@b.co' });
+    expect(res.cookie).not.toHaveBeenCalled();
+    expect(res.clearCookie).not.toHaveBeenCalled();
+  });
+});
+
 /**
  * Nest đọc guard của route từ metadata `__guards__` (hằng `GUARDS_METADATA` trong
  * `@nestjs/common/constants`), nên đây là chỗ duy nhất để chứng minh route nào thật
@@ -396,7 +425,7 @@ function guardsOf(handler: (...args: never[]) => unknown): unknown[] {
 
 /** Cùng logic với `guardsOf`, nhưng đọc metadata của `ThrottleGuard`. */
 function throttleOf(
-  name: 'register' | 'verify' | 'login' | 'refresh' | 'forgot' | 'reset',
+  name: 'register' | 'verify' | 'login' | 'refresh' | 'forgot' | 'reset' | 'resend',
 ) {
   const found = Reflect.getMetadata(THROTTLE_KEY, AuthController.prototype[name]) as
     | { limit: number; ttl: number }
@@ -442,6 +471,13 @@ describe('guard và giới hạn tần suất', () => {
     }
   });
 
+  it('resend-verification dùng ThrottleGuard, không dùng AuthGuard', () => {
+    // Đầu vào để bơm mail xác nhận y hệt `register`, nên chặn tần suất là bắt buộc.
+    // Không `AuthGuard`: người bấm nút này đang ở giữa lúc đăng ký, chưa có phiên.
+    expect(guardsOf(AuthController.prototype.resend)).toContain(ThrottleGuard);
+    expect(guardsOf(AuthController.prototype.resend)).not.toContain(AuthGuard);
+  });
+
   it('logout không dùng AuthGuard — access token hết hạn vẫn phải đăng xuất được', () => {
     expect(guardsOf(AuthController.prototype.logout)).not.toContain(AuthGuard);
   });
@@ -460,6 +496,9 @@ describe('guard và giới hạn tần suất', () => {
     // rất phổ biến nên không thể siết thêm mà không chặn nhầm người thật.
     expect(throttleOf('forgot')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
     expect(throttleOf('reset')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
+    // Gửi lại link xác nhận là đầu vào bơm mail **cùng hình dạng** với `register`
+    // (cùng một loại mail, cùng một tài khoản có thể bị bơm), nên đúng mức đó.
+    expect(throttleOf('resend')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
   });
 
   it('quên mật khẩu bị chặn sau 20 lần trong 1 giờ', () => {
@@ -479,6 +518,13 @@ describe('guard và giới hạn tần suất', () => {
   it('đăng ký bị chặn sau 20 lần trong 1 giờ', () => {
     const g = new ThrottleGuard(new Reflector());
     const ctx = ctxFor(AuthController.prototype.register as never, '10.0.0.1');
+    for (let i = 0; i < 20; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    expect(statusOf(() => g.canActivate(ctx))).toBe(429);
+  });
+
+  it('gửi lại link xác nhận bị chặn sau 20 lần trong 1 giờ, không bơm được mail', () => {
+    const g = new ThrottleGuard(new Reflector());
+    const ctx = ctxFor(AuthController.prototype.resend as never, '10.0.0.7');
     for (let i = 0; i < 20; i += 1) expect(g.canActivate(ctx)).toBe(true);
     expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
@@ -656,5 +702,24 @@ describe('route thật qua Nest', () => {
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('Mã đặt lại không hợp lệ hoặc đã hết hạn');
     auth.resetPassword.mockResolvedValue(true);
+  });
+
+  it('POST /api/auth/resend-verification trả 200 chứ không 201, và không set cookie', async () => {
+    // 200 chứ không 409 như `register`: đây là hành động đăng ký lại, mà
+    // `register` ném 409 vì email đã tồn tại — tức đúng nút bấm để thoát khỏi
+    // trạng thái đó lại là nút chết.
+    const res = await request(app.getHttpServer())
+      .post('/api/auth/resend-verification')
+      .send({ email: 'a@b.co' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: RESEND_MSG });
+    expect(auth.resendVerification).toHaveBeenCalledWith('a@b.co', undefined);
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('POST /api/auth/resend-verification thiếu body vẫn 200, không phải 500', async () => {
+    const res = await request(app.getHttpServer()).post('/api/auth/resend-verification');
+    expect(res.status).toBe(200);
+    expect(auth.resendVerification).toHaveBeenLastCalledWith('', undefined);
   });
 });

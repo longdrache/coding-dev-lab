@@ -27,7 +27,7 @@ const Ctx = createContext<SessionState>({
 });
 
 /**
- * Nguồn sự thật về phiên của FE, thay `ClerkProvider`.
+ * Nguồn sự thật về phiên của FE, thay provider của nhà cung cấp danh tính cũ.
  *
  * Access token sống 15 phút, refresh token sống 30 ngày, nên phải **lên lịch làm
  * mới chủ động**: chờ `/me` báo 401 thì tới lúc đó người dùng đã bị coi là khách

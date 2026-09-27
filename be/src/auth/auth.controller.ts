@@ -240,6 +240,26 @@ export class AuthController {
   }
 
   /**
+   * Nút "Gửi lại link" ở màn "kiểm tra hộp thư". Không `AuthGuard` và không đụng
+   * cookie, y hệt `forgot-password`: người gọi đang ở giữa lúc đăng ký nên
+   * chưa có phiên nào, và câu trả lời phải giống nhau cho mọi email.
+   *
+   * Trả **200 chứ không phải 409** như `register` là chủ ý: đây là hành động
+   * đăng ký lại, mà `register` ném 409 vì email đã tồn tại — tức đúng cái nút bấm
+   * để thoát khỏi trạng thái đó lại là nút chết.
+   */
+  @Post('resend-verification')
+  @HttpCode(200)
+  @UseGuards(ThrottleGuard)
+  @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
+  resend(@Req() req: AuthenticatedRequest, @Body() b: { email?: unknown }) {
+    return this.auth.resendVerification(
+      String(b?.email ?? ''),
+      userAgent(req),
+    );
+  }
+
+  /**
    * Mã sai, hết hạn hoặc đã dùng trả 400 chứ không phải 200, đúng như route
    * `verify`: trả 200 khiến client tưởng đã đổi mật khẩu xong rồi hỏi lại mãi
    * với một mã đã chết. Không `AuthGuard` vì người dùng quên mật khẩu thì không

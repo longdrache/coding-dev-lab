@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { REFRESH_LEAD_S, commitSession, currentSession, refreshPlan, refreshSession, shouldClearCache } from './api';
+import { REFRESH_LEAD_S, commitSession, currentSession, refreshPlan, refreshSession, shouldClearCache, signOut } from './api';
 import { API_URL, authedFetcher } from './swr';
 
 /** Đọc header đã gửi ở bất kỳ dạng `HeadersInit` nào — không đoán bằng `init.headers?.X`. */
@@ -175,6 +175,30 @@ describe('refreshSession', () => {
 
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     await expect(refreshSession()).resolves.toEqual({ kind: 'retry' });
+  });
+});
+
+describe('signOut', () => {
+  it('POST /api/auth/logout với credentials include, không gắn Authorization', async () => {
+    // Route này đọc cookie `refresh` chứ không dùng `AuthGuard` — access token hết
+    // hạn sau 15 phút mà người dùng vẫn phải đăng xuất được.
+    const f = stubFetch({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+    await expect(signOut()).resolves.toBe('out');
+    const [url, init] = f.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API_URL}/api/auth/logout`);
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(init.headers).toBeUndefined();
+  });
+
+  it('lỗi mạng hoặc 5xx thì "retry", không báo đã đăng xuất', async () => {
+    // Báo thành công khi BE còn giữ phiên thì người dùng bấm lại là thấy mình
+    // vẫn đang đăng nhập, và sẽ báo ứng dụng hỏng.
+    stubFetch({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    await expect(signOut()).resolves.toBe('retry');
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    await expect(signOut()).resolves.toBe('retry');
   });
 });
 

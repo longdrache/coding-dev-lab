@@ -24,6 +24,7 @@ export type SessionPayload = {
 
 export const ME_URL = `${API_URL}/api/auth/me`;
 export const REFRESH_URL = `${API_URL}/api/auth/refresh`;
+export const LOGOUT_URL = `${API_URL}/api/auth/logout`;
 
 /** Lệch pha giữa hai lần kiểm tra trạng thái lúc mới mở tab. */
 export const REFRESH_LEAD_S = 60;
@@ -156,3 +157,35 @@ export async function refreshSession(): Promise<RefreshResult> {
     session: { user: data.user as PublicUser, expiresIn: Number(data.expiresIn) },
   };
 }
+
+/**
+ * Kết quả đăng xuất: `"out"` = phiên đã chết ở BE, `"retry"` = chưa chết được.
+ *
+ * Hai giá trị chứ không phải boolean vì chỗ gọi **phải** phân biệt chúng: báo
+ * thành công khi BE còn giữ phiên thì người dùng bấm lại là thấy mình vẫn đang
+ * đăng nhập, và sẽ báo ứng dụng hỏng.
+ */
+export type SignOutResult = "out" | "retry";
+
+/**
+ * Đăng xuất: xoá dòng phiên ở BE (route `/logout` đọc cookie `refresh` chứ không
+ * dùng `AuthGuard`, vì access token hết hạn sau 15 phút mà người dùng vẫn phải
+ * đăng xuất được).
+ *
+ * **Không** tự xoá cookie ở trình duyệt: cookie là `httpOnly` nên JS không đọc
+ * được, và BE đã trả `Clear-Cookie` để dọn cả hai.
+ *
+ * Sau khi gọi, chỗ gọi phải `refresh()` để `AuthProvider` đọc lại `/me` ra
+ * `null` — nếu không thì UI vẫn hiện tài khoản cũ cho tới lần làm mới kế tiếp
+ * (tối đa 15 phút), và dữ liệu của tài khoản đó vẫn nằm trong cache SWR.
+ */
+export async function signOut(): Promise<SignOutResult> {
+  let res: Response;
+  try {
+    res = await fetch(LOGOUT_URL, { method: "POST", credentials: "include" });
+  } catch {
+    return "retry";
+  }
+  return res.ok ? "out" : "retry";
+}
+

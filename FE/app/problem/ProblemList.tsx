@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Search, List, LayoutGrid, ArrowUpDown, Eye, Star, CheckCircle2, Circle, Tag } from "lucide-react";
 import Logo from "@/app/ui/Logo";
 import Breadcrumbs from "@/app/ui/Breadcrumbs";
+import { useSession } from "@/app/ui/AuthProvider";
 import type { Difficulty, Problem } from "@/app/data/problems";
 import { topics } from "@/app/data/topics";
 import { useSolvedSlugs, useServerSolvedSlugs } from "./solved";
@@ -50,7 +50,7 @@ function readLocalFavs(): string[] {
 }
 
 function useFavorites() {
-  const { getToken, isSignedIn } = useAuth();
+  const { user } = useSession();
   const [favs, setFavs] = useState<string[]>([]);
   useEffect(() => {
     try {
@@ -59,26 +59,31 @@ function useFavorites() {
       if (raw) setFavs(JSON.parse(raw));
     } catch {}
   }, []);
+  const userId = user?.id ?? null;
   // Đồng bộ từ server (FavoriteProblem) khi đăng nhập — gộp với local
   useEffect(() => {
-    if (!isSignedIn) return;
+    if (userId === null) return;
     let cancelled = false;
     (async () => {
       // Đẩy favorites local chưa có lên server trước (máy mới)
       const local = readLocalFavs();
+      // `credentials: "include"` thay cho header `Authorization` gắn tay: phiên
+      // nằm trong cookie **httpOnly** nên JS không đọc được token, và không được
+      // đọc. Thiếu `include` thì mọi request này 401 — bản yêu thích chỉ còn ở
+      // localStorage, đổi máy là mất sạch, im lặng.
+      const opts: RequestInit = { credentials: "include" };
       try {
-        const token = await getToken();
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         await Promise.all(
           local.map((slug) =>
             fetch(`${FAV_API}/api/progress/favorites`, {
+              ...opts,
               method: "POST",
-              headers: { "Content-Type": "application/json", ...headers },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ slug }),
             }).catch(() => null),
           ),
         );
-        const res = await fetch(`${FAV_API}/api/progress/favorites`, { headers });
+        const res = await fetch(`${FAV_API}/api/progress/favorites`, opts);
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && Array.isArray(data.slugs)) {
@@ -93,7 +98,7 @@ function useFavorites() {
     return () => {
       cancelled = true;
     };
-  }, [getToken, isSignedIn]);
+  }, [userId]);
   const toggle = (slug: string) => {
     const adding = !favs.includes(slug);
     setFavs((prev) => {
@@ -102,24 +107,21 @@ function useFavorites() {
       return next;
     });
     // Lưu server nền (fire-and-forget) để không mất khi đổi máy
-    if (isSignedIn) {
+    if (userId !== null) {
       (async () => {
         try {
-          const token = await getToken();
-          const headers: Record<string, string> = {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          };
+          const opts: RequestInit = { credentials: "include" };
           if (adding) {
             await fetch(`${FAV_API}/api/progress/favorites`, {
+              ...opts,
               method: "POST",
-              headers,
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ slug }),
             });
           } else {
             await fetch(`${FAV_API}/api/progress/favorites/${encodeURIComponent(slug)}`, {
+              ...opts,
               method: "DELETE",
-              headers,
             });
           }
         } catch {}

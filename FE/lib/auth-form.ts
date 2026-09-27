@@ -47,8 +47,12 @@ const NETWORK_ERROR = "Không kết nối được máy chủ. Kiểm tra mạng
  * Đọc `message` của Nest. Nó là **chuỗi** khi service ném exception với một
  * chuỗi, nhưng là **mảng** khi validation pipe báo nhiều lỗi cùng lúc — đọc
  * thẳng như chuỗi thì mọi trường hợp mảng đều rơi xuống câu dự phòng.
+ *
+ * Export vì `password-reset.ts` dịch lỗi theo đúng cách này: trả lời BE là
+ * thứ **duy nhất** quyết định câu hiện ra, nên hai bản dịch lỗi lệch nhau là
+ * hai nơi một luật.
  */
-function beMessage(body: unknown): string | null {
+export function beMessage(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
   const raw = (body as { message?: unknown }).message;
   if (typeof raw === "string") return raw;
@@ -57,6 +61,17 @@ function beMessage(body: unknown): string | null {
     return typeof first === "string" ? first : null;
   }
   return null;
+}
+
+/** Đọc body lỗi mà không để lỗi parse làm sập cả nhánh báo lỗi. */
+export async function readErrorBody(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch {
+    // Proxy/CDN hay trả HTML 502 thay vì JSON. Không có nhánh này thì lỗi
+    // parse ném ra ngoài và form hiện màn trắng.
+    return null;
+  }
 }
 
 /**
@@ -98,17 +113,6 @@ export type SubmitResult =
   | { kind: "ok" }
   | { kind: "error"; message: string };
 
-/** Đọc body lỗi mà không để lỗi parse làm sập cả nhánh báo lỗi. */
-async function readErrorBody(res: Response): Promise<unknown> {
-  try {
-    return await res.json();
-  } catch {
-    // Proxy/CDN hay trả HTML 502 thay vì JSON. Không có nhánh này thì lỗi
-    // parse ném ra ngoài và form hiện màn trắng.
-    return null;
-  }
-}
-
 /**
  * Gửi email + mật khẩu tới BE và trả về kết quả đã dịch sẵn.
  *
@@ -137,4 +141,44 @@ export async function submitCredentials(
   }
   if (res.ok) return { kind: "ok" };
   return { kind: "error", message: authErrorMessage(res.status, await readErrorBody(res), mode) };
+}
+
+/** Endpoint gửi lại link xác nhận — tách khỏi `authEndpoint` vì không theo mode. */
+export const RESEND_URL = `${API_URL}/api/auth/resend-verification`;
+
+/**
+ * Câu dự phòng cho trường hợp BE không trả `message`. Phải **nguyên văn** câu của
+ * `RESEND_SENT` ở `be/src/auth/auth.service.ts`: đây là hợp đồng "luôn trả cùng
+ * một câu cho mọi trạng thái tài khoản", và câu dự phòng lệch một chữ thì người
+ * dùng tưởng hệ thống vừa nói sai điều gì đó — hoặc tệ hơn, tưởng có tài khoản.
+ */
+const RESEND_SENT = "Nếu email đó có tài khoản chưa xác minh, chúng tôi đã gửi lại link xác nhận.";
+
+export type ResendResult = { kind: "ok"; message: string } | { kind: "error"; message: string };
+
+/**
+ * Gửi lại link xác nhận cho tài khoản **chưa** xác minh.
+ *
+ * Không gọi lại `submitCredentials("signup", …)`: tài khoản vừa đăng ký thì chắc
+ * chắn đã tồn tại, nên `register` trả 409 và không gửi mail — nút "Gửi lại link"
+ * chết đúng lúc cần nhất. Route riêng (`resend-verification`) trả **200** với
+ * cùng một câu cho mọi trường hợp, nên kết quả trả về luôn là `{ kind: "ok" }`:
+ * người dùng không cần biết tài khoản của mình đang ở trạng thái nào, và FE cũng
+ * không được suy ra trạng thái đó từ status.
+ */
+export async function resendVerification(email: string): Promise<ResendResult> {
+  let res: Response;
+  try {
+    res = await fetch(RESEND_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email: normalizeEmail(email) }),
+    });
+  } catch {
+    return { kind: "error", message: NETWORK_ERROR };
+  }
+  const body = await readErrorBody(res);
+  if (!res.ok) return { kind: "error", message: authErrorMessage(res.status, body, "signup") };
+  return { kind: "ok", message: beMessage(body) ?? RESEND_SENT };
 }

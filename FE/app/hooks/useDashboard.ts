@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { useAuth } from "@clerk/nextjs";
 import { API_URL, authedFetcher } from "@/lib/swr";
+import { useSession } from "@/app/ui/AuthProvider";
 
 export type DashboardData = {
   activityMap: Record<string, number>;
@@ -17,14 +17,11 @@ export type DashboardData = {
 const DASHBOARD_KEY = `${API_URL}/api/progress/dashboard`;
 
 export function useDashboard() {
-  // TODO(Task 14): `isSignedIn` chuyển sang `useSession()` — `useAuth()` còn
-  // thuộc Clerk, giữ tới khi gỡ hẳn.
-  const { isSignedIn } = useAuth();
+  const { user, loading: sessionLoading } = useSession();
   const { mutate } = useSWRConfig();
-  const { data, isLoading } = useSWR<DashboardData>(
-    isSignedIn ? DASHBOARD_KEY : null,
-    authedFetcher,
-  );
+  // Chưa đọc xong `/me` thì `user` còn `null`: key chưa bật, không gọi endpoint
+  // của tài khoản trước khi biết mình là ai. Đọc xong mới bật.
+  const { data, isLoading } = useSWR<DashboardData>(user ? DASHBOARD_KEY : null, authedFetcher);
 
   // Tải lại khi có hoạt động mới (run/submit xong)
   useEffect(() => {
@@ -33,8 +30,11 @@ export function useDashboard() {
     return () => window.removeEventListener("gocode-activity-changed", handler);
   }, [mutate]);
 
-  if (isSignedIn === false) {
-    return { data: null, loading: false } as const;
+  if (user === null) {
+    // Còn đang đọc phiên thì `loading` phải là `true` — trả `false` sẽ khiến
+    // `StreakDashboard` hiện trạng thái rỗng "chưa có gì" rồi nhảy lên dữ liệu,
+    // tức nói dối người dùng về tài khoản của họ.
+    return { data: null, loading: sessionLoading } as const;
   }
   return { data: data ?? null, loading: isLoading };
 }

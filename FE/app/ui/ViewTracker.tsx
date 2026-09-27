@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useSession } from "./AuthProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const VISITOR_KEY = "gocode-visitor-id";
@@ -24,16 +24,22 @@ function getVisitorId(): string {
 }
 
 // Gửi pageview mỗi lần đổi route (fire-and-forget, lỗi thì thôi).
-// Định danh: clerkId (đăng nhập) > visitorId UUID theo trình duyệt >
+// Định danh: userId (đăng nhập) > visitorId UUID theo trình duyệt >
 // hash IP. Cùng IP khác thiết bị vẫn đếm riêng.
+//
+// Tên trường là `userId` chứ không phải tên cũ vì `views.controller.ts:26` chỉ
+// đọc `userId` và chỉ nhận **number** — `User.id` của BE là `Int`, còn id của nhà
+// cung cấp danh tính cũ là chuỗi nên trước đây mọi pageview của người đã đăng
+// nhập đều bị rơi thành khách vãng lai, và thống kê "unique" đếm trùng mỗi lần F5.
 export default function ViewTracker() {
   const pathname = usePathname();
-  const { user } = useUser();
+  const { user } = useSession();
+  const userId = user?.id ?? null;
   const sentRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!pathname) return;
-    const key = `${pathname}|${user?.id ?? "guest"}`;
+    const key = `${pathname}|${userId ?? "guest"}`;
     if (sentRef.current === key) return;
     sentRef.current = key;
     fetch(`${API_URL}/api/views/track`, {
@@ -41,11 +47,11 @@ export default function ViewTracker() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         path: pathname,
-        clerkId: user?.id ?? null,
+        userId,
         visitorId: getVisitorId(),
       }),
     }).catch(() => {});
-  }, [pathname, user?.id]);
+  }, [pathname, userId]);
 
   return null;
 }

@@ -5,9 +5,13 @@ import {
   authEndpoint,
   authErrorMessage,
   normalizeEmail,
+  resendVerification,
   submitCredentials,
 } from './auth-form';
 import { API_URL } from './swr';
+
+/** Nguyên văn `RESEND_SENT` ở `be/src/auth/auth.service.ts` — hợp đồng, không phải chi tiết. */
+const RESEND_CAU = 'Nếu email đó có tài khoản chưa xác minh, chúng tôi đã gửi lại link xác nhận.';
 
 /** Response giả của fetch, chỉ cần các trường code thật sự đọc. */
 function stubFetch(res: unknown) {
@@ -215,5 +219,70 @@ describe('authErrorMessage — khi không đọc được message của BE', () 
       expect(m.length).toBeGreaterThan(20);
       expect(m).toMatch(/[.!?]/);
     }
+  });
+});
+
+describe('resendVerification — nút "Gửi lại link"', () => {
+  it('gọi đúng endpoint, chuẩn hoá email, đi kèm cookie, không gắn Authorization', async () => {
+    const f = stubFetch({ ok: true, status: 200, json: () => Promise.resolve({ message: 'x' }) });
+    await resendVerification('  A@B.co  ');
+
+    const [url, init] = f.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API_URL}/api/auth/resend-verification`);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ email: 'a@b.co' });
+    expect(init.credentials).toBe('include');
+    // Token nằm trong cookie httpOnly — gắn header tay là đọc trộm cookie.
+    expect(sentHeaders(init)).toEqual({ 'Content-Type': 'application/json' });
+  });
+
+  /**
+   * Hàng rào cho lỗi khiến nút này chết ngay từ đầu: gọi lại `/register` thì
+   * **luôn** 409 vì tài khoản vừa đăng ký chắc chắn đã tồn tại. Route này phải là
+   * `resend-verification` và phải trả 200.
+   */
+  it('không gọi lại /register — đó là nút chết vì 409', async () => {
+    const f = stubFetch({ ok: true, status: 200, json: () => Promise.resolve({ message: 'x' }) });
+    await resendVerification('a@b.co');
+    const [url] = f.mock.calls[0] as [string];
+    expect(url).not.toContain('/register');
+  });
+
+  it('200 thì trả nguyên câu của BE', async () => {
+    stubFetch({ ok: true, status: 200, json: () => Promise.resolve({ message: RESEND_CAU }) });
+    expect(await resendVerification('a@b.co')).toEqual({ kind: 'ok', message: RESEND_CAU });
+  });
+
+  it('BE không trả message thì dùng câu hợp đồng, không phải câu suông', async () => {
+    // Sửa câu dự phòng lệch khỏi câu của BE là biến màn này thành công cụ dò
+    // email: người dùng đọc câu lệch đó sẽ tưởng mình có (hoặc không có) tài khoản.
+    stubFetch({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    expect(await resendVerification('a@b.co')).toEqual({ kind: 'ok', message: RESEND_CAU });
+  });
+
+  it('429 thì báo phải chờ, không báo "đã gửi"', async () => {
+    const r = await (async () => {
+      stubFetch(nestError(429, 'Quá nhiều yêu cầu, vui lòng thử lại sau'));
+      return resendVerification('a@b.co');
+    })();
+    expect(r.kind).toBe('error');
+    expect((r as { message: string }).message).toContain('Chờ một lúc');
+  });
+
+  it('lỗi mạng (fetch ném) thành câu có cả vấn đề lẫn cách khắc phục', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    expect(await resendVerification('a@b.co')).toEqual({
+      kind: 'error',
+      message: 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.',
+    });
+  });
+
+  it('body hỏng (json() ném) ở 200 vẫn ra câu hợp đồng, không sập', async () => {
+    stubFetch({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new SyntaxError('Unexpected token <')),
+    });
+    expect(await resendVerification('a@b.co')).toEqual({ kind: 'ok', message: RESEND_CAU });
   });
 });

@@ -2,18 +2,20 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useSession } from "@/app/ui/AuthProvider";
 
 export default function PremiumGuard() {
-  const { user, isLoaded } = useUser();
+  // `role` nằm thẳng trong `/me` (`PublicUser`) — trước đây nó nằm trong
+  // `publicMetadata` của nhà cung cấp danh tính cũ.
+  const { user, loading } = useSession();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoaded) return;
-    if (user?.publicMetadata?.role === "vip") {
+    if (loading) return;
+    if (user?.role === "vip") {
       router.replace("/");
     }
-  }, [isLoaded, user, router]);
+  }, [loading, user, router]);
 
   return null;
 }

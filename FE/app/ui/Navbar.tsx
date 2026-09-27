@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { ArrowRight, Menu, X } from "lucide-react";
-import { SignInButton, SignUpButton, useAuth } from "@clerk/nextjs";
+import { useSession } from "./AuthProvider";
 import OnlineCounter from "./OnlineCounter";
 import SectionLink from "./SectionLink";
 import Logo from "./Logo";
@@ -14,7 +14,9 @@ const LINKS = [
 ];
 
 export default function NavBar() {
-  const { isLoaded } = useAuth();
+  // Chưa đọc xong `/me` thì chưa biết là khách hay đã đăng nhập — hiện skeleton
+  // thay vì đoán, để không nháy nút "Đăng nhập" lên nút tài khoản rồi lại nháy về.
+  const { loading } = useSession();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -76,36 +78,34 @@ export default function NavBar() {
 
           <div
             className="flex min-h-10 min-w-32 items-center justify-end"
-            aria-busy={!isLoaded}
+            aria-busy={loading}
           >
-            {!isLoaded && (
+            {loading && (
               <div
-                aria-label="Loading account"
+                aria-label="Đang tải trạng thái đăng nhập"
                 className="flex h-10 w-32 items-center justify-end gap-2"
               >
                 <span className="h-9 w-16 animate-pulse rounded-lg bg-zinc-100" />
                 <span className="h-9 w-20 animate-pulse rounded-lg bg-zinc-200" />
               </div>
             )}
-            {isLoaded && (
+            {!loading && (
               <div className="flex items-center gap-2">
-                <SignInButton mode="modal">
-                  <button
-                    id="nav-btn-login"
-                    className="px-5 py-2.5 rounded-lg text-zinc-700 hover:text-zinc-950 hover:scale-105 hover:bg-zinc-100 text-xs font-medium transition-colors"
-                  >
-                    Đăng nhập
-                  </button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <button
-                    id="nav-btn-register"
-                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-zinc-950  text-white hover:scale-105  text-xs font-medium hover:bg-zinc-800 active:scale-[0.98] transition-all"
-                  >
-                    <span>Đăng ký</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </SignUpButton>
+                <Link
+                  id="nav-btn-login"
+                  href="/sign-in"
+                  className="px-5 py-2.5 rounded-lg text-zinc-700 hover:text-zinc-950 hover:scale-105 hover:bg-zinc-100 text-xs font-medium transition-colors"
+                >
+                  Đăng nhập
+                </Link>
+                <Link
+                  id="nav-btn-register"
+                  href="/sign-up"
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-zinc-950  text-white hover:scale-105  text-xs font-medium hover:bg-zinc-800 active:scale-[0.98] transition-all"
+                >
+                  <span>Đăng ký</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
               </div>
             )}
           </div>
@@ -152,16 +152,18 @@ export default function NavBar() {
               Premium
             </Link>
             <div className="mt-2 flex gap-2 border-t border-zinc-100 pt-3 sm:hidden">
-              <SignInButton mode="modal">
-                <button className="flex-1 rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-medium text-zinc-700">
-                  Đăng nhập
-                </button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button className="flex-1 rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-medium text-white">
-                  Đăng ký
-                </button>
-              </SignUpButton>
+              <Link
+                href="/sign-in"
+                className="flex-1 rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-medium text-zinc-700"
+              >
+                Đăng nhập
+              </Link>
+              <Link
+                href="/sign-up"
+                className="flex-1 rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-medium text-white"
+              >
+                Đăng ký
+              </Link>
             </div>
           </div>
         </nav>

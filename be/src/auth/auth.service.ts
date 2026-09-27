@@ -51,6 +51,14 @@ const PASSWORD_TOO_SHORT = 'Mật khẩu phải có ít nhất 8 ký tự';
  * việc có gửi mail hay không chứ không nằm ở câu trả lời.
  */
 const RESET_REQUESTED = 'Nếu email đó có tài khoản, chúng tôi đã gửi link đặt lại mật khẩu.';
+/**
+ * Câu duy nhất `resendVerification` được phép trả về, dùng cho **mọi** trường hợp:
+ * email không tồn tại, chưa xác minh, đã xác minh rồi, và sai định dạng. Cùng lý
+ * do với `RESET_REQUESTED` — bốn câu khác nhau chính là công cụ dò email, nên khác
+ * biệt phải nằm ở việc *có gửi mail hay không*, không nằm ở câu trả lời.
+ */
+const RESEND_SENT =
+  'Nếu email đó có tài khoản chưa xác minh, chúng tôi đã gửi lại link xác nhận.';
 /** Một câu duy nhất cho mọi lý do từ chối đăng nhập, không lộ email nào tồn tại. */
 const BAD_CREDENTIALS = 'Email hoặc mật khẩu không đúng';
 /**
@@ -107,25 +115,38 @@ export class AuthService {
     if (existing) throw new ConflictException(EMAIL_TAKEN);
 
     const user = await this.createUser(mail, password);
-    const raw = newToken();
-    await this.db.userToken.create({
-      data: {
-        userId: user.id, type: 'verify_email', tokenHash: hashToken(raw),
-        expiresAt: new Date(Date.now() + VERIFY_TTL_MS),
-        userAgent: userAgent?.slice(0, UA_MAX) ?? null,
-      },
-    });
+    const msg = await this.issueVerification(user.id, mail, userAgent);
     // Lỗi gửi mail không được làm hỏng đăng ký — user vẫn tồn tại và có thể gửi lại.
     try {
-      await this.mail.send({
-        to: mail,
-        subject: 'Xác nhận email để hoàn tất đăng ký GoCode',
-        text: `Chào bạn,\n\nMã xác nhận của bạn hết hạn sau 24 giờ:\n${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/sign-up?token=${raw}\n\nĐội ngũ GoCode`,
-      });
+      await this.mail.send(msg);
     } catch {
       // im lặng có chủ ý: mail hỏng không được làm hỏng đăng ký
     }
     return { message: 'Đã gửi link xác nhận, vui lòng kiểm tra hộp thư.' };
+  }
+
+  /**
+   * Sinh mã xác minh 24 giờ **và** dựng sẵn mail, dùng chung cho lúc đăng ký và lúc
+   * gửi lại link.
+   *
+   * Gộp hai thứ vào một chỗ vì chúng là **một** hợp đồng: mail gửi lại mà lệch
+   * hạn hoặc lệch link với mail lúc đăng ký thì câu "hết hạn sau 24 giờ" trong
+   * mail là nói dối. Tách ra rồi copy-paste là chỗ hai bản lệch nhau sẽ tới.
+   */
+  private async issueVerification(userId: number, to: string, userAgent?: string): Promise<Mail> {
+    const raw = newToken();
+    await this.db.userToken.create({
+      data: {
+        userId, type: 'verify_email', tokenHash: hashToken(raw),
+        expiresAt: new Date(Date.now() + VERIFY_TTL_MS),
+        userAgent: userAgent?.slice(0, UA_MAX) ?? null,
+      },
+    });
+    return {
+      to,
+      subject: 'Xác nhận email để hoàn tất đăng ký GoCode',
+      text: `Chào bạn,\n\nMã xác nhận của bạn hết hạn sau 24 giờ:\n${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/sign-up?token=${raw}\n\nĐội ngũ GoCode`,
+    };
   }
 
   async verifyEmail(
@@ -156,6 +177,44 @@ export class AuthService {
       },
     });
     return token;
+  }
+
+  /**
+   * Gửi lại link xác nhận cho tài khoản **chưa** xác minh.
+   *
+   * Nút "Gửi lại link" ở màn "kiểm tra hộp thư" không thể gọi lại `register`: tài
+   * khoản vừa đăng ký thì chắc chắn đã tồn tại, nên `register` ném 409 và không
+   * gửi mail — nút đó chết đúng lúc cần nhất.
+   *
+   * Cùng nguyên tắc chống lộ trạng thái với `forgotPassword`: **luôn** trả về
+   * `RESEND_SENT`, kể cả khi email không tồn tại, đã xác minh rồi, hay sai định
+   * dạng. Ba nhánh đầu trả lời khác nhau chính là công cụ dò email; khác biệt
+   * phải nằm ở việc có tạo mã và gửi mail hay không.
+   *
+   * Mail gửi **nền, cố ý không `await`** — y hệt `forgotPassword`, vì SMTP là
+   * số hạng lớn nhất của endpoint này: response nếu chờ nó thì thời gian phản
+   * hồi tự nó phân biệt được "tài khoản này chưa xác minh" với "không có tài
+   * khoản", phá đúng cái biện pháp "luôn trả cùng một câu".
+   */
+  async resendVerification(email: string, userAgent?: string): Promise<{ message: string }> {
+    const mail = String(email ?? '').trim().toLowerCase();
+    if (!EMAIL_RE.test(mail)) return { message: RESEND_SENT };
+    const user = await this.db.user.findUnique({ where: { email: mail } });
+    // Đã xác minh rồi thì link cũ vẫn còn giá trị (chưa dùng, còn hạn) — gửi thêm
+    // chỉ là mail rác. Nhưng **không** nói ra điều đó: cùng câu, cùng 200.
+    if (!user || user.emailVerifiedAt) return { message: RESEND_SENT };
+
+    const msg = await this.issueVerification(user.id, mail, userAgent);
+    this.mail.send(msg).catch((err: unknown) => {
+      // Không nuốt im lặng: đường này chạy nền nên không có ai đỡ lỗi. Chỉ log —
+      // khác `forgotPassword` ở chỗ **không** trả lại mã: ở đó có cooldown theo
+      // tài khoản nên phải trả mã để không nuốt lần xin lại sau, còn đây chỉ
+      // chặn theo IP nên bấm lại là ra mã mới ngay.
+      this.logger.warn(
+        `Gửi lại mail xác nhận tới ${mail} thất bại: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
+      );
+    });
+    return { message: RESEND_SENT };
   }
 
   /**

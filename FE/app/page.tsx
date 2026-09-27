@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { SignedIn, SignedOut, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import NavBar from "@/app/ui/Navbar";
-import { ArrowRight, Terminal, Crown } from "lucide-react";
+import { ArrowRight, Terminal, Crown, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { codeLines } from "@/app/data/code";
 import { recordLogin } from "@/app/problem/activity";
+import { signOut } from "@/lib/api";
+import { useSession } from "./ui/AuthProvider";
 import FeatureCard from "./ui/FeatureCard";
 import OnlineCounter from "./ui/OnlineCounter";
 import Reveal from "./ui/Reveal";
@@ -33,8 +34,9 @@ const copyItem: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
 };
 export default function Home() {
-  const { user, isSignedIn } = useUser();
-  const { getToken } = useAuth();
+  const { user, loading: sessionLoading, refresh } = useSession();
+  const isSignedIn = user !== null;
+  const [signOutError, setSignOutError] = useState("");
   const [visibleLines, setVisibleLines] = useState(0);
   const [mounted, setMounted] = useState(false);
   // Giữ loader tối thiểu 1.5s để nhìn thấy màn boot + % chạy xong
@@ -59,8 +61,29 @@ export default function Home() {
     tiltY.set(0);
   }
 
+  /**
+   * Đăng xuất: xoá dòng phiên ở BE rồi đọc lại `/me`.
+   *
+   * Bước `refresh()` là bắt buộc, không phải cho đẹp: nó mới là chỗ xoá cache
+   * SWR và hạ user về `null` (`AuthProvider.applyUser`). Bỏ nó thì UI vẫn hiện
+   * tài khoản cũ tới lần làm mới kế tiếp (tối đa 15 phút), và dữ liệu của tài
+   * khoản đó vẫn nằm lại trong cache — đăng nhập tài khoản khác trong cùng tab
+   * là nhìn thấy dữ liệu người trước.
+   */
+  async function onSignOut() {
+    setSignOutError("");
+    const r = await signOut();
+    if (r === "retry") {
+      setSignOutError("Chưa đăng xuất được. Kiểm tra mạng rồi thử lại.");
+      return;
+    }
+    await refresh();
+  }
+
   useEffect(() => {
-    // Hydration guard — cố ý cascading 1 lần để khớp SignedIn/SignedOut giữa server và client
+    // Hydration guard — cố ý cascading 1 lần để lần render đầu của client khớp
+    // hệt server. Trạng thái đăng nhập chỉ biết được ở client (`/me` là fetch),
+    // nên phải chờ `mounted` mới phân nhánh khách / đã đăng nhập.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     const timer = window.setTimeout(() => setMinTime(true), 1500);
@@ -84,8 +107,10 @@ export default function Home() {
   }, [mounted]);
 
   useEffect(() => {
-    if (mounted && isSignedIn) recordLogin(getToken);
-  }, [mounted, isSignedIn, getToken]);
+    // `recordLogin` tự đi kèm cookie phiên (`credentials: "include"`), nên
+    // không còn tham số token nữa.
+    if (mounted && isSignedIn) recordLogin();
+  }, [mounted, isSignedIn]);
   useEffect(() => {
     if (visibleLines < codeLines.length) {
       const timer = setTimeout(() => {
@@ -111,11 +136,10 @@ export default function Home() {
   }, [minTime]);
 
   // Guard hydration: server và lần render đầu của client phải giống nhau.
-  // Clerk chỉ biết trạng thái đăng nhập ở client, nên chờ mounted mới
-  // phân nhánh SignedIn/SignedOut để tránh mismatch.
-  // if (!mounted || !minTime) {
-  //   return <PageLoader />;
-  // }
+  // `/me` là fetch nên chỉ biết trạng thái đăng nhập ở client — chờ `mounted` và
+  // `sessionLoading` trước khi phân nhánh, tránh render "khách" lúc thật ra đã
+  // đăng nhập rồi nhảy sang nhánh kia giữa chừng.
+  const showSignedIn = mounted && !sessionLoading && isSignedIn;
 
   return (
     <main className="relative min-h-screen overflow-hidden" suppressHydrationWarning>
@@ -137,29 +161,15 @@ export default function Home() {
         <div className="absolute -right-40 top-[80%] h-[420px] w-[420px] bg-[radial-gradient(closest-side,rgba(153,246,228,0.35),transparent)]" />
       </div>
       <div className="relative mx-auto  px-6 pb-7 sm:px-6 lg:px-8">
-        <SignedOut>
-          {/* <nav className="flex items-center justify-between border-b border-[#f5f1e8]/20 pb-5 pt-4"> */}
+        {!showSignedIn && (
+          /* Navbar chỉ hiện với khách. Ở nhánh đã đăng nhập có một nav riêng, có
+             nút đăng xuất, nên đây chỉ là hai thanh điều hướng chồng lên nhau. */
           <NavBar />
-          {/* <Link href="/" className="font-serif text-xl tracking-tight">
-              coding<span className="text-[#d65a3a]">.</span>lab
-            </Link>
-            <div className="flex items-center gap-6 text-sm text-[#f5f1e8]/65">
-              <Link href="/problem" className="transition hover:text-[#f5f1e8]">
-                Problem Lab
-              </Link>
-              <Link href="/premium" className="transition hover:text-[#f5f1e8]">
-                Premium
-              </Link>
-              <Link href="/vip" className="transition hover:text-[#f5f1e8]">
-                Vip
-              </Link> */}
+        )}
 
-          {/* </div> */}
-          {/* </nav> */}
-        </SignedOut>
-
-        <SignedOut>
-          <section id="hero" className="relative grid min-h-[72vh] items-center gap-12 py-20 lg:grid-cols-[1.1fr_0.9fr]">
+        {!showSignedIn && (
+          <>
+            <section id="hero" className="relative grid min-h-[72vh] items-center gap-12 py-20 lg:grid-cols-[1.1fr_0.9fr]">
             <HeroScrollFx />
             {/* Nền 3D R3F: khối trôi + hạt + parallax chuột, sau nội dung */}
             <div id="hero-3d" className="pointer-events-none absolute inset-0" aria-hidden>
@@ -402,9 +412,10 @@ export default function Home() {
           </section>
           <FaqTeaser />
           <FinalCta />
-        </SignedOut>
+          </>
+        )}
 
-        <SignedIn>
+        {showSignedIn && (
           <section className="pb-16 text-zinc-900">
             <div className="mx-auto max-w-6xl">
               <nav className="flex items-center gap-7 border-b border-zinc-200/80 py-4 text-sm text-zinc-600">
@@ -418,7 +429,7 @@ export default function Home() {
                 >
                   Hỏi đáp
                 </Link>
-                {user?.publicMetadata?.role !== "vip" && (
+                {user?.role !== "vip" && (
                   <Link
                     href="/premium"
                     className="font-medium text-amber-600 transition hover:text-amber-700"
@@ -428,40 +439,60 @@ export default function Home() {
                 )}
                 <div className="ml-auto flex items-center gap-3">
                   <OnlineCounter />
-                  {user?.publicMetadata?.role === "vip" ? (
+                  {user?.role === "vip" ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-gradient-to-r from-amber-400 to-orange-500 px-2.5 py-1 text-xs font-bold text-white shadow-sm shadow-amber-500/20">
                       <Crown className="size-3.5 fill-white text-white" />
                       VIP
                     </span>
                   ) : null}
-                  <span className="hidden text-xs text-zinc-400 md:inline">
-                    Xin chào, {user?.firstName ?? "Coder"}!
+                  <span className="hidden text-xs text-zinc-600 md:inline">
+                    Xin chào, {user?.name ?? user?.email ?? "Coder"}!
                   </span>
-                  <div className="relative">
-                    <div className={user?.publicMetadata?.role === "vip" ? "rounded-full p-[2px] bg-gradient-to-r from-amber-400 to-orange-500 shadow-sm" : ""}>
-                      <UserButton
-                        appearance={{
-                          elements: {
-                            avatarBox: user?.publicMetadata?.role === "vip" ? "ring-2 ring-white" : "",
-                          },
-                        }}
-                      />
-                    </div>
-                    {user?.publicMetadata?.role === "vip" && (
+                  {/* Avatar + nút đăng xuất. Trước đây đây là widget của nhà
+                      cung cấp danh tính cũ: bỏ nó đi mà không thay bằng gì thì
+                      ứng dụng **không còn cách đăng xuất** — nên phải thay, không
+                      phải xoá. */}
+                  <div className="relative flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className={
+                        user?.role === "vip"
+                          ? "flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-sm font-bold text-white ring-2 ring-white"
+                          : "flex size-9 items-center justify-center rounded-full bg-zinc-200 text-sm font-bold text-zinc-700"
+                      }
+                    >
+                      {(user?.name ?? user?.email ?? "C").trim().charAt(0).toUpperCase()}
+                    </span>
+                    {user?.role === "vip" && (
                       <span className="pointer-events-none absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow ring-2 ring-white">
                         <Crown className="size-3 fill-white" />
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => void onSignOut()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/20 focus-visible:ring-offset-2"
+                    >
+                      <LogOut aria-hidden className="size-3.5" />
+                      Đăng xuất
+                    </button>
                   </div>
                 </div>
               </nav>
+
+              {signOutError && (
+                // `role="alert"` để screen reader đọc ngay khi câu xuất hiện.
+                <p role="alert" className="mt-3 text-sm text-rose-600">
+                  {signOutError}
+                </p>
+              )}
 
               <div className="py-6">
                 <StreakDashboard />
               </div>
             </div>
           </section>
-        </SignedIn>
+        )}
       </div>
     </main>
   );

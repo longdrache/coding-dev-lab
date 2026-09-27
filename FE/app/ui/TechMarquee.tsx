@@ -9,7 +9,8 @@ const STACK = [
   { name: "PostgreSQL", slug: "postgresql" },
   { name: "Stripe", slug: "stripe" },
   { name: "Vercel", slug: "vercel" },
-  { name: "Clerk", slug: "clerk" },
+  // Xác thực tự viết: cookie httpOnly + RS256, không còn dịch vụ bên thứ ba.
+  { name: "JWT", slug: "jsonwebtokens" },
 ];
 
 function hideBroken(e: React.SyntheticEvent<HTMLImageElement>) {

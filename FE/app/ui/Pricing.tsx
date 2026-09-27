@@ -1,6 +1,6 @@
 "use client";
 import { pricingPlans } from "../data/pricing";
-import { useAuth } from "@clerk/nextjs";
+import { useSession } from "./AuthProvider";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 export default function PricingCards() {
-  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { user, loading } = useSession();
   const router = useRouter();
   const [loadingPlan, setLoadingPlan] = useState("");
   const [error, setError] = useState("");
@@ -25,25 +25,26 @@ export default function PricingCards() {
   };
   async function choosePlan(plan: string) {
     setError("");
-    if (!isLoaded || !isSignedIn) {
+    // Chưa đọc xong phiên thì chưa biết là khách hay đã đăng nhập — đá đi
+    // `/sign-in` lúc đó là người đã đăng nhập bị đẩy ra khỏi trang của mình.
+    if (loading || !user) {
       router.push("/sign-in?redirect_url=/premium");
       return;
     }
 
     setLoadingPlan(plan);
-    console.log(plan)
     try {
-      const token = await getToken();
+      // `credentials: "include"` thay cho header `Authorization` gắn tay: phiên
+      // nằm trong cookie **httpOnly** nên JS không đọc được token, và không được
+      // đọc. Thiếu `include` thì checkout luôn 401 — người dùng bấm "Mua", bị
+      // đưa tới trang lỗi, và không hiểu vì sao mình đã đăng nhập rồi.
       const response = await fetch(`${API_URL}/api/premium/checkout`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ plan }),
       });
       const result = await response.json();
-      console.log(result);
       if (!response.ok || !result.url) {
         throw new Error(result.message ?? "Không thể tạo phiên thanh toán.");
       }

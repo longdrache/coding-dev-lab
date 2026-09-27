@@ -326,6 +326,186 @@ describe('xác minh email', () => {
   });
 });
 
+/**
+ * Câu trả lời duy nhất của `resendVerification` — ghim thành hằng để đổi câu là
+ * test đỏ, vì đây chính là câu không được lộ khác nhau giữa các trường hợp.
+ */
+const RESEND_MSG = 'Nếu email đó có tài khoản chưa xác minh, chúng tôi đã gửi lại link xác nhận.';
+
+const verifyRows = (db: any) => db.state.userToken.filter((t: any) => t.type === 'verify_email');
+
+/**
+ * Tài khoản **chưa** xác minh (đúng trạng thái lúc mới đăng ký xong), trả về
+ * mọi thứ test cần. Không seed "đã xác minh" ở đây: `seedVerified` phục vụ
+ * `login`/`forgotPassword`, còn endpoint này cần đúng hai loại user — chưa xác
+ * minh (được gửi) và đã xác minh (không được gửi).
+ */
+async function seedUnverified(email = 'a@b.co') {
+  const db = makeDb();
+  const sent: any[] = [];
+  const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+  await svc.register(email, 'matkhau123');
+  // Mail xác minh lúc đăng ký đã nằm trong `sent`; đếm lại từ đây.
+  return { db, svc, sent };
+}
+
+describe('gửi lại link xác nhận', () => {
+  it('bốn trường hợp trả đúng MỘT câu, giống nhau tuyệt đối', async () => {
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    // Hai tài khoản có thật, khác nhau ở đúng `emailVerifiedAt` — đó là biến duy
+    // nhất quyết định có gửi mail hay không. Ba nhánh còn lại là ảo.
+    await svc.register('chua-xac-minh@b.co', 'matkhau123');
+    await svc.register('da-xac-minh@b.co', 'matkhau123');
+    await db.user.update({ where: { id: db.state.user[1].id }, data: { emailVerifiedAt: new Date() } });
+    const mailDaGui = sent.length;
+    const tokenDaTao = db.state.userToken.length;
+
+    const r1 = await svc.resendVerification('khong-ton-tai@b.co');
+    const r2 = await svc.resendVerification('da-xac-minh@b.co');
+    const r3 = await svc.resendVerification('khong-phai-email');
+    const r4 = await svc.resendVerification('');
+
+    expect(r1.message).toBe(RESEND_MSG);
+    expect(r2.message).toBe(r1.message);
+    expect(r3.message).toBe(r1.message);
+    expect(r4.message).toBe(r1.message);
+    // Ba nhánh phải trả lời **và** hành động giống nhau: không sinh mã, không gửi
+    // mail. Chỉ khác câu thì vẫn dò được; chỉ khác hành động thì đo độ trễ ra.
+    expect(db.state.userToken).toHaveLength(tokenDaTao);
+    expect(sent).toHaveLength(mailDaGui);
+  });
+
+  it('tài khoản chưa xác minh thì sinh mã và gửi mail', async () => {
+    const { db, svc, sent } = await seedUnverified();
+    const r = await svc.resendVerification('a@b.co');
+    expect(r.message).toBe(RESEND_MSG);
+    expect(verifyRows(db)).toHaveLength(2);
+    // 1 mail lúc đăng ký + 1 mail gửi lại.
+    expect(sent).toHaveLength(2);
+    expect(sent.at(-1)!.to).toBe('a@b.co');
+    expect(String(sent.at(-1)!.text)).toContain('/sign-up?token=');
+  });
+
+  it('mã gửi lại hạn đúng 24 giờ, không phải 1 giờ như mã đặt lại mật khẩu', async () => {
+    // Đóng băng đồng hồ: `expiresAt` dựng bằng `Date.now()` lúc tạo, nên với đồng
+    // hồ thật phép trừ ở đây lệch 1-2 ms mỗi lần chạy — test nhấp nháy xanh đỏ
+    // theo tải máy. Đổi `VERIFY_TTL_MS` thành 1 giờ là test này đỏ ngay.
+    freezeAt('2026-05-01T00:00:00Z');
+    const { db, svc } = await seedUnverified();
+    const row = verifyRows(db).at(-1)!;
+    expect(row.expiresAt.getTime() - Date.now()).toBe(24 * 60 * 60 * 1000);
+    // Ghim thêm một mốc: khác hẳn hạn 1 giờ của mã đặt lại mật khẩu, để đổi
+    // nhầm hằng cũng bị bắt chứ không chỉ trùng số với 24 giờ.
+    expect(row.expiresAt.getTime() - Date.now()).not.toBe(60 * 60 * 1000);
+  });
+
+  it('mã trong mail gửi lại dùng được: verifyEmail mở phiên được', async () => {
+    // Đọc mã **từ nội dung mail** chứ không `spyOn(newToken)`: nếu link gửi lại
+    // không kèm mã thì mọi test dùng mã giả vẫn xanh trong khi người dùng bấm
+    // link là tới trang chết — đúng hỏng mà nút này sinh ra để chữa.
+    const { db, svc, sent } = await seedUnverified();
+    await svc.resendVerification('a@b.co');
+    const raw = String(sent.at(-1)!.text).match(/token=([0-9a-f]{64})/)?.[1];
+    expect(raw).toBeTruthy();
+
+    const row = verifyRows(db).at(-1)!;
+    expect(row.tokenHash).toBe(tokens.hashToken(raw!));
+    expect(row.tokenHash).not.toBe(raw);
+
+    const session = await svc.verifyEmail(raw!);
+    expect(session).not.toBeNull();
+    expect(db.state.user[0].emailVerifiedAt).not.toBeNull();
+  });
+
+  it('đã xác minh rồi thì không sinh mã, không gửi mail', async () => {
+    // Bỏ kiểm tra `emailVerifiedAt` ở service là test này đỏ: nó sẽ sinh mã và
+    // gửi mail cho một tài khoản không cần xác minh nữa.
+    const { db, svc, sent } = await seedUnverified();
+    await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+    const tokenDaTao = db.state.userToken.length;
+
+    const r = await svc.resendVerification('a@b.co');
+    expect(r.message).toBe(RESEND_MSG);
+    expect(verifyRows(db)).toHaveLength(tokenDaTao);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('email viết HOA và có khoảng trắng vẫn ra mã (thiếu .trim()/.toLowerCase() là hỏng)', async () => {
+    const { db, svc, sent } = await seedUnverified();
+    const r = await svc.resendVerification('  A@B.co  ');
+    expect(r.message).toBe(RESEND_MSG);
+    expect(verifyRows(db)).toHaveLength(2);
+    expect(sent.at(-1)!.to).toBe('a@b.co');
+  });
+
+  it('gửi lại nhiều lần thì mỗi lần một mã mới, mã cũ vẫn dùng được', async () => {
+    // Không có cooldown theo tài khoản (chỉ chặn theo IP ở controller), nên bấm
+    // "Gửi lại" ba lần phải ra ba mã — và mã **đầu** không bị vô hiệu hóa, vì
+    // người dùng có thể đã mở mail cũ khi bấm nhầm.
+    const { db, svc, sent } = await seedUnverified();
+    await svc.resendVerification('a@b.co');
+    await svc.resendVerification('a@b.co');
+    await svc.resendVerification('a@b.co');
+    expect(verifyRows(db)).toHaveLength(4);
+    const ma = sent
+      .map((m) => String(m.text).match(/token=([0-9a-f]{64})/)?.[1])
+      .filter(Boolean);
+    expect(new Set(ma).size).toBe(4);
+  });
+
+  it('userAgent dài bị cắt còn 200 ký tự', async () => {
+    const { db, svc } = await seedUnverified();
+    await svc.resendVerification('a@b.co', 'U'.repeat(500));
+    expect(verifyRows(db).at(-1)!.userAgent).toHaveLength(200);
+  });
+
+  it('không chờ mail: send treo vĩnh viễn thì resendVerification vẫn trả về', async () => {
+    // Hàng rào cho đúng cái lý do bỏ `await`: nếu lại chờ SMTP thì thời gian phản
+    // hồi tự nó phân biệt "tài khoản chưa xác minh" với "không có tài khoản" —
+    // phá biện pháp "luôn trả cùng một câu". Chỉ mail **gửi lại** treo (lần gọi
+    // thứ hai trở đi), vì `register` cố ý `await` mail xác nhận nên treo luôn
+    // cả hai thì test hỏng ở `register` chứ không phải ở endpoint này.
+    const treo = new Promise<void>(() => { /* không bao giờ resolve */ });
+    const db = makeDb();
+    let lan = 0;
+    const svc = new AuthService(db, {
+      send: () => (lan++ === 0 ? Promise.resolve() : treo),
+    } as any);
+    await svc.register('a@b.co', 'matkhau123');
+
+    const TREO = 'TREO';
+    const r = await Promise.race([
+      svc.resendVerification('a@b.co'),
+      new Promise((x) => { setTimeout(() => { x(TREO); }, 500); }),
+    ]);
+    expect(r).not.toBe(TREO);
+    expect((r as { message: string }).message).toBe(RESEND_MSG);
+    // Không chờ mail không được có nghĩa bỏ luôn việc cấp mã.
+    expect(verifyRows(db)).toHaveLength(2);
+  });
+
+  it('mailer hỏng thì vẫn trả đúng câu đó, và ghi log chứ không nuốt im lặng', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const db = makeDb();
+    const svc = new AuthService(db, { send: async () => { throw new Error('SMTP chết'); } } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    warn.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
+
+    const r = await svc.resendVerification('a@b.co');
+    await flush();
+    expect(r.message).toBe(RESEND_MSG);
+    expect(verifyRows(db)).toHaveLength(2);
+    expect(warn).toHaveBeenCalledOnce();
+    const dong = String(warn.mock.calls[0][0]);
+    expect(dong).toContain('SMTP chết');
+    expect(dong).toContain('a@b.co');
+    // Log phải truy được nhưng không được lộ mã xác nhận.
+    expect(dong).not.toMatch(/[0-9a-f]{64}/);
+  });
+});
+
 describe('đăng nhập', () => {
   it('sai mật khẩu và email không tồn tại trả cùng 401, cùng một câu', async () => {
     const { db, svc } = await seedVerified();

@@ -2,18 +2,20 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { CircleAlert, LoaderCircle, MailCheck } from "lucide-react";
+import { CircleAlert, LoaderCircle, MailCheck, Send } from "lucide-react";
 import {
   MIN_PASSWORD_LENGTH,
   VERIFY_LINK_HOURS,
   normalizeEmail,
+  resendVerification,
   submitCredentials,
   type AuthMode,
 } from "@/lib/auth-form";
 import { useSession } from "./AuthProvider";
 
 /**
- * Form đăng nhập / đăng ký, thay `<SignIn>` / `<SignUp>` của Clerk.
+ * Form đăng nhập / đăng ký, thay `<SignIn>` / `<SignUp>` của nhà cung cấp danh
+ * tính cũ.
  *
  * Trang là **Operate**: người tới đây đã biết GoCode và chỉ muốn vào dùng. Phần
  * thuyết phục đã nằm hết ở cột trái `AuthShell`, nên form này không lặp lại
@@ -35,6 +37,8 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
   const [busy, setBusy] = useState(false);
   /** Màn kết quả: `sent` = link đã đi, `signedin` = đã có phiên. */
   const [done, setDone] = useState<"sent" | "signedin" | null>(null);
+  /** Câu của màn "đã gửi link" sau khi bấm "Gửi lại link" lần nữa. */
+  const [notice, setNotice] = useState("");
 
   const isSignup = mode === "signup";
   const submitLabel = isSignup ? "Tạo tài khoản" : "Đăng nhập";
@@ -45,11 +49,25 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
   /**
    * Một đường duy nhất cho cả lần bấm đầu và lần bấm "gửi lại", nên hai màn
    * kết quả không thể lệch nhau vì copy-paste.
+   *
+   * `action` phân biệt hai việc **khác nhau về bản chất**: đăng ký thì tạo tài
+   * khoản, còn gửi lại thì chỉ phát lại link. Không thể dùng chung
+   * `submitCredentials("signup", …)` cho cả hai — tài khoản vừa đăng ký chắc chắn
+   * đã tồn tại, nên `/register` trả 409 và **không gửi mail**: nút "Gửi lại link"
+   * chết đúng lúc cần nhất. `resendVerification` là route riêng, trả 200 với
+   * cùng một câu cho mọi trạng thái tài khoản.
    */
-  async function run() {
+  async function run(action: "submit" | "resend") {
     setError("");
+    if (action === "resend") setNotice("");
     setBusy(true);
     try {
+      if (action === "resend") {
+        const r = await resendVerification(email);
+        if (r.kind === "error") setError(r.message);
+        else setNotice(r.message);
+        return;
+      }
       const r = await submitCredentials(mode, email, password);
       if (r.kind === "error") {
         setError(r.message);
@@ -78,7 +96,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    void run();
+    void run("submit");
   }
 
   if (done === "sent") {
@@ -101,8 +119,21 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           </div>
         )}
 
-        <button type="button" onClick={() => void run()} disabled={busy} className={`${SECONDARY} mt-5`}>
-          {busy && <LoaderCircle aria-hidden className={SPINNER} />}
+        {notice && (
+          // `role="status"` để screen reader đọc ngay khi bấm "Gửi lại link" xong,
+          // không cần người dùng đi tìm lại dòng xác nhận.
+          <p role="status" className="mt-4 text-sm leading-relaxed text-zinc-700">
+            {notice}
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={() => void run("resend")}
+          disabled={busy}
+          className={`${SECONDARY} mt-5`}
+        >
+          {busy ? <LoaderCircle aria-hidden className={SPINNER} /> : <Send aria-hidden className="size-4" />}
           {busy ? "Đang gửi lại…" : "Gửi lại link"}
         </button>
 
@@ -156,9 +187,10 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           name="password"
           type="password"
           autoComplete={isSignup ? "new-password" : "current-password"}
-          // Chỉ ràng ở chế độ đăng ký: ở chế độ đăng nhập, một tài khoản cũ tạo
-          // từ Clerk có thể còn mật khẩu ngắn hơn, và chặn ở trình duyệt sẽ
-          // chặn nhầm người dùng hợp lệ với một câu không giải thích được.
+          // Chỉ ràng ở chế độ đăng ký: ở chế độ đăng nhập, một tài khoản tạo từ
+          // thời còn dùng thư viện xác thực cũ có thể còn mật khẩu ngắn hơn, và
+          // chặn ở trình duyệt sẽ chặn nhầm người dùng hợp lệ với một câu không
+          // giải thích được.
           minLength={isSignup ? MIN_PASSWORD_LENGTH : undefined}
           aria-describedby={isSignup ? "auth-password-hint" : undefined}
           required
@@ -193,13 +225,22 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
         {busy ? "Đang xử lý…" : submitLabel}
       </button>
 
-      {/* Cặp trang này chỉ trỏ tới nhau. Link "Quên mật khẩu?" thuộc `/forgot-password`
-          nên chưa đặt ở đây — đặt sớm là một link chết. */}
+      {/* Ở chế độ đăng nhập thêm link "Quên mật khẩu?" — đó là lúc người dùng
+          thật sự cần nó. Ở chế độ đăng ký thì không: link này đã thuộc cặp trang
+          kia, thêm vào đây là thêm một đường thoát khỏi một màn chưa xong. */}
       <p className={FOOTER}>
         {toggleLabel}{" "}
         <Link href={toggleHref} className={FOOTER_LINK}>
           {toggleAction}
         </Link>
+        {!isSignup && (
+          <>
+            {" · "}
+            <Link href="/forgot-password" className={FOOTER_LINK}>
+              Quên mật khẩu?
+            </Link>
+          </>
+        )}
       </p>
     </form>
   );

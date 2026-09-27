@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
 import useSWR from "swr";
 import { authedFetcher } from "@/lib/swr";
+import { useSession } from "@/app/ui/AuthProvider";
 import {
   ArrowLeft,
   Check,
@@ -350,10 +350,19 @@ function RunMeta({
   );
 }
 
-type AuthHeaders = {
-  headers: Record<string, string>;
-  bareHeaders: Record<string, string> | undefined;
-};
+/**
+ * Mọi request cần đăng nhập ở trang này đều đi bằng `credentials: "include"`.
+ *
+ * **Không** gắn `Authorization` bằng tay nữa: phiên nằm trong cookie **httpOnly**
+ * mà BE đặt ở `auth.controller.ts:68`, nên JS không đọc được token — và không được
+ * đọc, đọc cookie bằng JS đúng lỗ hổng XSS mà `httpOnly` sinh ra để chặn. Thiếu
+ * `include` thì chạy bài, nộp bài và lịch sử đều 401.
+ *
+ * Hằng ở **cấp module** chứ không phải trong component: một hằng bất biến tạo
+ * mới ở mỗi lần render sẽ khiến `useCallback` phải liệt kê nó trong deps, tức
+ * memo hoá vô nghĩa.
+ */
+const JSON_HEADERS = { "Content-Type": "application/json" } as const;
 
 export default function ProblemWorkspace() {
   const params = useParams();
@@ -393,7 +402,8 @@ export default function ProblemWorkspace() {
 
 function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   const router = useRouter();
-  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { user, loading } = useSession();
+  const isSignedIn = user !== null;
 
   const [languageId, setLanguageId] = useState(LANGUAGES[0].id);
   const [sourceCode, setSourceCode] = useState(LANGUAGES[0].starter);
@@ -456,31 +466,17 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   }, [langOpen]);
 
   useEffect(() => {
-    if (isLoaded && !isSignedIn) {
+    if (!loading && !isSignedIn) {
       router.replace(`/sign-in?redirect_url=/problem/${slug}`);
     }
-  }, [isLoaded, isSignedIn, router, slug]);
-
-  const buildAuth = useCallback(async (): Promise<AuthHeaders> => {
-    const clerkToken = await getToken();
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(clerkToken ? { Authorization: `Bearer ${clerkToken}` } : {}),
-    };
-    return {
-      headers,
-      bareHeaders: clerkToken
-        ? { Authorization: `Bearer ${clerkToken}` }
-        : undefined,
-    };
-  }, [getToken]);
+  }, [loading, isSignedIn, router, slug]);
 
   const submitBatch = useCallback(
     async (code: string, inputs: string[]): Promise<string[]> => {
-      const { headers } = await buildAuth();
       const response = await fetch(`${API_URL}/api/submissions/batch`, {
         method: "POST",
-        headers,
+        headers: JSON_HEADERS,
+        credentials: "include",
         body: JSON.stringify({
           submissions: inputs.map((input) => ({
             language_id: languageId,
@@ -503,7 +499,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
       }
       return created.map((item) => item.token as string);
     },
-    [buildAuth, languageId],
+    [languageId],
   );
 
   const pollBatch = useCallback(
@@ -511,7 +507,6 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
       tokens: string[],
       onProgress?: (list: Submission[]) => void,
     ): Promise<Submission[]> => {
-      const { bareHeaders } = await buildAuth();
       const query = tokens.map(encodeURIComponent).join(",");
       const started = Date.now();
       for (;;) {
@@ -523,7 +518,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
         );
         const poll = await fetch(
           `${API_URL}/api/submissions/batch?tokens=${query}`,
-          { headers: bareHeaders },
+          { credentials: "include" },
         );
         if (!poll.ok)
           throw new Error(
@@ -540,7 +535,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
         }
       }
     },
-    [buildAuth],
+    [],
   );
 
   const historyKey = isSignedIn ? `${API_URL}/api/history?slug=${encodeURIComponent(slug)}` : null;
@@ -600,7 +595,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
         setActiveResult(firstFailed === -1 ? 0 : firstFailed);
       }
       setResults(collected);
-      recordActivity(getToken);
+      recordActivity();
     } catch (runError) {
       if (mountedRef.current) {
         setError(toUserErrorMessage(runError));
@@ -618,13 +613,10 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
     setSubmitting(true);
     try {
       // Test ẩn lấy từ DB (BE), không lộ ra client
-      const t = await getToken();
       const res = await fetch(`${API_URL}/api/problems/${encodeURIComponent(slug)}/submit`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(t ? { Authorization: `Bearer ${t}` } : {}),
-        },
+        headers: JSON_HEADERS,
+        credentials: "include",
         body: JSON.stringify({ languageId, sourceCode }),
       });
       const data = await res.json();
@@ -641,7 +633,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
         markSolved(problem.slug);
         window.dispatchEvent(new Event("gocode-activity-changed"));
       }
-      recordActivity(getToken);
+      recordActivity();
     } catch (runError) {
       if (mountedRef.current) {
         setError(toUserErrorMessage(runError));
@@ -651,7 +643,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
     }
   }
 
-  if (!isLoaded || !isSignedIn) {
+  if (loading || !isSignedIn) {
     return (
       <main className="min-h-screen bg-white px-5 py-8 sm:px-10">
         <div className="mx-auto max-w-6xl animate-pulse">

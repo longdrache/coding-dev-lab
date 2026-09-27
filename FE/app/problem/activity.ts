@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { useAuth } from "@clerk/nextjs";
 import { authedFetcher } from "@/lib/swr";
+import { useSession } from "@/app/ui/AuthProvider";
 
 export type DayActivity = {
   key: string;
@@ -29,30 +29,32 @@ function parseKey(key: string): Date {
   return new Date(Number(year), Number(month) - 1, Number(day));
 }
 
-async function authedFetch(
-  path: string,
-  getToken: () => Promise<string | null>,
-  init?: RequestInit,
-) {
-  const token = await getToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string>),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
+/**
+ * Ghi lượt chạy / lượt đăng nhập.
+ *
+ * **Không** gắn `Authorization` bằng tay: phiên nằm trong cookie **httpOnly**
+ * mà BE đặt ở `auth.controller.ts:68`, nên JS không đọc được token — và không
+ * được đọc, đọc cookie bằng JS đúng lỗ hổng XSS mà `httpOnly` sinh ra để chặn.
+ * Cách duy nhất là `credentials: "include"`.
+ *
+ * Trước đây chỗ này nhận một `getToken` gắn Bearer thủ công. Sau khi bỏ thư viện
+ * xác thực cũ, nếu còn giữ nguyên thì **mọi** lần gọi đều 401 ở production:
+ * streak và số lượt chạy im lặng không ghi, và `catch` nuốt lỗi nên không ai thấy.
+ */
+async function authedFetch(path: string, init?: RequestInit) {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(init?.headers as Record<string, string>) },
+  });
   if (!res.ok) throw new Error(`Activity API ${res.status}`);
   return res.json() as Promise<{ map: Record<string, number> }>;
 }
 
 /** Ghi nhận 1 lượt hoạt động cho hôm nay (gọi khi chạy/nộp xong). */
-export async function recordActivity(
-  getToken: () => Promise<string | null>,
-): Promise<Record<string, number> | null> {
+export async function recordActivity(): Promise<Record<string, number> | null> {
   try {
-    const data = await authedFetch("/api/activity/run", getToken, {
-      method: "POST",
-    });
+    const data = await authedFetch("/api/activity/run", { method: "POST" });
     window.dispatchEvent(new Event(EVENT_NAME));
     return data.map;
   } catch {
@@ -61,13 +63,9 @@ export async function recordActivity(
 }
 
 /** Đăng nhập trong ngày là tính streak, không cần làm bài. */
-export async function recordLogin(
-  getToken: () => Promise<string | null>,
-): Promise<Record<string, number> | null> {
+export async function recordLogin(): Promise<Record<string, number> | null> {
   try {
-    const data = await authedFetch("/api/activity/login", getToken, {
-      method: "POST",
-    });
+    const data = await authedFetch("/api/activity/login", { method: "POST" });
     window.dispatchEvent(new Event(EVENT_NAME));
     return data.map;
   } catch {
@@ -115,11 +113,11 @@ export function buildWeek(
 
 /** Map ngày → lượt chạy, đồng bộ qua DB Neon, an toàn hydration. */
 export function useActivityMap(): Record<string, number> {
-  // TODO(Task 14): `isSignedIn` chuyển sang `useSession()` — `useAuth()` còn
-  // thuộc Clerk, giữ tới khi gỡ hẳn.
-  const { isSignedIn } = useAuth();
+  const { user } = useSession();
   const { mutate } = useSWRConfig();
-  const key = isSignedIn ? `${API_URL}/api/activity/me` : null;
+  // Chưa đọc xong `/me` thì `user` còn `null` và key chưa bật — không gọi
+  // endpoint của tài khoản trước khi biết mình là ai.
+  const key = user ? `${API_URL}/api/activity/me` : null;
   const { data } = useSWR<{ map: Record<string, number> }>(key, authedFetcher);
 
   useEffect(() => {
@@ -134,6 +132,6 @@ export function useActivityMap(): Record<string, number> {
     };
   }, [key, mutate]);
 
-  if (isSignedIn === false) return EMPTY_MAP;
+  if (user === null) return EMPTY_MAP;
   return data?.map ?? EMPTY_MAP;
 }

@@ -79,8 +79,7 @@ function cacheProvider(): Cache {
 //  1. Nó phải dùng `useSWRConfig()` **của app** để xoá cache khi đổi tài khoản.
 //     Nếu nằm ngoài `<SWRConfig>` thì `useSWRConfig()` trả config mặc định, và
 //     `mutate` gọi vào đó là no-op — xoá cache là xoá nhầm chỗ khác.
-//  2. `ViewTracker` cần `useSession()` (Task 14 thay `useUser()` của Clerk), nên
-//     nó phải nằm trong `AuthProvider`.
+//  2. `ViewTracker` cần `useSession()`, nên nó phải nằm trong `AuthProvider`.
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig

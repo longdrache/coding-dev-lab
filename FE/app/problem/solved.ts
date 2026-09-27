@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useSession } from "@/app/ui/AuthProvider";
 
 const STORAGE_KEY = "gocode-solved";
 const EVENT_NAME = "gocode-solved-changed";
@@ -62,11 +62,12 @@ export function useSolvedSlugs(): string[] {
 
 /** Slug đã giải trên server (SolvedProblem) — thấy được dù đổi trình duyệt. */
 export function useServerSolvedSlugs(): string[] {
-  const { getToken, isSignedIn } = useAuth();
+  const { user } = useSession();
   const [slugs, setSlugs] = useState<string[]>(EMPTY);
+  const userId = user?.id ?? null;
 
   useEffect(() => {
-    if (!isSignedIn) {
+    if (userId === null) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reset khi logout, cố ý đồng bộ 1 lần
       setSlugs(EMPTY);
       return;
@@ -74,10 +75,10 @@ export function useServerSolvedSlugs(): string[] {
     let cancelled = false;
     async function load() {
       try {
-        const token = await getToken();
-        const res = await fetch(`${API_URL}/api/progress/solved`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        // `credentials: "include"` thay cho header `Authorization` gắn tay: phiên
+        // nằm trong cookie **httpOnly** nên JS không đọc được token. Thiếu `include`
+        // thì mọi lần đổi trình duyệt là mất danh sách đã giải trên server.
+        const res = await fetch(`${API_URL}/api/progress/solved`, { credentials: "include" });
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && Array.isArray(data.slugs)) {
@@ -96,7 +97,7 @@ export function useServerSolvedSlugs(): string[] {
       window.removeEventListener(EVENT_NAME, load);
       window.removeEventListener("focus", load);
     };
-  }, [getToken, isSignedIn]);
+  }, [userId]);
 
   return slugs;
 }

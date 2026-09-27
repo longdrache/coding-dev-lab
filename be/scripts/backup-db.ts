@@ -16,12 +16,20 @@ const OUT = join(OUT_DIR, `gocode-pre-auth-${STAMP}.sql`);
 // khi pg_dump fail, object lỗi của execFile có kèm `args` nên thông báo lỗi sẽ
 // in nguyên DSN ra console. Chỉ truyền host/user/dbname ở argv, mật khẩu đi qua
 // biến môi trường PGPASSWORD.
-const host = process.env.PGHOST_UNPOOLED || process.env.PGHOST;
+// Chỉ dùng host trực tiếp. Host pooler (`PGHOST`, cổng 6432) không dùng được
+// cho pg_dump, và script không truyền --port nên libpq sẽ nối 5432 và hỏng âm
+// thầm — tốt hơn là fail ngay.
+const host = process.env.PGHOST_UNPOOLED;
 const user = process.env.PGUSER;
 const database = process.env.PGDATABASE;
 const password = process.env.PGPASSWORD;
-if (!host || !user || !database || !password) {
-  throw new Error('Thiếu cấu hình Postgres: cần PGHOST, PGUSER, PGDATABASE, PGPASSWORD');
+if (!host) {
+  throw new Error(
+    'Thiếu PGHOST_UNPOOLED. pg_dump cần host Postgres trực tiếp, không dùng host pooler (PGHOST).',
+  );
+}
+if (!user || !database || !password) {
+  throw new Error('Thiếu cấu hình Postgres: cần PGUSER, PGDATABASE, PGPASSWORD');
 }
 mkdirSync(OUT_DIR, { recursive: true });
 

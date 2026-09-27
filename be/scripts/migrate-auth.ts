@@ -11,6 +11,9 @@ async function main() {
   // Một transaction duy nhất: lỗi giữa chừng thì rollback hết, không để lại
   // dữ liệu xoá dở.
   await db.$transaction([
+    // Con trước cha: UserToken có onDelete Cascade nhưng vẫn xoá tường minh
+    // để thứ tự đọc là đúng, và để script không phụ thuộc hành vi cascade.
+    db.userToken.deleteMany({}),
     db.userBadge.deleteMany({}),
     db.solvedProblem.deleteMany({}),
     db.favoriteProblem.deleteMany({}),

@@ -6,7 +6,6 @@ import NextTopLoader from "nextjs-toploader";
 import FooterWrapper from "./ui/FooterWrapper";
 import Providers from "./providers";
 import { getSiteUrl } from "@/lib/site";
-import { AuthProvider } from "./ui/AuthProvider";
 
 const inter = Inter({ subsets: ["latin", "vietnamese"], variable: "--font-sans" });
 
@@ -82,9 +81,7 @@ export default function RootLayout({
           }}
         />
         <NextTopLoader color="#10b981" height={5} showSpinner={false} zIndex={100} />
-        <AuthProvider>
-          <Providers>{children}</Providers>
-        </AuthProvider>
+        <Providers>{children}</Providers>
         <FooterWrapper />
       </body>
     </html>

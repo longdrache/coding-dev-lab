@@ -1,8 +1,10 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useSWRConfig } from "swr";
 import {
   RETRY_DELAY_MS,
+  commitSession,
   currentSession,
   refreshPlan,
   refreshSession,
@@ -38,6 +40,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Phải nằm trong `<SWRConfig>` của app, nếu không `mutate` gọi vào đây là
+  // no-op và xoá cache là xoá nhầm chỗ khác. `providers.tsx` là nơi đặt nó.
+  const { mutate } = useSWRConfig();
+  /** User áp dụng lần trước, để so `id` xem có phải đổi tài khoản không. */
+  const lastUserRef = useRef<PublicUser | null>(null);
+
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Hẹn giờ làm mới. Gán trong effect nên `loadSession`/`renew` gọi được mà không phụ thuộc render. */
   const armRef = useRef<((delayMs: number) => void) | null>(null);
@@ -51,6 +59,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const genRef = useRef(0);
 
+  /**
+   * Đặt user, và xoá cache SWR nếu đây là lần chuyển sang tài khoản khác.
+   *
+   * Mọi lần đổi `user` đều phải đi qua đây — bỏ sót một chỗ là lỗ hổng rò dữ
+   * liệu chéo tài khoản quay lại. Quyết định *có xoá không* và thứ tự *xoá trước
+   * rồi commit* nằm trong `commitSession` vì chỗ đó test được; dòng
+   * `mutate(...)` ở dưới là nối vào cache thật, và nó là dòng mà test không bảo
+   * vệ được — nên nó phải là dòng duy nhất, không nhân bản.
+   */
+  const applyUser = useCallback(
+    (next: PublicUser | null) => {
+      commitSession(
+        lastUserRef.current,
+        next,
+        () => {
+          // `revalidate: false` — chỉ xoá key, không gọi lại network.
+          void mutate(() => true, undefined, { revalidate: false });
+        },
+        (u) => {
+          lastUserRef.current = u;
+          setUser(u);
+        },
+      );
+    },
+    [mutate],
+  );
+
   /** Đọc `/me`: đồng bộ user và lên lịch lần tới từ `expiresIn` vừa nhận. */
   const loadSession = useCallback(async () => {
     try {
@@ -59,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Đọc được phiên là dấu hiệu phiên chết trước đó đã được thay bằng phiên mới
       // (đăng nhập lại) — mở lại vòng lặp làm mới.
       if (session) deadRef.current = false;
-      setUser(session?.user ?? null);
+      applyUser(session?.user ?? null);
       if (session) {
         const delay = refreshPlan(session.expiresIn);
         if (delay !== null) armRef.current?.(delay);
@@ -68,11 +103,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Mất mạng/CORS hỏng nghĩa là không xác minh được phiên. Hiện "khách" vẫn
       // hơn là chặn cả trang, và không sinh thông báo đỏ giả cho một lỗi mạng.
       signedInRef.current = false;
-      setUser(null);
+      applyUser(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyUser]);
 
   /** Làm mới bằng cookie `refresh`, rồi lên lịch lần kế tiếp. */
   const renew = useCallback(async () => {
@@ -88,15 +123,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // sẽ thử lại mãi một phiên đã hỏng. `loadSession` sẽ mở lại khi đăng nhập.
       deadRef.current = true;
       signedInRef.current = false;
-      setUser(null);
+      applyUser(null);
       return;
     }
     signedInRef.current = true;
-    setUser(r.session.user);
+    // Cùng `id` sau mỗi lần làm mới token thì `shouldClearCache` trả false, nên
+    // cache giữ nguyên — không mất dữ liệu đang tải mỗi 15 phút.
+    applyUser(r.session.user);
     setLoading(false);
     const delay = refreshPlan(r.session.expiresIn);
     if (delay !== null) armRef.current?.(delay);
-  }, []);
+  }, [applyUser]);
 
   useEffect(() => {
     const gen = ++genRef.current;
@@ -112,12 +149,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     armRef.current = arm;
 
-    // `loadSession` định nghĩa ngoài effect và setState của nó nằm sau
-    // `await currentSession()` — tức là không phải setState đồng bộ trong thân
-    // effect, không có cascading render. Rule không phân giải được qua ranh giới
-    // `useCallback` nên báo nhầm; tắt có lý do, cùng cách `useServerSolvedSlugs`
-    // và `useFavorites` đã làm.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Không cần `eslint-disable` cho `react-hooks/set-state-in-effect` ở đây:
+    // `setUser` giờ nằm sau `commitSession` — một hàm thuần ở `@/lib/api` — nên
+    // rule không còn báo nhầm nữa. Lúc đầu `setUser` nằm trực tiếp trong
+    // `loadSession` và phải tắt rule có lý do, y hệt `useServerSolvedSlugs`.
     void loadSession();
 
     // Tab ẩn thì trình duyệt throttle timer, nên lịch có thể trôi qua lúc ta không

@@ -69,6 +69,43 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
 }
 
 /**
+ * Có phải xoá cache SWR khi user đổi từ `prev` sang `next` không?
+ *
+ * Cache SWR của app nằm trong bộ nhớ, giữ cả dữ liệu theo tài khoản (dashboard,
+ * lịch sử giải, huy hiệu). Đăng xuất mà không xoá thì tài khoản sau đăng nhập lại
+ * sẽ nhìn thấy dữ liệu của tài khoản trước — lỗ hổng rò dữ liệu chéo tài khoản.
+ *
+ * **So sánh bằng `id`, tuyệt đối không so bằng tham chiếu.** Mỗi lần làm mới
+ * access token (15 phút một lần) BE trả về một object `user` mới cho cùng một
+ * người; nếu so tham chiếu thì sẽ xoá cache mỗi 15 phút và người dùng mất dữ
+ * liệu đang tải. Cùng `id` thì để nguyên, kể cả khi `role` đổi (nâng VIP) —
+ * vai trò không làm dữ liệu cũ sai.
+ */
+export function shouldClearCache(prev: PublicUser | null, next: PublicUser | null): boolean {
+  if (prev === null && next === null) return false;
+  if (prev === null || next === null) return true;
+  return prev.id !== next.id;
+}
+
+/**
+ * Cổng duy nhất để đổi user: quyết định có xoá cache không, xoá **trước**, rồi mới
+ * commit user mới.
+ *
+ * Tách ra khỏi component vì component không test được (xem `vitest.config.ts`:
+ * không jsdom). Ở trong component thì lệnh `purgeCache()` là dòng code không test
+ * bảo vệ được — thử bỏ nó đi thì toàn bộ test vẫn xanh. Ở đây thì bỏ là đỏ.
+ */
+export function commitSession(
+  prev: PublicUser | null,
+  next: PublicUser | null,
+  purgeCache: () => void,
+  commit: (next: PublicUser | null) => void,
+): void {
+  if (shouldClearCache(prev, next)) purgeCache();
+  commit(next);
+}
+
+/**
  * Đọc phiên hiện tại từ cookie httpOnly.
  *
  * **401 là trạng thái bình thường của khách**, không phải lỗi: người dùng chưa

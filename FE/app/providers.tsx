@@ -2,6 +2,7 @@
 
 import { SWRConfig, type Cache } from "swr";
 import ViewTracker from "./ui/ViewTracker";
+import { AuthProvider } from "./ui/AuthProvider";
 
 const CACHE_KEY = "gocode-swr-cache-v2";
 const TTL_MS = 24 * 60 * 60 * 1000; // cache dùng trong 1 ngày
@@ -72,6 +73,14 @@ function cacheProvider(): Cache {
 // Cache chung: có cache thì dùng luôn, không fetch lại khi mount lại
 // (rời trang quay về hiện ngay, refresh trong 1 ngày cũng hiện ngay).
 // Data mới vẫn về qua mutate() sau run/submit/toggle.
+//
+// `AuthProvider` nằm trong `<SWRConfig>` (và bao cả `ViewTracker`) vì hai lý do,
+// cùng bắt buộc với nhau:
+//  1. Nó phải dùng `useSWRConfig()` **của app** để xoá cache khi đổi tài khoản.
+//     Nếu nằm ngoài `<SWRConfig>` thì `useSWRConfig()` trả config mặc định, và
+//     `mutate` gọi vào đó là no-op — xoá cache là xoá nhầm chỗ khác.
+//  2. `ViewTracker` cần `useSession()` (Task 14 thay `useUser()` của Clerk), nên
+//     nó phải nằm trong `AuthProvider`.
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig
@@ -84,8 +93,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         errorRetryCount: 2,
       }}
     >
-      {children}
-      <ViewTracker />
+      <AuthProvider>
+        {children}
+        <ViewTracker />
+      </AuthProvider>
     </SWRConfig>
   );
 }

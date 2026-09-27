@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { REFRESH_LEAD_S, currentSession, refreshPlan, refreshSession } from './api';
+import { REFRESH_LEAD_S, commitSession, currentSession, refreshPlan, refreshSession, shouldClearCache } from './api';
 import { API_URL, authedFetcher } from './swr';
 
 /** Đọc header đã gửi ở bất kỳ dạng `HeadersInit` nào — không đoán bằng `init.headers?.X`. */
@@ -175,5 +175,92 @@ describe('refreshSession', () => {
 
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     await expect(refreshSession()).resolves.toEqual({ kind: 'retry' });
+  });
+});
+
+describe('shouldClearCache', () => {
+  it('null → null thì không đụng cache', () => {
+    // Khách lạ vào trang: xoá cache ở đây là mất o(những bài đã cache 1 ngày)
+    // mà không đổi gì cả.
+    expect(shouldClearCache(null, null)).toBe(false);
+  });
+
+  it('có user → null là đăng xuất hoặc phiên chết, phải xoá', () => {
+    // Cache SWR giữ dashboard/lịch sử/huy hiệu của tài khoản vừa mất. Giữ lại
+    // thì đăng nhập tài khoản khác trong cùng tab là nhìn thấy dữ liệu người trước.
+    expect(shouldClearCache(USER, null)).toBe(true);
+  });
+
+  it('null → có user là đăng nhập, phải xoá', () => {
+    expect(shouldClearCache(null, USER)).toBe(true);
+  });
+
+  it('cùng một id thì KHÔNG xoá, dù là object khác', () => {
+    // Đây là ca dễ sai nhất. Mỗi lần refresh access token (15 phút một lần) BE
+    // trả lại một object `user` mới; nếu so bằng tham chiếu thì sẽ xoá cache
+    // mỗi 15 phút và người dùng mất dữ liệu đang tải.
+    const rotated = { ...USER };
+    expect(rotated).not.toBe(USER);
+    expect(shouldClearCache(USER, rotated)).toBe(false);
+  });
+
+  it('cùng id nhưng role đổi (nâng VIP) thì cũng không xoá', () => {
+    expect(shouldClearCache(USER, { ...USER, role: 'admin' })).toBe(false);
+  });
+
+  it('khác id là đổi tài khoản, phải xoá', () => {
+    expect(shouldClearCache(USER, { ...USER, id: 8 })).toBe(true);
+  });
+});
+
+describe('commitSession', () => {
+  /** Ghi lại các lời gọi theo thứ tự để kiểm tra cả lúc gọi lẫn thứ tự. */
+  function recorder() {
+    const calls: string[] = [];
+    return {
+      calls,
+      purge: () => void calls.push('purge'),
+      commit: (u: { id: number } | null) => void calls.push(`commit:${u?.id ?? 'null'}`),
+    };
+  }
+
+  it('đăng xuất thì xoá cache rồi mới commit null', () => {
+    const r = recorder();
+    commitSession(USER, null, r.purge, r.commit);
+    expect(r.calls).toEqual(['purge', 'commit:null']);
+  });
+
+  it('đăng nhập thì xoá cache rồi mới commit user', () => {
+    const r = recorder();
+    commitSession(null, USER, r.purge, r.commit);
+    expect(r.calls).toEqual(['purge', 'commit:7']);
+  });
+
+  it('xoá cache ĐỨNG TRƯỚC commit, không phải sau', () => {
+    // Nếu commit chạy trước thì có một khoảnh khắc tài khoản mới đã render
+    // cạnh cache của tài khoản cũ — đúng cái rò dữ liệu này.
+    const r = recorder();
+    commitSession(USER, { ...USER, id: 8 }, r.purge, r.commit);
+    expect(r.calls.indexOf('purge')).toBeLessThan(r.calls.indexOf('commit:8'));
+  });
+
+  it('cùng id thì KHÔNG xoá cache, chỉ commit', () => {
+    // Ca quan trọng nhất: mỗi lần refresh access token (15 phút) BE trả user
+    // mới. Xoá ở đây là người dùng mất dữ liệu đang tải mỗi 15 phút.
+    const r = recorder();
+    commitSession(USER, { ...USER }, r.purge, r.commit);
+    expect(r.calls).toEqual(['commit:7']);
+  });
+
+  it('khách (null → null) thì không xoá, không phá cache bài đã cache 1 ngày', () => {
+    const r = recorder();
+    commitSession(null, null, r.purge, r.commit);
+    expect(r.calls).toEqual(['commit:null']);
+  });
+
+  it('đổi tài khoản thì xoá cache', () => {
+    const r = recorder();
+    commitSession(USER, { ...USER, id: 8 }, r.purge, r.commit);
+    expect(r.calls).toEqual(['purge', 'commit:8']);
   });
 });

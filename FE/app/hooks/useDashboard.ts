@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { useAuth } from "@clerk/nextjs";
 import { API_URL, authedFetcher } from "@/lib/swr";
@@ -17,12 +17,13 @@ export type DashboardData = {
 const DASHBOARD_KEY = `${API_URL}/api/progress/dashboard`;
 
 export function useDashboard() {
-  const { getToken, isSignedIn } = useAuth();
+  // TODO(Task 14): `isSignedIn` chuyển sang `useSession()` — `useAuth()` còn
+  // thuộc Clerk, giữ tới khi gỡ hẳn.
+  const { isSignedIn } = useAuth();
   const { mutate } = useSWRConfig();
-  const fetcher = useMemo(() => authedFetcher(getToken), [getToken]);
   const { data, isLoading } = useSWR<DashboardData>(
     isSignedIn ? DASHBOARD_KEY : null,
-    fetcher,
+    authedFetcher,
   );
 
   // Tải lại khi có hoạt động mới (run/submit xong)

@@ -2,12 +2,11 @@ import type { Metadata } from "next";
 import { Be_Vietnam_Pro, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { ClerkProvider } from "@clerk/nextjs";
-import { viVN } from "@clerk/localizations";
 import NextTopLoader from "nextjs-toploader";
 import FooterWrapper from "./ui/FooterWrapper";
 import Providers from "./providers";
 import { getSiteUrl } from "@/lib/site";
+import { AuthProvider } from "./ui/AuthProvider";
 
 const inter = Inter({ subsets: ["latin", "vietnamese"], variable: "--font-sans" });
 
@@ -83,9 +82,9 @@ export default function RootLayout({
           }}
         />
         <NextTopLoader color="#10b981" height={5} showSpinner={false} zIndex={100} />
-        <ClerkProvider localization={viVN}>
+        <AuthProvider>
           <Providers>{children}</Providers>
-        </ClerkProvider>
+        </AuthProvider>
         <FooterWrapper />
       </body>
     </html>

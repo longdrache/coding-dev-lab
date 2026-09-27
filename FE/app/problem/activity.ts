@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { useAuth } from "@clerk/nextjs";
 import { authedFetcher } from "@/lib/swr";
@@ -115,11 +115,12 @@ export function buildWeek(
 
 /** Map ngày → lượt chạy, đồng bộ qua DB Neon, an toàn hydration. */
 export function useActivityMap(): Record<string, number> {
-  const { getToken, isSignedIn } = useAuth();
+  // TODO(Task 14): `isSignedIn` chuyển sang `useSession()` — `useAuth()` còn
+  // thuộc Clerk, giữ tới khi gỡ hẳn.
+  const { isSignedIn } = useAuth();
   const { mutate } = useSWRConfig();
-  const fetcher = useMemo(() => authedFetcher(getToken), [getToken]);
   const key = isSignedIn ? `${API_URL}/api/activity/me` : null;
-  const { data } = useSWR<{ map: Record<string, number> }>(key, fetcher);
+  const { data } = useSWR<{ map: Record<string, number> }>(key, authedFetcher);
 
   useEffect(() => {
     const handler = () => {

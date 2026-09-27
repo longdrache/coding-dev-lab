@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
@@ -543,9 +543,8 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
     [buildAuth],
   );
 
-  const historyFetcher = useMemo(() => authedFetcher(getToken), [getToken]);
   const historyKey = isSignedIn ? `${API_URL}/api/history?slug=${encodeURIComponent(slug)}` : null;
-  const { mutate: mutateHistory } = useSWR<HistoryItem[]>(historyKey, historyFetcher, {
+  const { mutate: mutateHistory } = useSWR<HistoryItem[]>(historyKey, authedFetcher, {
     onSuccess: (data) => {
       if (mountedRef.current) setHistory(Array.isArray(data) ? data : []);
     },

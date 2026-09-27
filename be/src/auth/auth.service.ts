@@ -1,5 +1,5 @@
 import {
-  BadRequestException, ConflictException, Injectable, UnauthorizedException,
+  BadRequestException, ConflictException, Injectable, Logger, UnauthorizedException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
 import type { UserRole } from './auth.types.ts';
@@ -65,6 +65,8 @@ const TIMING_EQUALIZER_HASH = '$2b$10$b4pTuLSFB9UWPmXDOcV9Pei0s.dOb8rVP50fuAAW.b
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly mail: AuthMailPort,
@@ -307,24 +309,61 @@ export class AuthService {
     if (conHieu) return { message: RESET_REQUESTED };
 
     const raw = newToken();
-    await this.db.userToken.create({
+    const row = await this.db.userToken.create({
       data: {
         userId: user.id, type: 'reset_password', tokenHash: hashToken(raw),
         expiresAt: new Date(Date.now() + RESET_TTL_MS),
       },
     });
-    // Lỗi gửi mail không được lộ ra ngoài (khác với thông báo "câu này không phụ
-    // thuộc kết quả") và không được chặn lần thử sau: người dùng tự xin lại được.
-    try {
-      await this.mail.send({
+    // Gửi **nền**, cố ý không `await`. `mail.send` là thứ nặng nhất của endpoint
+    // này (SMTP: hàng trăm ms), nên nếu response chờ nó thì **thời gian phản hồi**
+    // tự nó phân biệt được "email có tài khoản" với "email không có" — phá đúng
+    // cái biện pháp "luôn trả cùng một câu" mà `login` đã dựng bằng `burnCompare`.
+    // Ở đây `burnCompare` không cứu được: số hạng lớn nhất là SMTP chứ không phải
+    // bcrypt, nên phải bỏ chờ chứ không phải thêm một vòng so bằng.
+    //
+    // Đổi lại: không retry, không backpressure. Chấp nhận được vì người dùng luôn
+    // xin lại được (cooldown 1 lần/tài khoản/giờ) và `AuthMailer` đã log lỗi gửi.
+    this.mail
+      .send({
         to: mail,
         subject: 'Đặt lại mật khẩu GoCode',
         text: `Chào bạn,\n\nLink này hết hạn sau 1 giờ:\n${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password?token=${raw}\n\nNếu bạn không yêu cầu, hãy bỏ qua email này.\n\nĐội ngũ GoCode`,
+      })
+      .catch((err: unknown) => {
+        // Không im lặng: đường này chạy nền nên không có ai đỡ lỗi nếu ta nuốt.
+        // (`AuthMailer` cũng log, nhưng `AuthMailPort` là abstraction — một
+        // cài đặt khác hoàn toàn có thể không log gì.)
+        this.logger.warn(
+          `Gửi mail đặt lại mật khẩu tới ${mail} thất bại: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
+        );
+        // Trả lại mã vừa cấp. Giữ nó lại nghĩa là tài khoản đang cầm một mã còn
+        // hạn mà không ai nhận được, và cooldown 1 giờ sẽ nuốt mọi lần xin lại —
+        // tức một lần SMTP chết biến thành "quên mật khẩu bị treo 1 tiếng".
+        return this.db.userToken
+          .updateMany({ where: { id: { in: [row.id] } }, data: { usedAt: new Date() } })
+          .catch(() => undefined);
       });
-    } catch {
-      // im lặng có chủ ý: mail hỏng không được lộ ra ngoài
-    }
     return { message: RESET_REQUESTED };
+  }
+
+  /**
+   * Vô hiệu **mọi** mã đặt lại của tài khoản, không chỉ mã vừa dùng.
+   *
+   * Lý do: cooldown cho phép mỗi tài khoản một mail mỗi giờ, nên một tài khoản có
+   * thể còn **mã cũ còn hạn** đứng cạnh mã đang dùng. Nếu chỉ đánh dấu mã vừa
+   * dùng thì kẻ giữ mã cũ vẫn đổi được mật khẩu lần nữa trong giờ còn lại — đúng
+   * lúc chủ tài khoản đã đổi mật khẩu và tin là mình an toàn.
+   *
+   * `usedAt: null` trong điều kiện lọc là cố ý: dòng đã dùng giữ nguyên mốc thời
+   * gian thực sự dùng, không bị một lần reset sau ghi đè. Mốc đó là dấu vết để
+   * sau này tra mã nào bị dùng lúc nào, nên ghi đè là mất dấu vết.
+   */
+  private async burnResetTokens(userId: number): Promise<void> {
+    await this.db.userToken.updateMany({
+      where: { userId, type: 'reset_password', usedAt: null },
+      data: { usedAt: new Date() },
+    });
   }
 
   /**
@@ -333,7 +372,7 @@ export class AuthService {
    * chỉ đổi mật khẩu không cứu được — hắn vẫn vào app được, đúng lúc người dùng
    * tin mình đã an toàn.
    *
-   * **Thứ tự ghi cố ý là `usedAt` → `logoutAll` → đổi mật khẩu.** Nếu đổi mật
+   * **Thứ tự ghi cố ý là vô hiệu mã → `logoutAll` → đổi mật khẩu.** Nếu đổi mật
    * khẩu trước rồi mới xoá phiên thì DB chết giữa chừng sẽ để lại đúng trạng
    * thái tệ nhất: mật khẩu đã đổi (chủ nhà tưởng an toàn) còn cookie của kẻ trộm
    * vẫn sống. Đảo thứ tự thì mọi nhánh lỗi đều an toàn — hoặc mật khẩu chưa đổi,
@@ -352,7 +391,7 @@ export class AuthService {
     if (!row || row.type !== 'reset_password' || row.usedAt) return false;
     if (Date.now() >= row.expiresAt.getTime()) return false;
 
-    await this.db.userToken.update({ where: { id: row.id }, data: { usedAt: new Date() } });
+    await this.burnResetTokens(row.userId);
     await this.logoutAll(row.userId);
     await this.db.user.update({
       where: { id: row.userId },

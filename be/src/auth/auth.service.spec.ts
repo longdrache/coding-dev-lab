@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { AuthService } from './auth.service.ts';
 import * as tokens from './tokens.ts';
 
@@ -33,9 +34,11 @@ function freezeAt(iso: string) {
 
 /**
  * Bộ lọc của UserToken trong db giả. Chỉ hiểu đúng những gì AuthService dùng:
- * `{id:{in}}`, `{userId,type}`, `{tokenHash}`, `{prevTokenHash}`, `{OR:[...]}`.
- * Các điều kiện đứng cạnh nhau phải **và** với nhau, nếu không `logoutAll` sẽ
- * xoá nhầm cả dòng `verify_email` và test thành xanh sai.
+ * `{id:{in}}`, `{userId,type}`, `{tokenHash}`, `{prevTokenHash}`, `{usedAt:null}`,
+ * `{OR:[...]}`. Các điều kiện đứng cạnh nhau phải **và** với nhau, nếu không `logoutAll` sẽ
+ * xoá nhầm cả dòng `verify_email` và test thành xanh sai. Giống vậy, bỏ qua
+ * `usedAt: null` thì `burnResetTokens` sẽ ghi đè cả dòng đã dùng và test mất dấu
+ * vết thời điểm dùng mã.
  */
 function tokenMatches(t: any, where: any): boolean {
   if (!where) return true;
@@ -44,7 +47,8 @@ function tokenMatches(t: any, where: any): boolean {
     (w.userId === undefined || t.userId === w.userId)
     && (w.type === undefined || t.type === w.type)
     && (w.tokenHash === undefined || t.tokenHash === w.tokenHash)
-    && (w.prevTokenHash === undefined || t.prevTokenHash === w.prevTokenHash);
+    && (w.prevTokenHash === undefined || t.prevTokenHash === w.prevTokenHash)
+    && (w.usedAt === undefined || t.usedAt === w.usedAt);
   return where.OR ? where.OR.some(scalar) : scalar(where);
 }
 
@@ -92,14 +96,16 @@ function makeDb(): any {
       }),
     },
     userToken: {
-      // `createdAt`/`lastUsedAt` có default ở schema, db giả phải dựng y như DB.
+      // `createdAt`/`lastUsedAt` có default ở schema, db giả phải dựng y như DB —
+      // kể cả `usedAt: null`, vì `burnResetTokens` lọc đúng theo cột này và so
+      // sánh `undefined === null` là false sẽ làm db giả im lặng bỏ sót dòng.
       // `id` đệm 4 chữ số để thứ tự chuỗi trùng thứ tự tạo, giống cách `cuid()`
       // của Prisma xếp theo thời điểm sinh — nhờ vậy tie-break `id` của service
       // được mô phỏng trung thực.
       create: vi.fn(async ({ data }: any) => {
         const r = {
           id: 't' + String(state.userToken.length).padStart(4, '0'),
-          createdAt: new Date(), lastUsedAt: new Date(), ...data,
+          createdAt: new Date(), lastUsedAt: new Date(), usedAt: null, ...data,
         };
         state.userToken.push(r); return r;
       }),
@@ -114,6 +120,11 @@ function makeDb(): any {
       )),
       update: vi.fn(async ({ where, data }: any) => {
         const t = state.userToken.find((x) => x.id === where.id)!; Object.assign(t, data); return t;
+      }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        const dong = state.userToken.filter((t) => tokenMatches(t, where));
+        for (const t of dong) Object.assign(t, data);
+        return { count: dong.length };
       }),
       deleteMany: vi.fn(async ({ where }: any) => {
         const keep = state.userToken.filter((t) => !tokenMatches(t, where));
@@ -672,6 +683,15 @@ async function seedReset(email = 'a@b.co') {
 const resetRows = (db: any) => db.state.userToken.filter((t: any) => t.type === 'reset_password');
 const refreshRows = (db: any) => db.state.userToken.filter((t: any) => t.type === 'refresh');
 
+/**
+ * Cho mọi microtask đang chờ chạy hết. Cần sau khi gọi `forgotPassword` vì mail
+ * được gửi **nền**: lúc đó `send` và `.catch` của nó chưa xong, nên assert ngay
+ * sẽ kiểm tra trạng thái của một việc chưa xảy ra.
+ */
+function flush(): Promise<void> {
+  return new Promise((resolve) => { setImmediate(resolve); });
+}
+
 describe('quên mật khẩu', () => {
   it('email không tồn tại, chưa xác minh và sai định dạng trả đúng MỘT câu, giống nhau', async () => {
     const db = makeDb();
@@ -787,12 +807,87 @@ describe('quên mật khẩu', () => {
 
   it('mailer hỏng thì vẫn trả đúng câu đó, không lộ lỗi ra ngoài', async () => {
     const bom = makeDb();
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const svcBom = new AuthService(bom, { send: async () => { throw new Error('SMTP chết'); } } as any);
     await svcBom.register('a@b.co', 'matkhau123');
     await bom.user.update({ where: { id: bom.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
     const r = await svcBom.forgotPassword('a@b.co');
+    await flush();
     expect(r.message).toBe(RESET_MSG);
     expect(resetRows(bom)).toHaveLength(1);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  /**
+   * `mail.send` là thứ nặng nhất của endpoint (SMTP: hàng trăm ms). Nếu response
+   * chờ nó thì **thời gian phản hồi** tự nó phân biệt được "email có tài khoản"
+   * với "email không có", phá đúng biện pháp "luôn trả cùng một câu" mà `login`
+   * dựng bằng `burnCompare`. Test này là hàng rào cho đúng cái đó.
+   */
+  it('không chờ mail: send treo vĩnh viễn thì forgotPassword vẫn trả về', async () => {
+    const treo = new Promise<void>(() => { /* không bao giờ resolve */ });
+    const db = makeDb();
+    // Chỉ mail **đặt lại** treo: `register` cố ý `await` mail xác minh, nên treo
+    // cả hai thì test hỏng ở `register` chứ không phải ở `forgotPassword`.
+    const svc = new AuthService(db, {
+      send: (m: any) => (String(m.subject).includes('Đặt lại') ? treo : Promise.resolve()),
+    } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+
+    // Đua với mốc 500 ms: nếu `forgotPassword` lại `await` mail, nó treo ở đây và
+
+    // thắng phần `Timeout` — thay vì treo tới hết timeout của vitest.
+    const TREO = 'TREO';
+    const r = await Promise.race([
+      svc.forgotPassword('a@b.co'),
+      new Promise((x) => { setTimeout(() => { x(TREO); }, 500); }),
+    ]);
+    expect(r).not.toBe(TREO);
+    expect((r as { message: string }).message).toBe(RESET_MSG);
+    // Token vẫn phải được tạo: không chờ mail không được có nghĩa bỏ luôn việc cấp mã.
+    expect(resetRows(db)).toHaveLength(1);
+  });
+
+  it('mail lỗi thì ghi Logger.warn kèm lý do, không nuốt im lặng', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const db = makeDb();
+    const svc = new AuthService(db, {
+      send: async () => { throw new Error('SMTP chết'); },
+    } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+    warn.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
+
+    await svc.forgotPassword('a@b.co');
+    await flush();
+    expect(warn).toHaveBeenCalledOnce();
+    const dong = String(warn.mock.calls[0][0]);
+    expect(dong).toContain('SMTP chết');
+    // Log phải chỉ ra đích gửi để còn truy được, nhưng không được lộ mã đặt lại.
+    expect(dong).toContain('a@b.co');
+    expect(dong).not.toMatch(/[0-9a-f]{64}/);
+  });
+
+  it('mail lỗi thì trả lại mã đã cấp, không kẹt người dùng 1 giờ', async () => {
+    // Giữ mã còn hạn mà không ai nhận được, thì cooldown 1 giờ/tài khoản sẽ nuốt
+    // mọi lần xin lại → một lần SMTP chết biến thành "quên mật khẩu bị treo 1 tiếng".
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const db = makeDb();
+    let hong = true;
+    const svc = new AuthService(db, {
+      send: async () => { if (hong) throw new Error('SMTP chết'); },
+    } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+
+    await svc.forgotPassword('a@b.co');
+    await flush();
+    expect(resetRows(db)[0].usedAt).not.toBeNull();
+
+    hong = false; // SMTP sống lại, người dùng bấm lại
+    await svc.forgotPassword('a@b.co');
+    expect(resetRows(db)).toHaveLength(2);
   });
 });
 
@@ -826,6 +921,68 @@ describe('đặt lại mật khẩu', () => {
     // Bỏ kiểm tra `usedAt` là test này đỏ: lần hai trả true và ghi đè mật khẩu.
     expect(await svc.resetPassword(raw, 'matkhaumoi1234')).toBe(false);
     expect(db.state.user[0].passwordHash).toBe(hashDaDoi);
+  });
+
+  it('dùng một mã thì vô hiệu MỌI mã đặt lại còn lại của tài khoản', async () => {
+    // Lỗ hổng: cooldown cho phép mỗi tài khoản một mail mỗi giờ, nên tài khoản có
+    // thể còn mã cũ **còn hạn**. Đánh dấu đúng mã vừa dùng thì kẻ giữ mã cũ vẫn
+    // đổi được mật khẩu lần nữa — sau khi chủ tài khoản đã đổi mật khẩu và tin là
+    // mình an toàn.
+    freezeAt('2026-06-01T00:00:00Z');
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+    const ma = (n: number) => String(
+      sent.filter((m) => String(m.text).includes('/reset-password?token='))[n].text,
+    ).match(/token=([0-9a-f]{64})/)![1];
+
+    await svc.forgotPassword('a@b.co');
+    const [row1] = resetRows(db);
+    const raw1 = ma(0);
+    vi.setSystemTime(new Date('2026-06-01T01:00:01Z'));
+    await svc.forgotPassword('a@b.co');
+    const row2 = resetRows(db)[1];
+    const raw2 = ma(1);
+    // Gia hạn row1 để **cả hai cùng sống**. Không làm vậy thì lần dùng thứ hai
+    // trả `false` vì hết hạn chứ không phải vì đã dùng → test xanh sai.
+    row1.expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    expect(await svc.resetPassword(raw1, 'matkhaumoi123')).toBe(true);
+    // Bỏ phần vô hiệu hoá mọi mã (chỉ đánh dấu dòng vừa dùng) là test này đỏ.
+    expect(await svc.resetPassword(raw2, 'matkhaumoi1234')).toBe(false);
+    expect(row2.usedAt).not.toBeNull();
+  });
+
+  it('vô hiệu mã cũ không ghi đè mốc thời gian của mã đã dùng trước đó', async () => {
+    // `usedAt` của một mã là dấu vết "mã này bị dùng lúc nào". Ghi đè nó bằng thời
+    // điểm của một lần reset sau là mất dấu vết, nên lọc `usedAt: null` khi vô
+    // hiệu hoá là bắt buộc chứ không phải tối ưu.
+    freezeAt('2026-06-01T00:00:00Z');
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
+    const ma = (n: number) => String(
+      sent.filter((m) => String(m.text).includes('/reset-password?token='))[n].text,
+    ).match(/token=([0-9a-f]{64})/)![1];
+
+    await svc.forgotPassword('a@b.co');
+    const row1 = resetRows(db)[0];
+    const raw1 = ma(0);
+    vi.setSystemTime(new Date('2026-06-01T00:30:00Z'));
+    expect(await svc.resetPassword(raw1, 'matkhaumoi123')).toBe(true);
+    const lucDaDung = row1.usedAt;
+    expect(lucDaDung!.getTime()).toBe(Date.parse('2026-06-01T00:30:00Z'));
+
+    vi.setSystemTime(new Date('2026-06-01T01:00:01Z'));
+    await svc.forgotPassword('a@b.co');
+    const row2 = resetRows(db)[1];
+    expect(await svc.resetPassword(ma(1), 'matkhaumoi1234')).toBe(true);
+    expect(row1.usedAt!.getTime()).toBe(lucDaDung!.getTime());
+    expect(row2.usedAt!.getTime()).toBe(Date.parse('2026-06-01T01:00:01Z'));
   });
 
   it('mã xác minh email và refresh token đưa vào resetPassword thì trả false', async () => {

@@ -15,11 +15,21 @@ afterAll(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 /** Mã xác minh cố định để test biết trước; các lần sinh mã sau vẫn ngẫu nhiên. */
 const MA = 'M'.repeat(64);
 const realNewToken = tokens.newToken;
+
+/**
+ * Đóng băng đồng hồ, chỉ giả `Date` — không giả timer. bcryptjs đi qua
+ * `setImmediate` nên giả cả timer sẽ treo `hashPassword`.
+ */
+function freezeAt(iso: string) {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(iso));
+}
 
 // `any` cố ý: đây là db giả, không phải DatabaseService thật.
 function makeDb(): any {
@@ -28,7 +38,6 @@ function makeDb(): any {
     state,
     user: {
       findUnique: vi.fn(async ({ where }: any) => state.user.find((u) => u.email === where.email) ?? null),
-      findFirst: vi.fn(async ({ where }: any) => state.user.find((u) => u.id === where.id) ?? null),
       create: vi.fn(async ({ data }: any) => {
         const r = { id: state.user.length + 1, name: null, emailVerifiedAt: null, ...data };
         state.user.push(r);
@@ -88,6 +97,36 @@ describe('đăng ký', () => {
     await expect(svc.register('a@b.co', 'matkhau123')).rejects.toMatchObject({ status: 409 });
   });
 
+  it('email không phân biệt hoa thường: A@B.co và a@b.co là một tài khoản', async () => {
+    await svc.register('A@B.co', 'matkhau123');
+    expect(db.state.user[0].email).toBe('a@b.co');
+    expect(sent[0].to).toBe('a@b.co');
+    await expect(svc.register('a@b.co', 'matkhau123')).rejects.toMatchObject({ status: 409 });
+    expect(db.state.user).toHaveLength(1);
+  });
+
+  it('userAgent dài bị cắt còn 200 ký tự', async () => {
+    const ua = 'U'.repeat(300);
+    await svc.register('a@b.co', 'matkhau123', ua);
+    const row = db.state.userToken[0];
+    expect(row.userAgent).toHaveLength(200);
+    expect(row.userAgent).toBe(ua.slice(0, 200));
+  });
+
+  it('race đăng ký trùng email (P2002) trả 409 chứ không phải 500', async () => {
+    db.user.create.mockRejectedValueOnce({ code: 'P2002', meta: { target: ['email'] } });
+    const e = await svc.register('a@b.co', 'matkhau123').catch((x) => x);
+    expect(e.status).toBe(409);
+    expect(e.message).toBe('Email này đã được dùng để đăng ký');
+    expect(db.userToken.create).not.toHaveBeenCalled();
+  });
+
+  it('lỗi DB khác P2002 thì ném nguyên, không giả làm 409', async () => {
+    const loi = Object.assign(new Error('hết kết nối'), { code: 'P1001' });
+    db.user.create.mockRejectedValueOnce(loi);
+    await expect(svc.register('a@b.co', 'matkhau123')).rejects.toBe(loi);
+  });
+
   it('mật khẩu dưới 8 ký tự bị từ chối, không tạo user', async () => {
     await expect(svc.register('a@b.co', 'ngan')).rejects.toMatchObject({ status: 400 });
     expect(db.user.create).not.toHaveBeenCalled();
@@ -142,6 +181,41 @@ describe('xác minh email', () => {
     const svc = new AuthService(db, { send: async () => {} } as any);
     await svc.register('a@b.co', 'matkhau123');
     await expect(svc.verifyEmail('sai', 'UA')).resolves.toBeNull();
+    expect(db.state.userToken.filter((t: any) => t.type === 'refresh')).toHaveLength(0);
+  });
+
+  it('mã xác minh sống đúng 24 giờ kể từ lúc đăng ký', async () => {
+    freezeAt('2026-01-01T00:00:00Z');
+    const db = makeDb();
+    const svc = new AuthService(db, { send: async () => {} } as any);
+    fixVerifyToken();
+    await svc.register('a@b.co', 'matkhau123');
+    const row = db.state.userToken[0];
+    expect(row.expiresAt.getTime() - Date.now()).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it('mã xác minh còn dùng được ở giây thứ 23:59:59', async () => {
+    freezeAt('2026-01-01T00:00:00Z');
+    const db = makeDb();
+    const svc = new AuthService(db, { send: async () => {} } as any);
+    fixVerifyToken();
+    await svc.register('a@b.co', 'matkhau123');
+
+    freezeAt('2026-01-01T23:59:59Z');
+    expect(await svc.verifyEmail(MA, 'UA')).not.toBeNull();
+    expect(db.state.user[0].emailVerifiedAt).not.toBeNull();
+  });
+
+  it('mã xác minh hết hạn thì trả null, không cấp phiên', async () => {
+    freezeAt('2026-01-01T00:00:00Z');
+    const db = makeDb();
+    const svc = new AuthService(db, { send: async () => {} } as any);
+    fixVerifyToken();
+    await svc.register('a@b.co', 'matkhau123');
+
+    freezeAt('2026-01-02T00:00:00Z');
+    await expect(svc.verifyEmail(MA, 'UA')).resolves.toBeNull();
+    expect(db.state.user[0].emailVerifiedAt).toBeNull();
     expect(db.state.userToken.filter((t: any) => t.type === 'refresh')).toHaveLength(0);
   });
 });

@@ -22,7 +22,9 @@ export type AuthMailPort = {
 
 export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+const UA_MAX = 200;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_TAKEN = 'Email này đã được dùng để đăng ký';
 
 @Injectable()
 export class AuthService {
@@ -36,6 +38,24 @@ export class AuthService {
     return { id: Number(u.id), email: String(u.email), name: (u.name as string) ?? null, role };
   }
 
+  /**
+   * Tạo user, dịch lỗi unique của Prisma thành 409. Hai người đăng ký cùng
+   * email cùng lúc thì người thứ hai phải thấy 409 y như người đến sau, chứ
+   * không phải 500. Lỗi khác thì ném nguyên để không giả làm "email trùng".
+   */
+  private async createUser(email: string, password: string) {
+    try {
+      return await this.db.user.create({
+        data: { email, passwordHash: await hashPassword(password), role: 'user' },
+      });
+    } catch (e) {
+      if ((e as { code?: string })?.code === 'P2002') {
+        throw new ConflictException(EMAIL_TAKEN);
+      }
+      throw e;
+    }
+  }
+
   async register(email: string, password: string, userAgent?: string): Promise<{ message: string }> {
     const mail = String(email ?? '').trim().toLowerCase();
     if (!EMAIL_RE.test(mail)) {
@@ -45,17 +65,15 @@ export class AuthService {
       throw new BadRequestException('Mật khẩu phải có ít nhất 8 ký tự');
     }
     const existing = await this.db.user.findUnique({ where: { email: mail } });
-    if (existing) throw new ConflictException('Email này đã được dùng để đăng ký');
+    if (existing) throw new ConflictException(EMAIL_TAKEN);
 
-    const user = await this.db.user.create({
-      data: { email: mail, passwordHash: await hashPassword(password), role: 'user' },
-    });
+    const user = await this.createUser(mail, password);
     const raw = newToken();
     await this.db.userToken.create({
       data: {
         userId: user.id, type: 'verify_email', tokenHash: hashToken(raw),
         expiresAt: new Date(Date.now() + VERIFY_TTL_MS),
-        userAgent: userAgent?.slice(0, 200) ?? null,
+        userAgent: userAgent?.slice(0, UA_MAX) ?? null,
       },
     });
     // Lỗi gửi mail không được làm hỏng đăng ký — user vẫn tồn tại và có thể gửi lại.
@@ -95,7 +113,7 @@ export class AuthService {
       data: {
         userId, type: 'refresh', tokenHash: hashToken(token),
         expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
-        userAgent: userAgent?.slice(0, 200) ?? null,
+        userAgent: userAgent?.slice(0, UA_MAX) ?? null,
       },
     });
     return token;

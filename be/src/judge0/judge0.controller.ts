@@ -36,7 +36,7 @@ function assertValidItem(item: BatchSubmissionItem) {
 
 @Controller('api/submissions')
 @UseGuards(AuthGuard, RolesGuard, ThrottleGuard)
-@Roles('user', 'vip')
+@Roles('user', 'admin', 'vip')
 export class Judge0Controller {
   constructor(private readonly judge0Service: Judge0Service) {}
 

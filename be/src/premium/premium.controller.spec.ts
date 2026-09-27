@@ -85,12 +85,86 @@ describe('PremiumController phân quyền route hết hạn VIP', () => {
     const { ctrl, service } = makeController();
     try {
       delete process.env.CRON_SECRET;
-      await expect(ctrl.sweepExpired({ body: {} }, undefined)).rejects.toThrow(
-        'Thiếu x-cron-secret hợp lệ',
+      await expect(ctrl.sweepExpired({ body: {} }, undefined, undefined)).rejects.toThrow(
+        'Cron secret không hợp lệ',
       );
       process.env.CRON_SECRET = 'secret_1';
-      await expect(ctrl.sweepExpired({ body: {} }, 'secret_khong')).rejects.toThrow(
-        'Thiếu x-cron-secret hợp lệ',
+      await expect(
+        ctrl.sweepExpired({ body: {} }, 'secret_khong', undefined),
+      ).rejects.toThrow('Cron secret không hợp lệ');
+      expect(service.sweepExpiredVips).not.toHaveBeenCalled();
+    } finally {
+      process.env = { ...OLD };
+    }
+  });
+
+  it('sweep-expired chạy khi cron secret khớp', async () => {
+    const OLD = { ...process.env };
+    const { ctrl, service } = makeController();
+    try {
+      process.env.CRON_SECRET = 'secret_1';
+      await ctrl.sweepExpired({ body: { limit: 5, dryRun: true } }, 'secret_1');
+      expect(service.sweepExpiredVips).toHaveBeenCalledWith({ limit: 5, dryRun: true });
+    } finally {
+      process.env = { ...OLD };
+    }
+  });
+});
+
+/**
+ * Khoá hành vi bảo mật của route quét VIP. Route này quét và **hạ role** trong DB
+ * nên mọi đường vào đều phải fail-closed.
+ *
+ * Nhóm test này cố ý bọc route `@Get` — chính là đường Vercel Cron gọi. Xoá nhánh
+ * `Authorization` trong `assertCronSecret` sẽ làm các test dưới đây đỏ, vì
+ * `sweepExpiredByCron` sẽ chỉ còn nhận `x-cron-secret` mà Vercel không gửi.
+ */
+describe('PremiumController — route quét VIP nhận secret qua cả hai đường', () => {
+  it('x-cron-secret đúng thì qua (đường cũ, giữ để không phá client)', async () => {
+    const OLD = { ...process.env };
+    const { ctrl, service } = makeController();
+    try {
+      process.env.CRON_SECRET = 'secret_1';
+      await ctrl.sweepExpiredByCron('secret_1', undefined);
+      expect(service.sweepExpiredVips).toHaveBeenCalledWith({});
+    } finally {
+      process.env = { ...OLD };
+    }
+  });
+
+  it('Authorization: Bearer đúng thì qua (đường Vercel Cron thật sự dùng)', async () => {
+    const OLD = { ...process.env };
+    const { ctrl, service } = makeController();
+    try {
+      process.env.CRON_SECRET = 'secret_1';
+      await ctrl.sweepExpiredByCron(undefined, 'Bearer secret_1');
+      expect(service.sweepExpiredVips).toHaveBeenCalledWith({});
+    } finally {
+      process.env = { ...OLD };
+    }
+  });
+
+  it('sai cả hai đường thì 401 và không quét', async () => {
+    const OLD = { ...process.env };
+    const { ctrl, service } = makeController();
+    try {
+      process.env.CRON_SECRET = 'secret_1';
+      await expect(
+        ctrl.sweepExpiredByCron('x_cron_sai', 'Bearer secret_sai'),
+      ).rejects.toThrow('Cron secret không hợp lệ');
+      expect(service.sweepExpiredVips).not.toHaveBeenCalled();
+    } finally {
+      process.env = { ...OLD };
+    }
+  });
+
+  it('không có header secret nào thì 401', async () => {
+    const OLD = { ...process.env };
+    const { ctrl, service } = makeController();
+    try {
+      process.env.CRON_SECRET = 'secret_1';
+      await expect(ctrl.sweepExpiredByCron(undefined, undefined)).rejects.toThrow(
+        'Cron secret không hợp lệ',
       );
       expect(service.sweepExpiredVips).not.toHaveBeenCalled();
     } finally {
@@ -98,16 +172,50 @@ describe('PremiumController phân quyền route hết hạn VIP', () => {
     }
   });
 
-    it('sweep-expired chạy khi cron secret khớp', async () => {
-      const OLD = { ...process.env };
-      const { ctrl, service } = makeController();
-      try {
-        process.env.CRON_SECRET = 'secret_1';
-        await ctrl.sweepExpired({ body: { limit: 5, dryRun: true } }, 'secret_1');
-        expect(service.sweepExpiredVips).toHaveBeenCalledWith({ limit: 5, dryRun: true });
-      } finally {
-        process.env = { ...OLD };
-      }
-    });
+  it('CRON_SECRET chưa cấu hình thì 401 kể cả khi header khớp', async () => {
+    const OLD = { ...process.env };
+    const { ctrl, service } = makeController();
+    try {
+      delete process.env.CRON_SECRET;
+      await expect(ctrl.sweepExpiredByCron('bat_ky', undefined)).rejects.toThrow(
+        'Cron secret không hợp lệ',
+      );
+      await expect(
+        ctrl.sweepExpiredByCron(undefined, 'Bearer bat_ky'),
+      ).rejects.toThrow('Cron secret không hợp lệ');
+      expect(service.sweepExpiredVips).not.toHaveBeenCalled();
+    } finally {
+      process.env = { ...OLD };
+    }
+  });
+
+  it('header Authorization thiếu tiền tố Bearer thì không được coi là hợp lệ', async () => {
+    const OLD = { ...process.env };
+    const { ctrl, service } = makeController();
+    try {
+      process.env.CRON_SECRET = 'secret_1';
+      await expect(ctrl.sweepExpiredByCron(undefined, 'secret_1')).rejects.toThrow(
+        'Cron secret không hợp lệ',
+      );
+      expect(service.sweepExpiredVips).not.toHaveBeenCalled();
+    } finally {
+      process.env = { ...OLD };
+    }
+  });
+
+  it('@Post cũng nhận được Authorization: Bearer, không chỉ x-cron-secret', async () => {
+    const OLD = { ...process.env };
+    const { ctrl, service } = makeController();
+    try {
+      process.env.CRON_SECRET = 'secret_1';
+      await ctrl.sweepExpired({ body: {} }, undefined, 'Bearer secret_1');
+      expect(service.sweepExpiredVips).toHaveBeenCalledWith({
+        limit: undefined,
+        dryRun: false,
+      });
+    } finally {
+      process.env = { ...OLD };
+    }
+  });
 });
 

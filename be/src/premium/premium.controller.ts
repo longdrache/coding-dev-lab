@@ -6,6 +6,7 @@ import {
   Headers,
   Post,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
@@ -121,17 +122,51 @@ export class PremiumController {
     return { userId, ...result };
   }
 
+  /**
+   * Chặn cron fail-closed, chấp nhận secret qua hai đường:
+   * - header `x-cron-secret`: đường cũ, giữ để không phá client hiện có.
+   * - header `Authorization: Bearer <CRON_SECRET>`: đúng cách Vercel Cron thật
+   *   sự dùng (`vercel.json` chỉ cho khai báo `path`, không cấu hình được method
+   *   hay header tuỳ biến).
+   *
+   * `CRON_SECRET` chưa cấu hình, hoặc không khớp đường nào, đều 401 và **không**
+   * gọi service — không bao giờ để lọt. Cùng một thông báo cho cả hai ca để không
+   * lộ ra chuyện biến môi trường có được cấu hình hay không.
+   */
+  private assertCronSecret(xCronSecret?: string, authorization?: string): void {
+    const expected = process.env.CRON_SECRET;
+    const bearer = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length)
+      : undefined;
+    if (!expected || (xCronSecret !== expected && bearer !== expected)) {
+      throw new UnauthorizedException('Cron secret không hợp lệ');
+    }
+  }
+
+  /**
+   * Đường cho Vercel Cron: gọi bằng GET kèm `Authorization: Bearer $CRON_SECRET`.
+   * Không nhận body, nên không có `limit`/`dryRun` — luôn quét theo mặc định của
+   * service. Nhánh `dryRun` tay trong `@Post` bên dưới vẫn giữ nguyên cho client
+   * cũ, nhưng phải qua đúng bộ secret này mới chạy được.
+   */
+  @Get('sweep-expired')
+  async sweepExpiredByCron(
+    @Headers('x-cron-secret') xCronSecret?: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    this.assertCronSecret(xCronSecret, authorization);
+    return this.premiumService.sweepExpiredVips({});
+  }
+
   @Post('sweep-expired')
   async sweepExpired(
     @Req() request: RawBodyRequest,
     @Headers('x-cron-secret') cronSecret?: string,
+    @Headers('authorization') authorization?: string,
   ) {
     // Chỉ cron server (giữ CRON_SECRET) được gọi. Bỏ nhánh dryRun ẩn danh
     // vì nó cho phép quét toàn bộ user không giới hạn.
-    const expectedCronSecret = process.env.CRON_SECRET;
-    if (!expectedCronSecret || cronSecret !== expectedCronSecret) {
-      throw new BadRequestException('Thiếu x-cron-secret hợp lệ');
-    }
+    this.assertCronSecret(cronSecret, authorization);
 
     const body = (request.body ?? {}) as Record<string, unknown>;
     const limit = typeof body.limit === 'number' ? body.limit : undefined;

@@ -40,6 +40,17 @@ const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
  * truy cập tài khoản — nên không có lý do để cho nó sống bằng mã xác minh.
  */
 const RESET_TTL_MS = 60 * 60 * 1000;
+/**
+ * Cooldown gửi lại link xác nhận: **1 giờ mỗi tài khoản**, cùng mức với
+ * `forgotPassword`.
+ *
+ * Cố ý **không** lấy `VERIFY_TTL_MS` (24 giờ) làm cửa sổ cooldown như
+ * `forgotPassword` lấy `expiresAt` của mã: 24 giờ là hạn ta muốn cho *mã*, không
+ * phải cho *nút gửi lại*. Lấy `expiresAt` làm cooldown thì mọi lần bấm trong suốt
+ * 24 giờ đều bị chặn — kể cả đúng lúc người dùng cần nhất, tức mail đầu rơi mất
+ * — nút chết đúng lúc sinh ra để chữa.
+ */
+const RESEND_COOLDOWN_MS = 60 * 60 * 1000;
 const UA_MAX = 200;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_TAKEN = 'Email này đã được dùng để đăng ký';
@@ -115,7 +126,7 @@ export class AuthService {
     if (existing) throw new ConflictException(EMAIL_TAKEN);
 
     const user = await this.createUser(mail, password);
-    const msg = await this.issueVerification(user.id, mail, userAgent);
+    const { mail: msg } = await this.issueVerification(user.id, mail, userAgent);
     // Lỗi gửi mail không được làm hỏng đăng ký — user vẫn tồn tại và có thể gửi lại.
     try {
       await this.mail.send(msg);
@@ -132,10 +143,17 @@ export class AuthService {
    * Gộp hai thứ vào một chỗ vì chúng là **một** hợp đồng: mail gửi lại mà lệch
    * hạn hoặc lệch link với mail lúc đăng ký thì câu "hết hạn sau 24 giờ" trong
    * mail là nói dối. Tách ra rồi copy-paste là chỗ hai bản lệch nhau sẽ tới.
+   *
+   * Trả kèm `tokenId` của dòng vừa tạo: `resendVerification` cần nó để **trả lại
+   * mã** khi gửi mail hỏng. Không trả thì một lần SMTP chết sẽ khóa chính tài
+   * khoản đó trong `RESEND_COOLDOWN_MS` với một mã không ai nhận được — cùng lỗi
+   * mà Task 10 đã phải sửa cho `forgotPassword`.
    */
-  private async issueVerification(userId: number, to: string, userAgent?: string): Promise<Mail> {
+  private async issueVerification(
+    userId: number, to: string, userAgent?: string,
+  ): Promise<{ mail: Mail; tokenId: string }> {
     const raw = newToken();
-    await this.db.userToken.create({
+    const row = await this.db.userToken.create({
       data: {
         userId, type: 'verify_email', tokenHash: hashToken(raw),
         expiresAt: new Date(Date.now() + VERIFY_TTL_MS),
@@ -143,9 +161,12 @@ export class AuthService {
       },
     });
     return {
-      to,
-      subject: 'Xác nhận email để hoàn tất đăng ký GoCode',
-      text: `Chào bạn,\n\nMã xác nhận của bạn hết hạn sau 24 giờ:\n${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/sign-up?token=${raw}\n\nĐội ngũ GoCode`,
+      tokenId: row.id,
+      mail: {
+        to,
+        subject: 'Xác nhận email để hoàn tất đăng ký GoCode',
+        text: `Chào bạn,\n\nMã xác nhận của bạn hết hạn sau 24 giờ:\n${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/sign-up?token=${raw}\n\nĐội ngũ GoCode`,
+      },
     };
   }
 
@@ -187,9 +208,9 @@ export class AuthService {
    * gửi mail — nút đó chết đúng lúc cần nhất.
    *
    * Cùng nguyên tắc chống lộ trạng thái với `forgotPassword`: **luôn** trả về
-   * `RESEND_SENT`, kể cả khi email không tồn tại, đã xác minh rồi, hay sai định
-   * dạng. Ba nhánh đầu trả lời khác nhau chính là công cụ dò email; khác biệt
-   * phải nằm ở việc có tạo mã và gửi mail hay không.
+   * `RESEND_SENT`, kể cả khi email không tồn tại, đã xác minh rồi, sai định
+   * dạng, hay đang trong thời gian chờ. Bốn nhánh đầu trả lời khác nhau chính là
+   * công cụ dò email; khác biệt phải nằm ở việc có tạo mã và gửi mail hay không.
    *
    * Mail gửi **nền, cố ý không `await`** — y hệt `forgotPassword`, vì SMTP là
    * số hạng lớn nhất của endpoint này: response nếu chờ nó thì thời gian phản
@@ -204,15 +225,32 @@ export class AuthService {
     // chỉ là mail rác. Nhưng **không** nói ra điều đó: cùng câu, cùng 200.
     if (!user || user.emailVerifiedAt) return { message: RESEND_SENT };
 
-    const msg = await this.issueVerification(user.id, mail, userAgent);
+    // Cooldown theo **tài khoản**, y hệt `forgotPassword`. `ThrottleGuard` ở
+    // controller chỉ biết IP, mà IP dùng chung ở Việt Nam — văn phòng, trường,
+    // cả tầng nhà — rất phổ biến, nên chặn theo IP không chặn được chuyện bơm
+    // mail vào hộp thư của một người đã đăng ký: bấm nút năm lần là năm mail.
+    // Chỉ chặn khi mã **còn trong cửa sổ cooldown**; mã đã dùng (kể cả mã mà
+    // chính nhánh dưới đánh dấu vì mail hỏng) thì gửi lại được ngay, nên người
+    // dùng thật không bị kẹt vì mail rơi mất.
+    const conHieu = (await this.db.userToken.findMany({
+      where: { userId: user.id, type: 'verify_email' },
+    })).some((r) => !r.usedAt && Date.now() < r.createdAt.getTime() + RESEND_COOLDOWN_MS);
+    if (conHieu) return { message: RESEND_SENT };
+
+    const { mail: msg, tokenId } = await this.issueVerification(user.id, mail, userAgent);
     this.mail.send(msg).catch((err: unknown) => {
       // Không nuốt im lặng: đường này chạy nền nên không có ai đỡ lỗi. Chỉ log —
-      // khác `forgotPassword` ở chỗ **không** trả lại mã: ở đó có cooldown theo
-      // tài khoản nên phải trả mã để không nuốt lần xin lại sau, còn đây chỉ
-      // chặn theo IP nên bấm lại là ra mã mới ngay.
+      // y hệt `forgotPassword` (kể cả lý do không được bỏ qua `AuthMailer` tự
+      // log: `AuthMailPort` là abstraction, một cài đặt khác có thể im lặng).
       this.logger.warn(
         `Gửi lại mail xác nhận tới ${mail} thất bại: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
       );
+      // Trả lại mã vừa cấp. Giữ nó lại nghĩa là tài khoản đang cầm một mã còn
+      // hạn mà không ai nhận được, và cooldown 1 giờ sẽ nuốt mọi lần xin lại —
+      // tức một lần SMTP chết biến thành "gửi lại link bị treo 1 tiếng".
+      return this.db.userToken
+        .updateMany({ where: { id: { in: [tokenId] } }, data: { usedAt: new Date() } })
+        .catch(() => undefined);
     });
     return { message: RESEND_SENT };
   }

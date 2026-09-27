@@ -9,7 +9,7 @@ const POINTS = [
   "Miễn phí 100%, không thẻ tín dụng",
 ];
 
-// Khung brand cho sign-in/up: trái pitch, phải form Clerk.
+// Khung brand cho sign-in/up: trái pitch, phải form đăng nhập/đăng ký.
 export default function AuthShell({
   kicker,
   title,

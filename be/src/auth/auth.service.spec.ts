@@ -335,6 +335,22 @@ const RESEND_MSG = 'Nếu email đó có tài khoản chưa xác minh, chúng t�
 const verifyRows = (db: any) => db.state.userToken.filter((t: any) => t.type === 'verify_email');
 
 /**
+ * Lùi thời điểm tạo của mọi dòng token trong db giả, mô phỏng tài khoản đã đăng
+ * ký **đã lâu**.
+ *
+ * Cần từ Task 16: `resendVerification` có cooldown 1 giờ tính từ `createdAt` của
+ * mã xác nhận gần nhất, nên tài khoản *vừa* đăng ký thì bấm "Gửi lại" là bị
+ * chặn. Đó là hành vi đúng — mail đầu vừa gửi, bấm lại ngay là bơm thư — nên test
+ * phải mô phỏng đúng tình huống mà nút này sinh ra để chữa: đã lâu không nhận
+ * được mail, giờ bấm gửi lại.
+ */
+function quayLai(db: any, gio = 2) {
+  const truoc = new Date(Date.now() - gio * 60 * 60 * 1000);
+  for (const t of db.state.userToken) t.createdAt = truoc;
+  return db;
+}
+
+/**
  * Tài khoản **chưa** xác minh (đúng trạng thái lúc mới đăng ký xong), trả về
  * mọi thứ test cần. Không seed "đã xác minh" ở đây: `seedVerified` phục vụ
  * `login`/`forgotPassword`, còn endpoint này cần đúng hai loại user — chưa xác
@@ -345,6 +361,7 @@ async function seedUnverified(email = 'a@b.co') {
   const sent: any[] = [];
   const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
   await svc.register(email, 'matkhau123');
+  quayLai(db);
   // Mail xác minh lúc đăng ký đã nằm trong `sent`; đếm lại từ đây.
   return { db, svc, sent };
 }
@@ -405,10 +422,18 @@ describe('gửi lại link xác nhận', () => {
     // Đọc mã **từ nội dung mail** chứ không `spyOn(newToken)`: nếu link gửi lại
     // không kèm mã thì mọi test dùng mã giả vẫn xanh trong khi người dùng bấm
     // link là tới trang chết — đúng hỏng mà nút này sinh ra để chữa.
+    //
+    // Phải ghim `sent` có **hai** mail và mã lấy ra khác mã lúc đăng ký: trước
+    // khi có cooldown, lần bấm đầu bị chặn và `sent.at(-1)` âm thầm trả về mail
+    // **đăng ký** — mã vẫn hợp lệ nên `verifyEmail` vẫn xanh, tức test pass vì lý do
+    // hoàn toàn khác với cái nó tưởng kiểm.
     const { db, svc, sent } = await seedUnverified();
+    const maDangKy = String(sent.at(-1)!.text).match(/token=([0-9a-f]{64})/)?.[1];
     await svc.resendVerification('a@b.co');
+    expect(sent).toHaveLength(2);
     const raw = String(sent.at(-1)!.text).match(/token=([0-9a-f]{64})/)?.[1];
     expect(raw).toBeTruthy();
+    expect(raw).not.toBe(maDangKy);
 
     const row = verifyRows(db).at(-1)!;
     expect(row.tokenHash).toBe(tokens.hashToken(raw!));
@@ -440,23 +465,112 @@ describe('gửi lại link xác nhận', () => {
     expect(sent.at(-1)!.to).toBe('a@b.co');
   });
 
-  it('gửi lại nhiều lần thì mỗi lần một mã mới, mã cũ vẫn dùng được', async () => {
-    // Không có cooldown theo tài khoản (chỉ chặn theo IP ở controller), nên bấm
-    // "Gửi lại" ba lần phải ra ba mã — và mã **đầu** không bị vô hiệu hóa, vì
-    // người dùng có thể đã mở mail cũ khi bấm nhầm.
+  it('gửi lại lần nữa trong 1 giờ thì không sinh mã thứ hai, không gửi mail thứ hai', async () => {
+    // Test canh cooldown: bỏ khối `conHieu` ở service là test này đỏ. Lần gửi lại
+    // **đầu** phải qua (đó là cả việc của nút này) — mốc chặn là mã vừa sinh ra.
     const { db, svc, sent } = await seedUnverified();
     await svc.resendVerification('a@b.co');
+    const tokenDaTao = db.state.userToken.length;
+    const r = await svc.resendVerification('a@b.co');
+    // Câu trả lời y hệt nên người gọi không biết mình có bị chặn hay không.
+    expect(r.message).toBe(RESEND_MSG);
+    expect(db.state.userToken).toHaveLength(tokenDaTao);
+    expect(sent).toHaveLength(2);
+  });
+
+  it('bấm nút nhiều lần trong 1 giờ thì vẫn chỉ một mail — không thành công cụ bơm thư', async () => {
+    // Đây là lý do có cooldown: `ThrottleGuard` chỉ biết IP, mà IP dùng chung ở
+    // Việt Nam rất phổ biến. Không có giới hạn theo tài khoản thì bấm nút năm
+    // lần là năm mail vào đúng một hộp thư.
+    const { db, svc, sent } = await seedUnverified();
+    for (let i = 0; i < 5; i += 1) await svc.resendVerification('a@b.co');
+    // 1 mail lúc đăng ký + đúng 1 lần gửi lại được phép.
+    expect(sent).toHaveLength(2);
+    expect(verifyRows(db)).toHaveLength(2);
+  });
+
+  it('cooldown đúng 1 giờ: 59 phút 59 giây còn chặn, 1 giờ 1 giây thì qua', async () => {
+    // Ghim đúng số: đổi `RESEND_COOLDOWN_MS` thành hạn 24 giờ của mã thì phần
+    // "1 giờ 1 giây" đỏ — tức test bắt được cả lỗi lấy nhầm TTL làm cooldown.
+    // Đóng băng đồng hồ vì ranh giới cửa sổ tính bằng `Date.now()`.
+    freezeAt('2026-05-01T00:00:00Z');
+    const { db, svc } = await seedUnverified();
     await svc.resendVerification('a@b.co');
+    const tokenDaTao = db.state.userToken.length;
+
+    vi.setSystemTime(new Date(Date.parse('2026-05-01T00:00:00Z') + (60 * 60 - 1) * 1000));
     await svc.resendVerification('a@b.co');
-    expect(verifyRows(db)).toHaveLength(4);
-    const ma = sent
-      .map((m) => String(m.text).match(/token=([0-9a-f]{64})/)?.[1])
-      .filter(Boolean);
-    expect(new Set(ma).size).toBe(4);
+    expect(db.state.userToken).toHaveLength(tokenDaTao);
+
+    vi.setSystemTime(new Date(Date.parse('2026-05-01T00:00:00Z') + (60 * 60 + 1) * 1000));
+    await svc.resendVerification('a@b.co');
+    expect(db.state.userToken).toHaveLength(tokenDaTao + 1);
+  });
+
+  it('hết giờ chờ thì gửi lại được, và mã cũ vẫn dùng được', async () => {
+    // Mã cũ **không** bị vô hiệu hoá: người dùng có thể đã mở mail cũ trước khi
+    // bấm nhầm, và họ không có lý do gì phải mất nó.
+    freezeAt('2026-05-01T00:00:00Z');
+    const { db, svc, sent } = await seedUnverified();
+    await svc.resendVerification('a@b.co');
+    const maCu = String(sent.at(-1)!.text).match(/token=([0-9a-f]{64})/)?.[1];
+    expect(maCu).toBeTruthy();
+
+    vi.setSystemTime(new Date('2026-05-01T01:00:01Z'));
+    await svc.resendVerification('a@b.co');
+    expect(verifyRows(db)).toHaveLength(3);
+    expect(verifyRows(db).at(-1)!.expiresAt.getTime() - Date.now()).toBe(24 * 60 * 60 * 1000);
+
+    const session = await svc.verifyEmail(maCu!);
+    expect(session).not.toBeNull();
+  });
+
+  it('giới hạn theo tài khoản, không chặn nhầm tài khoản khác', async () => {
+    // Bỏ `userId` khỏi truy vấn cooldown là test này đỏ: tài khoản B vừa được
+    // gửi thì lần bấm kế tiếp của A cũng bị chặn oan, đúng cái loại chặn nhầm
+    // mà số IP dùng chung ở Việt Nam gây ra hằng ngày.
+    const db = makeDb();
+    const sent: any[] = [];
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    await svc.register('b@b.co', 'matkhau123');
+    quayLai(db);
+
+    await svc.resendVerification('a@b.co');
+    await svc.resendVerification('b@b.co');
+    expect(verifyRows(db).filter((t: any) => t.userId === db.state.user[0].id)).toHaveLength(2);
+    expect(verifyRows(db).filter((t: any) => t.userId === db.state.user[1].id)).toHaveLength(2);
+  });
+
+  it('mail hỏng thì trả lại mã, không kẹt tài khoản 1 giờ với mã không ai nhận được', async () => {
+    // Cùng lỗi mà Task 10 đã phải sửa cho `forgotPassword`: giữ mã còn hạn mà
+    // không ai nhận được thì cooldown nuốt mọi lần xin lại, tức một lần SMTP
+    // chết biến thành "gửi lại link bị treo 1 tiếng". Bỏ nhánh `updateMany`
+    // trong `catch` là test này đỏ.
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const db = makeDb();
+    let hong = true;
+    const svc = new AuthService(db, {
+      send: async () => { if (hong) throw new Error('SMTP chết'); },
+    } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    quayLai(db);
+
+    await svc.resendVerification('a@b.co');
+    await flush();
+    expect(verifyRows(db).at(-1)!.usedAt).not.toBeNull();
+
+    hong = false; // SMTP sống lại, người dùng bấm lại
+    const tokenDaTao = db.state.userToken.length;
+    await svc.resendVerification('a@b.co');
+    expect(db.state.userToken).toHaveLength(tokenDaTao + 1);
   });
 
   it('userAgent dài bị cắt còn 200 ký tự', async () => {
-    const { db, svc } = await seedUnverified();
+    const db = makeDb();
+    const svc = new AuthService(db, { send: async () => {} } as any);
+    await svc.register('a@b.co', 'matkhau123');
+    quayLai(db);
     await svc.resendVerification('a@b.co', 'U'.repeat(500));
     expect(verifyRows(db).at(-1)!.userAgent).toHaveLength(200);
   });
@@ -474,6 +588,7 @@ describe('gửi lại link xác nhận', () => {
       send: () => (lan++ === 0 ? Promise.resolve() : treo),
     } as any);
     await svc.register('a@b.co', 'matkhau123');
+    quayLai(db);
 
     const TREO = 'TREO';
     const r = await Promise.race([
@@ -491,6 +606,7 @@ describe('gửi lại link xác nhận', () => {
     const db = makeDb();
     const svc = new AuthService(db, { send: async () => { throw new Error('SMTP chết'); } } as any);
     await svc.register('a@b.co', 'matkhau123');
+    quayLai(db);
     warn.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
 
     const r = await svc.resendVerification('a@b.co');

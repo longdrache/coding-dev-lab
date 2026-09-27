@@ -1,9 +1,30 @@
-import 'dotenv/config';
-import { describe, expect, it } from 'vitest';
+import { generateKeyPairSync } from 'node:crypto';
+import { afterAll, describe, expect, it } from 'vitest';
 import {
   hashPassword, verifyPassword, newToken, hashToken,
   signAccessToken, verifyAccessToken, ACCESS_TTL_SECONDS,
 } from './tokens.ts';
+
+const OLD = { ...process.env };
+
+function setEnv(vars: Record<string, string | undefined>) {
+  for (const [k, v] of Object.entries(vars)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+}
+
+// Khoá tự sinh, không đọc be/.env. Đặt ở cấp module nên có hiệu lực trước mọi
+// lời gọi signAccessToken, vì tokens.ts nạp khoá lazy.
+const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+setEnv({
+  ADMIN_JWT_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+  ADMIN_JWT_PUBLIC_KEY: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+});
+
+afterAll(() => {
+  process.env = { ...OLD };
+});
 
 describe('mật khẩu', () => {
   it('hash xong kiểm tra được, và mỗi lần hash cho kết quả khác nhau', async () => {

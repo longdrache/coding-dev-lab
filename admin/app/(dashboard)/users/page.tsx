@@ -9,20 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Search } from "lucide-react";
 
-type ClerkUser = {
-  id: string;
-  username: string;
+type AdminUser = {
+  id: number;
   email: string;
-  firstName: string;
-  lastName: string;
-  imageUrl: string;
-  createdAt: number | string;
-  lastSignInAt: number | string | null;
-  publicMetadata: Record<string, unknown>;
+  name: string | null;
   role: string;
+  createdAt: string;
 };
 
-type UsersResponse = { users: ClerkUser[]; totalCount: number };
+type UsersResponse = { users: AdminUser[]; totalCount: number };
 
 export default function UsersPage() {
   const [query, setQuery] = useState("");
@@ -52,7 +47,7 @@ export default function UsersPage() {
     <div className="space-y-6 font-sans">
       <div>
         <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Học viên</h1>
-        <p className="mt-1 text-sm text-slate-500">Danh sách user từ Clerk • {total} học viên</p>
+        <p className="mt-1 text-sm text-slate-500">{total} học viên</p>
       </div>
 
       <div className="relative flex items-center">
@@ -75,10 +70,8 @@ export default function UsersPage() {
               <TableHeader>
                 <TableRow className="border-b border-slate-200 bg-white hover:bg-white">
                   <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Người dùng</TableHead>
-                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Username</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Email</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Vai trò</TableHead>
-                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Lần đăng nhập cuối</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Ngày tham gia</TableHead>
                 </TableRow>
               </TableHeader>
@@ -87,19 +80,17 @@ export default function UsersPage() {
                   <TableRow key={u.id} className="h-12 border-slate-100 hover:bg-slate-50">
                     <TableCell className="px-4 py-2">
                       <div className="flex items-center gap-3">
-                        <img src={u.imageUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.email || u.id)}`} alt="" className="size-8 rounded-full border border-slate-200 bg-white object-cover" />
+                        <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.email || String(u.id))}`} alt="" className="size-8 rounded-full border border-slate-200 bg-white object-cover" />
                         <div>
-                          <p className="text-sm font-normal text-slate-900">{[u.firstName, u.lastName].filter(Boolean).join(" ") || u.username || "—"}</p>
-                          <p className="font-mono text-xs text-slate-500">{u.id.slice(0, 8)}…</p>
+                          <p className="text-sm font-normal text-slate-900">{u.name || u.email || "—"}</p>
+                          <p className="font-mono text-xs text-slate-500">#{u.id}</p>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="px-4 py-2 font-mono text-sm text-slate-900">{u.username || "—"}</TableCell>
                     <TableCell className="px-4 py-2 text-sm text-slate-500">{u.email || "—"}</TableCell>
                     <TableCell className="px-4 py-2">
                       <Badge className={`rounded border-0 px-3 py-1 text-xs font-medium uppercase tracking-[0.5px] ${u.role === "admin" ? "bg-slate-900 text-white" : u.role === "vip" ? "bg-yellow-500/10 text-yellow-700" : "bg-slate-100 text-slate-500"}`}>{u.role}</Badge>
                     </TableCell>
-                    <TableCell className="px-4 py-2 font-mono text-xs tabular-nums text-slate-500">{u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleString("vi-VN") : "—"}</TableCell>
                     <TableCell className="px-4 py-2 font-mono text-xs tabular-nums text-slate-500">{u.createdAt ? new Date(u.createdAt).toLocaleString("vi-VN") : "—"}</TableCell>
                   </TableRow>
                 ))}

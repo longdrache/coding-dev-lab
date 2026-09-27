@@ -11,17 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Search, Eye } from "lucide-react";
 
 type SubUser = {
-  id: string;
-  username: string;
+  id: number;
   email: string;
-  firstName: string;
-  lastName: string;
-  imageUrl: string;
+  name: string | null;
 } | null;
 
 type Submission = {
   id: string;
-  clerkId: string;
+  userId: number;
   problemSlug: string;
   languageId: number;
   sourceCode: string;
@@ -117,12 +114,12 @@ export default function SubmissionsPage() {
                   >
                     <TableCell className="px-4 py-2">
                       <div className="flex items-center gap-2.5">
-                        <img src={s.user?.imageUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(s.user?.email || s.clerkId)}`} alt="" className="size-8 rounded-full border border-slate-200 bg-white object-cover" />
+                        <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(s.user?.email || String(s.userId))}`} alt="" className="size-8 rounded-full border border-slate-200 bg-white object-cover" />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-normal text-slate-900">
-                            {[s.user?.firstName, s.user?.lastName].filter(Boolean).join(" ") || s.user?.username || "—"}
+                            {s.user?.name || s.user?.email || "—"}
                           </p>
-                          <p className="truncate text-xs text-slate-500">{s.user?.email || s.clerkId.slice(0, 12) + "…"}</p>
+                          <p className="truncate text-xs text-slate-500">{s.user?.email || `#${s.userId}`}</p>
                         </div>
                       </div>
                     </TableCell>
@@ -166,7 +163,7 @@ export default function SubmissionsPage() {
         <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] gap-4 overflow-hidden border-slate-200 bg-white sm:max-w-3xl">
           <DialogHeader className="min-w-0 space-y-1.5 text-left">
             <DialogTitle className="min-w-0 font-display text-xl font-semibold break-all text-slate-900 [overflow-wrap:anywhere]">
-              {selected?.problemSlug} • {[selected?.user?.firstName, selected?.user?.lastName].filter(Boolean).join(" ") || selected?.user?.username || selected?.user?.email}
+              {selected?.problemSlug} • {selected?.user?.name || selected?.user?.email || `#${selected?.userId}`}
             </DialogTitle>
             <p className="min-w-0 text-xs break-all text-slate-500 [overflow-wrap:anywhere]">
               {selected && LANG_LABELS[selected.languageId]} • {selected?.status} {selected?.passedCount}/{selected?.totalCount}

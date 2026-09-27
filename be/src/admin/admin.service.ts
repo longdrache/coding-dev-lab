@@ -12,7 +12,6 @@ import * as bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import { MailtrapTransport } from 'mailtrap';
-import { createClerkClient } from '@clerk/backend';
 import { DatabaseService } from '../database/database.service.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
 import { PresenceService } from '../presence/presence.service.ts';
@@ -264,48 +263,30 @@ export class AdminService {
         LIMIT 12
       `,
     ]);
-    // Enrich tên + avatar từ Clerk (1 gọi batch, lỗi thì fallback id ngắn).
-    // Clerk API vẫn nhận id dạng chuỗi — chỗ này chỉ ép kiểu ở biên.
-    const profiles = new Map<string, { name: string; avatar: string | null }>();
-    try {
-      const { createClerkClient } = await import('@clerk/backend');
-      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY ?? '' });
-      const ids = [
-        ...new Set(
-          recent
-            .map((r) => r.userId)
-            .filter((v): v is number => v !== null)
-            .map(String),
-        ),
-      ];
-      if (ids.length > 0) {
-        const res = (await clerk.users.getUserList({ userId: ids })) as unknown as
-          | Array<{ id: string; firstName?: string | null; lastName?: string | null; username?: string | null; imageUrl?: string }>
-          | { data?: Array<{ id: string; firstName?: string | null; lastName?: string | null; username?: string | null; imageUrl?: string }> };
-        const users = Array.isArray(res) ? res : (res.data ?? []);
-        for (const u of users) {
-          const name =
-            [u.firstName, u.lastName].filter(Boolean).join(' ') ||
-            u.username ||
-            `user_${u.id.slice(-6)}`;
-          profiles.set(u.id, { name, avatar: u.imageUrl ?? null });
-        }
-      }
-    } catch {
-      // Clerk lỗi thì hiện id ngắn, không vỡ dashboard
+    // Tên lấy thẳng từ bảng `User` (1 gọi batch theo id). Không có user
+    // (khách vãng lai) hoặc user đã xoá thì hiện "Khách" — không vỡ dashboard.
+    const ids = [
+      ...new Set(
+        recent.map((r) => r.userId).filter((v): v is number => v !== null),
+      ),
+    ];
+    const profiles = new Map<number, { name: string }>();
+    if (ids.length > 0) {
+      const users = await this.db.user.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, name: true, email: true },
+      });
+      for (const u of users) profiles.set(u.id, { name: u.name ?? u.email });
     }
     return {
-      recent: recent.map((r, i) => {
-        const clerkUserId = String(r.userId);
-        const p = profiles.get(clerkUserId);
-        return {
-          key: `${clerkUserId}-${i}`,
-          name: p?.name ?? `user_${clerkUserId.slice(-6)}`,
-          avatar: p?.avatar ?? null,
-          country: r.country || 'XX',
-          at: r.createdAt,
-        };
-      }),
+      recent: recent.map((r, i) => ({
+        key: `${r.userId ?? 'guest'}-${i}`,
+        name: (r.userId !== null ? profiles.get(r.userId)?.name : undefined) ?? 'Khách',
+        // Không còn ảnh đại diện từ nhà cung cấp danh tính — FE tự sinh avatar
+        avatar: null as string | null,
+        country: r.country || 'XX',
+        at: r.createdAt,
+      })),
       byCountry,
     };
   }
@@ -389,43 +370,44 @@ export class AdminService {
     return { ok: true, to: q.email, messageId: info.messageId ?? null };
   }
 
-  // ---- Users (Clerk) ----
+  // ---- Users ----
 
+  /** Danh sách học viên từ bảng `User` — chỉ cột cần cho admin, không lộ passwordHash. */
   async listUsers(opts?: { limit?: number; offset?: number; query?: string }) {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
-    const clerk = createClerkClient({ secretKey: clerkSecretKey });
     const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
     const offset = Math.max(opts?.offset ?? 0, 0);
-    const query = opts?.query?.trim() || undefined;
-    const res = await clerk.users.getUserList({ limit, offset });
-    // Clerk getUserList không hỗ trợ query tổng quát — filter local
-    let users = res.data;
+    const where: Record<string, unknown> = {};
+    const query = opts?.query?.trim();
     if (query) {
-      const q = query.toLowerCase();
-      users = users.filter((u: any) => {
-        const email = (u.emailAddresses?.[0]?.emailAddress ?? '').toLowerCase();
-        const name = `${u.firstName ?? ''} ${u.lastName ?? ''}`.toLowerCase();
-        const username = (u.username ?? '').toLowerCase();
-        const id = (u.id ?? '').toLowerCase();
-        return email.includes(q) || name.includes(q) || username.includes(q) || id.includes(q);
-      });
+      // Lọc phía Postgres (ILIKE) thay vì kéo cả bảng về filter tay
+      const or: Record<string, unknown>[] = [
+        { email: { contains: query, mode: 'insensitive' } },
+        { name: { contains: query, mode: 'insensitive' } },
+      ];
+      const asId = Number(query);
+      if (Number.isInteger(asId)) or.push({ id: asId });
+      where['OR'] = or;
     }
+    const [rows, totalCount] = await Promise.all([
+      this.db.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+        select: { id: true, email: true, name: true, role: true, createdAt: true },
+      }),
+      this.db.user.count({ where }),
+    ]);
     return {
-      users: users.map((u: any) => ({
+      users: rows.map((u) => ({
         id: u.id,
-        username: u.username ?? u.emailAddresses?.[0]?.emailAddress?.split('@')[0] ?? '',
-        email: u.emailAddresses?.[0]?.emailAddress ?? '',
-        firstName: u.firstName ?? '',
-        lastName: u.lastName ?? '',
-        imageUrl: u.imageUrl ?? '',
+        email: u.email,
+        name: u.name,
+        role: u.role,
         createdAt: u.createdAt,
-        lastSignInAt: u.lastSignInAt,
-        publicMetadata: u.publicMetadata ?? {},
-        role: (u.publicMetadata as any)?.role ?? 'user',
       })),
-      totalCount: res.totalCount,
-      hasMore: users.length === limit,
+      totalCount,
+      hasMore: rows.length === limit,
     };
   }
 
@@ -452,46 +434,32 @@ export class AdminService {
       }),
       this.db.submission.count({ where }),
     ]);
-    // resolve userId -> user info 1 lần duy nhất (Clerk vẫn nhận id chuỗi)
-    const ids = [...new Set(rows.map((r) => r.userId))].map(String);
+    // resolve userId -> thông tin user 1 lần duy nhất từ bảng `User`
+    const ids = [...new Set(rows.map((r) => r.userId))];
     const userMap = await this.resolveUsers(ids);
     const q = opts?.query?.trim().toLowerCase();
-    let items = rows.map((r) => ({ ...r, user: userMap[String(r.userId)] ?? null }));
+    let items = rows.map((r) => ({ ...r, user: userMap[r.userId] ?? null }));
     if (q) {
       items = items.filter((it) => {
-        const u = it.user as any;
+        const u = it.user;
         return (
           it.problemSlug.toLowerCase().includes(q) ||
           (u?.email ?? '').toLowerCase().includes(q) ||
-          `${u?.firstName ?? ''} ${u?.lastName ?? ''}`.toLowerCase().includes(q) ||
-          (u?.username ?? '').toLowerCase().includes(q)
+          (u?.name ?? '').toLowerCase().includes(q)
         );
       });
     }
     return { items, total };
   }
 
-  private async resolveUsers(ids: string[]): Promise<Record<string, any>> {
-    const map: Record<string, any> = {};
-    if (ids.length === 0) return map;
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) return map;
-    try {
-      const clerk = createClerkClient({ secretKey: clerkSecretKey });
-      const res = await clerk.users.getUserList({ userId: ids, limit: Math.min(ids.length, 100) });
-      for (const u of res.data as any[]) {
-        map[u.id] = {
-          id: u.id,
-          username: u.username ?? u.emailAddresses?.[0]?.emailAddress?.split('@')[0] ?? '',
-          email: u.emailAddresses?.[0]?.emailAddress ?? '',
-          firstName: u.firstName ?? '',
-          lastName: u.lastName ?? '',
-          imageUrl: u.imageUrl ?? '',
-        };
-      }
-    } catch {
-      // Clerk lỗi thì vẫn trả submissions với user=null
-    }
+  private async resolveUsers(ids: number[]): Promise<Record<number, { id: number; email: string; name: string | null }>> {
+    if (ids.length === 0) return {};
+    const users = await this.db.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, email: true, name: true },
+    });
+    const map: Record<number, { id: number; email: string; name: string | null }> = {};
+    for (const u of users) map[u.id] = u;
     return map;
   }
 

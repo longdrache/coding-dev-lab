@@ -53,7 +53,7 @@ describe('AdminService login + verifyJwt (RS256)', () => {
 });
 
 describe('AdminService.getLoginAnalytics', () => {
-  it('trả recent + byCountry, không gọi Clerk khi rỗng', async () => {
+  it('trả recent + byCountry, không query bảng User khi danh sách rỗng', async () => {
     const db = {
       loginEvent: { findMany: vi.fn().mockResolvedValue([]) },
       $queryRaw: vi.fn().mockResolvedValue([{ country: 'VN', count: 2 }]),

@@ -2,7 +2,6 @@ import { Module, NestModule } from '@nestjs/common';
 import rateLimit from 'express-rate-limit';
 import { AppController } from './app.controller.ts';
 import { AppService } from './app.service.ts';
-import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
 import { AuthModule } from './auth/auth.module.ts';
 import { ConfigModule } from '@nestjs/config';
@@ -45,7 +44,6 @@ const rateLimiter = rateLimit({
   controllers: [AppController],
   providers: [
     AppService,
-    ClerkAuthGuard,
     RolesGuard,
   ],
 })

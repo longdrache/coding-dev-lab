@@ -8,7 +8,8 @@ export interface AuthenticatedUser {
   sessionId?: string;
   role?: UserRole;
   roles: UserRole[];
-  /** Raw JWT claims do ClerkAuthGuard ghi vào; guard sẽ bị xoá ở task gỡ Clerk. */
+  /** Raw JWT claims thô. `AuthGuard` hiện chỉ ghi `userId`/`role`; giữ chỗ cho
+   *  các claim khác sau này. */
   claims?: Record<string, unknown>;
 }
 

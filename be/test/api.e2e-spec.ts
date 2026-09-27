@@ -39,8 +39,8 @@ async function foreignKeyToken(): Promise<string> {
 type ProtectedRoute = { method: 'get' | 'post' | 'delete'; path: string };
 
 /**
- * Kiểm kê mọi route đã đăng nhập sau khi `ClerkAuthGuard` bị thay bằng
- * `AuthGuard`. Mục tiêu là hành vi bảo mật, không phải "code chạy được": mỗi
+ * Kiểm kê mọi route đã đăng nhập sau khi guard cũ bị thay bằng `AuthGuard`.
+ * Mục tiêu là hành vi bảo mật, không phải "code chạy được": mỗi
  * route phải chặn cả khi không cookie lẫn khi cookie là rác.
  *
  * Route nằm trong bảng thì xoá `@UseGuards(AuthGuard)` ở nó sẽ làm test 401
@@ -199,7 +199,22 @@ describe('API (e2e)', () => {
       .expect(401);
   });
 
-  // ===== Guard phiên đăng nhập: `ClerkAuthGuard` → `AuthGuard =====
+  // ===== Guard phiên đăng nhập =====
+
+  // Hai test dưới đây là "anchor" đặt tên riêng cho hợp đồng bảo mật: route cần
+  // đăng nhập phải chặn ở cả hai trạng thái xấu. Chúng cố ý không nằm trong vòng
+  // lặp `PROTECTED_ROUTES` bên dưới, để khi ai đó xoá nhầm route khỏi bảng kiểm
+  // kê thì bằng chứng ở đây vẫn còn nguyên.
+  it('route cần đăng nhập trả 401 khi không có cookie', async () => {
+    await request(app.getHttpServer()).get('/api/progress/dashboard').expect(401);
+  });
+
+  it('cookie phiên giả không qua được AuthGuard', async () => {
+    await request(app.getHttpServer())
+      .get('/api/progress/dashboard')
+      .set('Cookie', 'session=khong-phai-jwt; refresh=x')
+      .expect(401);
+  });
 
   describe('route đã đăng nhập chặn cả cookie rỗng lẫn cookie rác', () => {
     // Không `async`: cần trả về chính object `Test` của supertest để `.set()` nối
@@ -284,7 +299,7 @@ describe('API (e2e)', () => {
         .expect(200);
     });
 
-    it('GET /api/qna 200 với cookie hợp lệ (trước đó là route chỉ Clerk)', async () => {
+    it('GET /api/qna 200 với cookie hợp lệ (trước đây chỉ nhận token của guard cũ)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/qna')
         .set('Cookie', await authCookie())

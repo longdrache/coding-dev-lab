@@ -4,6 +4,7 @@ import { AppController } from './app.controller.ts';
 import { AppService } from './app.service.ts';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
+import { AuthModule } from './auth/auth.module.ts';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './database/database.module.ts';
 import { PresenceModule } from './presence/presence.module.ts';
@@ -29,6 +30,7 @@ const rateLimiter = rateLimit({
   imports: [
     ConfigModule.forRoot({ envFilePath: '.env', isGlobal: true }),
     DatabaseModule,
+    AuthModule,
     AdminModule,
     PresenceModule,
     ActivityModule,

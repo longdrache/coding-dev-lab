@@ -11,16 +11,22 @@ export type PublicUser = {
   id: number; email: string; name: string | null; role: UserRole;
 };
 
+export type Mail = { to: string; subject: string; text: string; html?: string };
+
 /**
  * Cổng gửi mail mà AuthService chỉ cần. Task 7 cài `AuthMailer` thật (nodemailer +
- * Mailtrap) vào AuthModule rồi wire vào đây, nên task này chỉ khai báo kiểu.
- * LƯU Ý cho Task 7: đây là `type` nên `emitDecoratorMetadata` ghi
- * `design:paramtypes = Object`; phải thêm `@Inject(AuthMailer)` cho tham số thứ hai
- * của AuthService, nếu không Nest không resolve được dependency.
+ * Mailtrap) vào `AuthModule` rồi wire vào đây.
+ *
+ * **Phải là `abstract class` chứ không phải `type`.** `emitDecoratorMetadata` chỉ ghi
+ * được *tên lớp* vào `design:paramtypes`; với `type` thì Nest thấy `Object` và lúc
+ * boot sẽ chết với `TypeError: metatype is not a constructor` (đo thật ở Task 7 —
+ * `tsc` vẫn 0 mà app không dậy được, nên chỉ `tsc` không đủ). Dạng class cho Nest một
+ * token DI thật, và `AuthService` vẫn không biết `AuthMailer` là gì — ánh xạ nằm ở
+ * `auth.module.ts`.
  */
-export type AuthMailPort = {
-  send(m: { to: string; subject: string; text: string; html?: string }): Promise<void>;
-};
+export abstract class AuthMailPort {
+  abstract send(m: Mail): Promise<void>;
+}
 
 export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** Số phiên đồng thời tối đa; đăng nhập thêm sẽ cắt phiên cũ nhất. */

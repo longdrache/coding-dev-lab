@@ -19,8 +19,13 @@ import { verifyAccessToken } from './tokens.ts';
  * giờ bị nhận nhầm là `session`. `decodeURIComponent` ném `URIError` với chuỗi
  * `%` hỏng, nên bắt lại và trả giá trị thô: để `verifyAccessToken` từ chối,
  * thay vì làm sập cả request thành 500.
+ *
+ * `export` vì `auth.controller.ts` đọc cookie `refresh` bằng **chính hàm này**:
+ * `refresh` và `logout` không đi qua `AuthGuard` vì access token có thể đã hết hạn,
+ * mà đó là lúc người dùng cần hai route đó nhất. Hai bản parse lệch nhau nghĩa là
+ * cookie `AuthGuard` đọc được thì `refresh` lại không, tức người dùng bị kẹt.
  */
-function readCookie(header: string | undefined, name: string): string | undefined {
+export function readCookie(header: string | undefined, name: string): string | undefined {
   if (typeof header !== 'string') return undefined;
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');

@@ -19,6 +19,18 @@ type RawBodyRequest = {
   body?: unknown;
 };
 
+/**
+ * `User.id` là Int. `req.user.userId` và `@Body('userId')` đều tới dạng chuỗi, nên phải
+ * chuẩn hoá về số trước khi vào service — nếu không, `where: { id: 'abc' }` sẽ nổ.
+ */
+function toUserId(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim());
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new BadRequestException('Không xác định được user');
+  }
+  return n;
+}
+
 @Controller('api/premium')
 export class PremiumController {
   constructor(private readonly premiumService: PremiumService) {}
@@ -29,9 +41,7 @@ export class PremiumController {
     @Req() request: AuthenticatedRequest,
     @Body('plan') plan: PremiumPlan,
   ) {
-    const userId = request.user?.userId;
-    if (!userId) throw new BadRequestException('Không xác định được user');
-    return this.premiumService.createCheckout(userId, plan);
+    return this.premiumService.createCheckout(toUserId(request.user?.userId), plan);
   }
 
   @Post('grant-vip')
@@ -42,8 +52,7 @@ export class PremiumController {
     @Body('userId') targetUserId?: string,
     @Body('plan') plan?: PremiumPlan,
   ) {
-    const userId = targetUserId ?? request.user?.userId;
-    if (!userId) throw new BadRequestException('Không xác định được user');
+    const userId = toUserId(targetUserId ?? request.user?.userId);
 
     await this.premiumService.setUserToVip(userId, plan ?? 'monthly');
     return {
@@ -62,8 +71,7 @@ export class PremiumController {
     @Req() request: AuthenticatedRequest,
     @Body('userId') targetUserId?: string,
   ) {
-    const userId = targetUserId ?? request.user?.userId;
-    if (!userId) throw new BadRequestException('Không xác định được user');
+    const userId = toUserId(targetUserId ?? request.user?.userId);
 
     await this.premiumService.removeVip(userId);
     return {
@@ -95,9 +103,7 @@ export class PremiumController {
   @Get('status')
   @UseGuards(AuthGuard)
   async getStatus(@Req() request: AuthenticatedRequest) {
-    const userId = request.user?.userId;
-    if (!userId) throw new BadRequestException('Không xác định được user');
-    return this.premiumService.getVipStatus(userId);
+    return this.premiumService.getVipStatus(toUserId(request.user?.userId));
   }
 
   @Post('check-expired')
@@ -106,12 +112,11 @@ export class PremiumController {
     @Req() request: AuthenticatedRequest,
     @Body('userId') targetUserId?: string,
   ) {
-    const userId = targetUserId ?? request.user?.userId;
-    if (!userId) throw new BadRequestException('Không xác định được user');
     // Nếu check cho người khác, yêu cầu admin
     if (targetUserId && request.user?.role !== 'admin') {
       throw new BadRequestException('Chỉ admin mới được kiểm tra user khác');
     }
+    const userId = toUserId(targetUserId ?? request.user?.userId);
     const result = await this.premiumService.checkAndDowngradeIfExpired(userId);
     return { userId, ...result };
   }
@@ -122,7 +127,7 @@ export class PremiumController {
     @Headers('x-cron-secret') cronSecret?: string,
   ) {
     // Chỉ cron server (giữ CRON_SECRET) được gọi. Bỏ nhánh dryRun ẩn danh
-    // vì nó cho phép quét Clerk API không giới hạn.
+    // vì nó cho phép quét toàn bộ user không giới hạn.
     const expectedCronSecret = process.env.CRON_SECRET;
     if (!expectedCronSecret || cronSecret !== expectedCronSecret) {
       throw new BadRequestException('Thiếu x-cron-secret hợp lệ');

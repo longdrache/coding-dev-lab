@@ -4,7 +4,6 @@ import {
   Logger,
   OnModuleInit,
 } from '@nestjs/common';
-import { createClerkClient } from '@clerk/backend';
 import Stripe from 'stripe';
 import 'dotenv/config';
 import { DatabaseService } from '../database/database.service.ts';
@@ -19,6 +18,17 @@ const plans: Record<
   yearly: { amount: 2000, interval: 'year' },
 };
 
+/** Cột đủ để dựng lại trạng thái VIP; đọc cả 3 ở mọi nơi cần chúng. */
+const VIP_COLUMNS = { role: true, premiumPlan: true, vipExpiresAt: true } as const;
+
+/** Payload hạ VIP: xoá sạch mọi dấu vết gói trả tiền. */
+const VIP_OFF_DATA = {
+  role: 'user',
+  vipExpiresAt: null,
+  premiumPlan: null,
+  stripeSubscriptionId: null,
+} as const;
+
 @Injectable()
 export class PremiumService implements OnModuleInit {
   private readonly logger = new Logger(PremiumService.name);
@@ -29,7 +39,9 @@ export class PremiumService implements OnModuleInit {
 
   onModuleInit() {
     // Cron quét VIP hết hạn: mỗi 60 phút (có thể đổi qua env PREMIUM_SWEEP_INTERVAL_MS)
-    // Trên Vercel serverless, interval chỉ chạy khi instance còn warm; vẫn an toàn nhờ auto-downgrade trong Guard và webhook.
+    // Trên Vercel serverless, interval chỉ chạy khi instance còn warm; đường hạ VIP còn lại
+    // là webhook Stripe và route check-expired/sweep-expired. AuthGuard không tra DB nên
+    // role 'vip' trong access token vẫn sống tới hết 15 phút.
     if (process.env.DISABLE_PREMIUM_SWEEP === '1') {
       this.logger.log('Premium sweep disabled via DISABLE_PREMIUM_SWEEP=1');
       return;
@@ -55,32 +67,33 @@ export class PremiumService implements OnModuleInit {
     return Date.now() > t;
   }
 
-  /** Lấy expiresAt từ publicMetadata (hỗ trợ cả string ISO và number epoch) */
-  private parseExpiresAt(metadata?: Record<string, unknown> | null): string | null {
-    if (!metadata) return null;
-    const v = metadata.expiresAt ?? metadata.expires_at ?? metadata.vipExpiresAt;
-    if (typeof v === 'string') return v;
-    if (typeof v === 'number') return new Date(v).toISOString();
-    return null;
+  /** Chuyển cột `vipExpiresAt` (Date | null) sang chuỗi ISO cho API/FE. */
+  private toIso(vipExpiresAt?: Date | null): string | null {
+    return vipExpiresAt ? vipExpiresAt.toISOString() : null;
+  }
+
+  /** `id` trong DB là Int; request/webhook có thể đưa vào dạng chuỗi. */
+  private toUserId(raw: unknown): number | null {
+    const n = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim());
+    return Number.isInteger(n) && n > 0 ? n : null;
   }
 
   /**
    * Kiểm tra 1 user có VIP hết hạn không; nếu hết hạn thì tự hạ xuống 'user'.
    * @returns { downgraded: boolean, wasVip: boolean, expired: boolean }
    */
-  async checkAndDowngradeIfExpired(userId: string): Promise<{
+  async checkAndDowngradeIfExpired(userId: number): Promise<{
     downgraded: boolean;
     wasVip: boolean;
     expired: boolean;
     expiresAt: string | null;
   }> {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
-    const clerk = createClerkClient({ secretKey: clerkSecretKey });
-    const user = await clerk.users.getUser(userId);
-    const meta = (user.publicMetadata ?? {}) as Record<string, unknown>;
-    const role = meta.role as string | undefined;
-    const expiresAt = this.parseExpiresAt(meta);
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: VIP_COLUMNS,
+    });
+    const role = user?.role ?? 'user';
+    const expiresAt = this.toIso(user?.vipExpiresAt);
     const wasVip = role === 'vip';
     if (!wasVip) return { downgraded: false, wasVip: false, expired: false, expiresAt };
     const expired = this.isExpired(expiresAt);
@@ -91,8 +104,8 @@ export class PremiumService implements OnModuleInit {
   }
 
   /**
-   * Quét toàn bộ user Clerk, tự hạ những VIP đã hết hạn.
-   * Dùng phân trang 100 user/lần. Trả về thống kê.
+   * Quét những user VIP đã quá hạn trong DB và hạ về 'user'.
+   * Truy vấn lọc ngay trong DB nên không cần quét toàn bộ bảng. Trả về thống kê.
    */
   async sweepExpiredVips(opts?: { limit?: number; dryRun?: boolean }): Promise<{
     checked: number;
@@ -101,64 +114,48 @@ export class PremiumService implements OnModuleInit {
     errors: number;
     dryRun: boolean;
   }> {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) {
-      this.logger.warn('sweepExpiredVips bỏ qua: thiếu CLERK_SECRET_KEY');
-      return { checked: 0, expired: 0, downgraded: 0, errors: 0, dryRun: !!opts?.dryRun };
-    }
-    const clerk = createClerkClient({ secretKey: clerkSecretKey });
     const maxChecked = opts?.limit ?? 1000;
     const dryRun = !!opts?.dryRun;
-    let checked = 0, expired = 0, downgraded = 0, errors = 0;
-    let offset = 0;
-    const pageSize = 100;
     this.logger.log(`Bắt đầu sweep VIP hết hạn (dryRun=${dryRun}, max=${maxChecked})...`);
-    while (checked < maxChecked) {
-      const page = await clerk.users.getUserList({ limit: pageSize, offset });
-      if (page.data.length === 0) break;
-      for (const u of page.data) {
-        if (checked >= maxChecked) break;
-        checked++;
-        const meta = (u.publicMetadata ?? {}) as Record<string, unknown>;
-        if (meta.role !== 'vip') continue;
-        const expiresAt = this.parseExpiresAt(meta);
-        if (!this.isExpired(expiresAt)) continue;
-        expired++;
-        this.logger.warn(`  → VIP hết hạn: ${u.id} (${expiresAt})`);
-        if (dryRun) continue;
-        try {
-          await this.removeVip(u.id);
-          downgraded++;
-        } catch (e) {
-          errors++;
-          this.logger.error(`  ✗ Lỗi hạ VIP ${u.id}: ${e instanceof Error ? e.message : String(e)}`);
-        }
+    const rows = await this.db.user.findMany({
+      where: { role: 'vip', vipExpiresAt: { lt: new Date() } },
+      select: { id: true, vipExpiresAt: true },
+      take: maxChecked,
+    });
+    let expired = 0, downgraded = 0, errors = 0;
+    for (const row of rows) {
+      expired++;
+      this.logger.warn(`  → VIP hết hạn: ${row.id} (${row.vipExpiresAt?.toISOString()})`);
+      if (dryRun) continue;
+      try {
+        await this.removeVip(row.id);
+        downgraded++;
+      } catch (e) {
+        errors++;
+        this.logger.error(`  ✗ Lỗi hạ VIP ${row.id}: ${e instanceof Error ? e.message : String(e)}`);
       }
-      if (page.data.length < pageSize) break;
-      offset += pageSize;
     }
-    this.logger.log(`Sweep hoàn tất: checked=${checked} expired=${expired} downgraded=${downgraded} errors=${errors}`);
-    return { checked, expired, downgraded, errors, dryRun };
+    this.logger.log(`Sweep hoàn tất: checked=${rows.length} expired=${expired} downgraded=${downgraded} errors=${errors}`);
+    return { checked: rows.length, expired, downgraded, errors, dryRun };
   }
 
   /**
    * Lấy trạng thái VIP hiện tại (dùng cho FE hiển thị và tự hạ nếu cần)
    */
-  async getVipStatus(userId: string): Promise<{
+  async getVipStatus(userId: number): Promise<{
     role: string;
     plan: string | null;
     expiresAt: string | null;
     isExpired: boolean;
     daysLeft: number | null;
   }> {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
-    const clerk = createClerkClient({ secretKey: clerkSecretKey });
-    const user = await clerk.users.getUser(userId);
-    const meta = (user.publicMetadata ?? {}) as Record<string, unknown>;
-    const role = typeof meta.role === 'string' ? meta.role : 'user';
-    const plan = typeof meta.premiumPlan === 'string' ? meta.premiumPlan : null;
-    const expiresAt = this.parseExpiresAt(meta);
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: VIP_COLUMNS,
+    });
+    const role = user?.role ?? 'user';
+    const plan = user?.premiumPlan ?? null;
+    const expiresAt = this.toIso(user?.vipExpiresAt);
     const isExpired = role === 'vip' && this.isExpired(expiresAt);
     let daysLeft: number | null = null;
     if (expiresAt) {
@@ -180,38 +177,23 @@ export class PremiumService implements OnModuleInit {
     return this.stripeInstance;
   }
 
-  async setUserRole(
-    userId: string,
-    role: 'vip' | 'user' | 'admin',
-    plan?: string,
-  ) {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) {
-      throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
-    }
-
-    const clerk = createClerkClient({
-      secretKey: clerkSecretKey,
-    });
-
-    return clerk.users.updateUserMetadata(userId, {
-      publicMetadata: {
-        role,
-        ...(plan !== undefined ? { premiumPlan: plan } : {}),
-      },
+  async setUserRole(userId: number, role: 'vip' | 'user' | 'admin', plan?: string) {
+    return this.db.user.update({
+      where: { id: userId },
+      data: { role, ...(plan !== undefined ? { premiumPlan: plan } : {}) },
     });
   }
 
   async setUserToVip(
-    userId: string,
+    userId: number,
     plan: PremiumPlan = 'monthly',
-    extraMetadata?: {
+    extra?: {
       stripeCustomerId?: string;
       stripeSubscriptionId?: string;
       expiresAt?: string;
     },
   ) {
-    let expiresAt = extraMetadata?.expiresAt;
+    let expiresAt = extra?.expiresAt;
     if (!expiresAt) {
       const durationMap: Record<PremiumPlan, number> = { daily: 1, monthly: 30, yearly: 365 };
       const durationDays = durationMap[plan] ?? 30;
@@ -220,62 +202,38 @@ export class PremiumService implements OnModuleInit {
       ).toISOString();
     }
 
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) {
-      throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
-    }
-
-    const clerk = createClerkClient({
-      secretKey: clerkSecretKey,
-    });
-
-    return clerk.users.updateUserMetadata(userId, {
-      publicMetadata: {
+    return this.db.user.update({
+      where: { id: userId },
+      data: {
         role: 'vip',
+        vipExpiresAt: new Date(expiresAt),
         premiumPlan: plan,
-        expiresAt,
+        stripeSubscriptionId:
+          extra?.stripeSubscriptionId ?? extra?.stripeCustomerId ?? null,
       },
     });
   }
 
-  async removeVip(userId: string) {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) {
-      throw new BadRequestException('Chưa cấu hình CLERK_SECRET_KEY');
-    }
-
-    const clerk = createClerkClient({
-      secretKey: clerkSecretKey,
-    });
-
-    return clerk.users.updateUserMetadata(userId, {
-      publicMetadata: {
-        role: 'user',
-        premiumPlan: null,
-        expiresAt: null,
-        stripeSubscriptionId: null,
-      },
+  async removeVip(userId: number) {
+    return this.db.user.update({
+      where: { id: userId },
+      data: { ...VIP_OFF_DATA },
     });
   }
 
-  async findUserIdByStripeCustomerId(
-    customerId: string,
-  ): Promise<string | undefined> {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) return undefined;
-    const clerk = createClerkClient({ secretKey: clerkSecretKey });
+  async findUserIdByStripeCustomerId(customerId: string): Promise<number | null> {
     try {
-      const users = await clerk.users.getUserList({ limit: 100 });
-      const user = users.data.find(
-        (u) => u.publicMetadata?.stripeCustomerId === customerId,
-      );
-      return user?.id;
+      const user = await this.db.user.findFirst({
+        where: { stripeSubscriptionId: customerId },
+        select: { id: true },
+      });
+      return user?.id ?? null;
     } catch {
-      return undefined;
+      return null;
     }
   }
 
-  async createCheckout(userId: string, plan: PremiumPlan) {
+  async createCheckout(userId: number, plan: PremiumPlan) {
     const selectedPlan = plans[plan];
     if (!selectedPlan)
       throw new BadRequestException('Gói premium không hợp lệ');
@@ -283,10 +241,10 @@ export class PremiumService implements OnModuleInit {
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
     return this.getStripe().checkout.sessions.create({
       mode: 'subscription',
-      client_reference_id: userId,
-      metadata: { userId, plan },
+      client_reference_id: String(userId),
+      metadata: { userId: String(userId), plan },
       subscription_data: {
-        metadata: { userId, plan },
+        metadata: { userId: String(userId), plan },
       },
       line_items: [
         {
@@ -344,16 +302,22 @@ export class PremiumService implements OnModuleInit {
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.metadata?.userId ?? session.client_reference_id;
+      const userId = this.toUserId(
+        session.metadata?.userId ?? session.client_reference_id,
+      );
       if (!userId) {
         console.warn(
-          '⚠️ Checkout session hoàn tất nhưng không có userId (có thể là event test từ stripe trigger)',
+          '⚠️ Checkout session hoàn tất nhưng không có userId hợp lệ (có thể là event test từ stripe trigger)',
         );
         return { received: true, warning: 'Thiếu userId' };
       }
 
       const plan = (session.metadata?.plan as PremiumPlan) ?? 'monthly';
-      await this.setUserToVip(userId, plan);
+      // Ghi luôn customer id vào cột `stripeSubscriptionId`: đường hạ VIP từ
+      // webhook khi subscription.metadata.userId bị mất phụ thuộc vào cột này.
+      const customerId =
+        typeof session.customer === 'string' ? session.customer : undefined;
+      await this.setUserToVip(userId, plan, { stripeCustomerId: customerId });
       console.log(
         `✅ Đã nâng VIP thành công cho user: ${userId}, gói: ${plan}`,
       );
@@ -366,7 +330,7 @@ export class PremiumService implements OnModuleInit {
     ) {
       const sub = event.data.object as Stripe.Subscription;
       const userId =
-        (sub.metadata as Record<string, string> | null)?.userId ??
+        this.toUserId((sub.metadata as Record<string, string> | null)?.userId) ??
         (await this.findUserIdByStripeCustomerId(sub.customer as string));
       if (userId) {
         const status = sub.status; // active, canceled, unpaid, past_due, incomplete_expired

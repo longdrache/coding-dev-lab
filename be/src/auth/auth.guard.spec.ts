@@ -1,12 +1,12 @@
 import { generateKeyPairSync } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from './auth.guard.ts';
 import { Roles } from './roles.decorator.ts';
 import { RolesGuard } from './roles.guard.ts';
-import { signAccessToken } from './tokens.ts';
+import { signAccessToken, ACCESS_TTL_SECONDS } from './tokens.ts';
 import type { UserRole } from './auth.types.ts';
 
 const OLD = { ...process.env };
@@ -138,6 +138,17 @@ describe('đọc token theo thứ tự ưu tiên', () => {
     await expect(guard().canActivate(c)).rejects.toMatchObject({ status: 401 });
   });
 
+  // Khác `cookie rỗng thì 401` ở trên ở đúng chỗ khó nhất: ở đây **có** Bearer hợp
+  // lệ. `??` chỉ rơi xuống ở null/undefined nên `session=` rỗng vẫn chặn request;
+  // đổi thành `||` là rơi xuống nhánh Bearer và lọt. Đây là hành vi fail-closed:
+  // cookie hỏng trên trình duyệt phải chặn, không được âm thầm mở đường bằng header.
+  it('cookie session rỗng thì 401, không rơi xuống nhánh Bearer', async () => {
+    const jwt = await signAccessToken(7, 'vip');
+    const { req, c } = ctx({ cookie: 'session=', authorization: `Bearer ${jwt}` });
+    await expect(guard().canActivate(c)).rejects.toMatchObject({ status: 401 });
+    expect(req.user).toBeUndefined();
+  });
+
   it('tên cookie chỉ chứa chuỗi "session" không được tính là cookie session', async () => {
     const jwt = await signAccessToken(7, 'user');
     const { c } = ctx({ cookie: `mysession=${jwt}; session_extra=1; xsession_id=2` });
@@ -170,6 +181,30 @@ describe('từ chối token không hợp lệ', () => {
   it('cookie hỏng dấu phần trăm thì 401 chứ không phải 500', async () => {
     const { c } = ctx({ cookie: 'session=%E0%A4%A' });
     await expect(guard().canActivate(c)).rejects.toMatchObject({ status: 401 });
+  });
+
+  // Ký lúc đồng hồ thật, rồi mới giả đồng hồ: `jose` đọc `Date.now()` ở thời điểm
+  // xác minh, nên đẩy qua mốc hạn là đủ để token phải bị từ chối. `toFake: ['Date']`
+  // là bắt buộc — giả cả `setTimeout`/`Promise` sẽ treo `bcryptjs` và `jose`.
+  // Còn hạn và hết hạn nằm trong cùng một test để chứng minh chính con đồng hồ là
+  // nguyên nhân, chứ không phải token này nói chung là dùng được.
+  it('token hết hạn thì 401, còn trước mốc 15 phút thì vẫn dùng được', async () => {
+    const jwt = await signAccessToken(7, 'vip');
+    const goc = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(goc + (ACCESS_TTL_SECONDS - 60) * 1000);
+      const conHan = ctx({ cookie: `session=${jwt}` });
+      expect(await guard().canActivate(conHan.c)).toBe(true);
+      expect(conHan.req.user.userId).toBe('7');
+
+      vi.setSystemTime(goc + (ACCESS_TTL_SECONDS + 60) * 1000);
+      const hetHan = ctx({ cookie: `session=${jwt}` });
+      await expect(guard().canActivate(hetHan.c)).rejects.toMatchObject({ status: 401 });
+      expect(hetHan.req.user).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // Characterization test: Node luôn gộp header trùng thành chuỗi, nên mảng là
@@ -255,5 +290,15 @@ describe('refresh token thô cho logout', () => {
     const { req, c } = ctx({ cookie: `session=${jwt}; refresh=%E0%A4%A` });
     await guard().canActivate(c);
     expect(req.refreshToken).toBe('%E0%A4%A');
+  });
+
+  // Chỉ quan sát được ở cookie `refresh`: JWT base64url không chứa `=`, nên nếu
+  // cắt nhầm ở dấu `=` cuối thì tên cookie thành `refresh=abc=def=` và hết tìm
+  // thấy. Đây cũng là hành vi của `cookie-parser` (cắt ở dấu `=` đầu tiên).
+  it('giá trị cookie có dấu = thì cắt ở dấu = đầu tiên, không nuốt mất tên cookie', async () => {
+    const jwt = await signAccessToken(7, 'user');
+    const { req, c } = ctx({ cookie: `session=${jwt}; refresh=abc=def==` });
+    await guard().canActivate(c);
+    expect(req.refreshToken).toBe('abc=def==');
   });
 });

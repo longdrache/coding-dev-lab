@@ -8,6 +8,8 @@ export interface AuthenticatedUser {
   sessionId?: string;
   role?: UserRole;
   roles: UserRole[];
+  /** Raw JWT claims do ClerkAuthGuard ghi vào; guard sẽ bị xoá ở task gỡ Clerk. */
+  claims?: Record<string, unknown>;
 }
 
 export type AuthenticatedRequest = {

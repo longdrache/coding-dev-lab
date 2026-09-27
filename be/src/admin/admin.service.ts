@@ -252,7 +252,7 @@ export class AdminService {
       this.db.loginEvent.findMany({
         orderBy: { createdAt: 'desc' },
         take: 15,
-        select: { clerkId: true, country: true, createdAt: true },
+        select: { userId: true, country: true, createdAt: true },
       }),
       this.db.$queryRaw<Array<{ country: string; count: number }>>`
         SELECT COALESCE(NULLIF("country", ''), 'XX') AS country,
@@ -264,12 +264,20 @@ export class AdminService {
         LIMIT 12
       `,
     ]);
-    // Enrich tên + avatar từ Clerk (1 gọi batch, lỗi thì fallback id ngắn)
+    // Enrich tên + avatar từ Clerk (1 gọi batch, lỗi thì fallback id ngắn).
+    // Clerk API vẫn nhận id dạng chuỗi — chỗ này chỉ ép kiểu ở biên.
     const profiles = new Map<string, { name: string; avatar: string | null }>();
     try {
       const { createClerkClient } = await import('@clerk/backend');
       const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY ?? '' });
-      const ids = [...new Set(recent.map((r) => r.clerkId))];
+      const ids = [
+        ...new Set(
+          recent
+            .map((r) => r.userId)
+            .filter((v): v is number => v !== null)
+            .map(String),
+        ),
+      ];
       if (ids.length > 0) {
         const res = (await clerk.users.getUserList({ userId: ids })) as unknown as
           | Array<{ id: string; firstName?: string | null; lastName?: string | null; username?: string | null; imageUrl?: string }>
@@ -288,10 +296,11 @@ export class AdminService {
     }
     return {
       recent: recent.map((r, i) => {
-        const p = profiles.get(r.clerkId);
+        const clerkUserId = String(r.userId);
+        const p = profiles.get(clerkUserId);
         return {
-          key: `${r.clerkId}-${i}`,
-          name: p?.name ?? `user_${r.clerkId.slice(-6)}`,
+          key: `${clerkUserId}-${i}`,
+          name: p?.name ?? `user_${clerkUserId.slice(-6)}`,
           avatar: p?.avatar ?? null,
           country: r.country || 'XX',
           at: r.createdAt,
@@ -443,11 +452,11 @@ export class AdminService {
       }),
       this.db.submission.count({ where }),
     ]);
-    // resolve clerkId -> user info 1 lần duy nhất
-    const ids = [...new Set(rows.map((r) => r.clerkId).filter(Boolean))];
+    // resolve userId -> user info 1 lần duy nhất (Clerk vẫn nhận id chuỗi)
+    const ids = [...new Set(rows.map((r) => r.userId))].map(String);
     const userMap = await this.resolveUsers(ids);
     const q = opts?.query?.trim().toLowerCase();
-    let items = rows.map((r) => ({ ...r, user: userMap[r.clerkId] ?? null }));
+    let items = rows.map((r) => ({ ...r, user: userMap[String(r.userId)] ?? null }));
     if (q) {
       items = items.filter((it) => {
         const u = it.user as any;

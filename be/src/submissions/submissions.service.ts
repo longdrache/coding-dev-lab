@@ -18,7 +18,7 @@ export type CreateSubmissionDto = {
 export class SubmissionsService {
   constructor(private readonly db: DatabaseService) {}
 
-  async create(clerkId: string, dto: CreateSubmissionDto) {
+  async create(userId: number, dto: CreateSubmissionDto) {
     // Không tin client: validate shape + problem phải tồn tại
     const problemSlug = String(dto?.problemSlug ?? '').trim().slice(0, 120);
     const languageId = Number(dto?.languageId);
@@ -37,7 +37,7 @@ export class SubmissionsService {
       typeof v === 'number' && Number.isFinite(v) ? v : null;
     return this.db.submission.create({
       data: {
-        clerkId,
+        userId,
         problemSlug,
         languageId,
         sourceCode,
@@ -52,8 +52,8 @@ export class SubmissionsService {
     });
   }
 
-  async findByUser(clerkId: string, slug?: string) {
-    const where: Record<string, unknown> = { clerkId };
+  async findByUser(userId: number, slug?: string) {
+    const where: Record<string, unknown> = { userId };
     if (slug) where['problemSlug'] = slug;
     return this.db.submission.findMany({
       where,

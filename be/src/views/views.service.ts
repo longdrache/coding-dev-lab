@@ -20,20 +20,25 @@ export class ViewsService {
   async track(
     ipHash: string,
     path: string,
-    clerkId?: string,
+    userId?: number | null,
     visitorId?: string,
     headers?: Record<string, string | string[] | undefined>,
     ip?: string,
   ) {
     const clean = (v: unknown) =>
       typeof v === 'string' && v ? v.slice(0, 64) : null;
+    // Khách chưa đăng nhập thì userId = null, KHÔNG phải 0 — cột nullable.
+    const cleanUserId =
+      typeof userId === 'number' && Number.isInteger(userId) && userId > 0
+        ? userId
+        : null;
     let country = headerCountry(headers);
     if (!country && ip) country = await lookupCountry(ip);
     return this.db.pageView.create({
       data: {
         ipHash,
         path: path.slice(0, 200) || '/',
-        clerkId: clean(clerkId),
+        userId: cleanUserId,
         visitorId: clean(visitorId),
         country,
       },
@@ -51,10 +56,10 @@ export class ViewsService {
     const rows = await this.db.pageView.findMany({
       orderBy: { createdAt: 'desc' },
       take: 15,
-      select: { clerkId: true, country: true, path: true, createdAt: true },
+      select: { userId: true, country: true, path: true, createdAt: true },
     });
     return rows.map((r) => ({
-      kind: r.clerkId ? 'user' : 'guest',
+      kind: r.userId ? 'user' : 'guest',
       path: r.path,
       country: r.country || 'XX',
       at: r.createdAt,
@@ -68,13 +73,13 @@ export class ViewsService {
     const yearStart = new Date(Date.UTC(vn.getUTCFullYear(), 0, 1) - VN_OFFSET_MS);
     const seriesStart = new Date(dayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
 
-    // Unique = thiết bị/người khác nhau: ưu tiên clerkId (đăng nhập),
+    // Unique = thiết bị/người khác nhau: ưu tiên userId (đăng nhập),
     // rồi visitorId (UUID theo trình duyệt), cuối cùng hash IP.
     // Cùng IP khác thiết bị vẫn đếm riêng từng người.
     type UniqueRow = { uniques: number };
     const uniqueSince = (start: Date) =>
       this.db.$queryRaw<UniqueRow[]>`
-        SELECT COUNT(DISTINCT COALESCE("clerkId", "visitorId", "ipHash"))::int AS uniques
+        SELECT COUNT(DISTINCT COALESCE("userId", "visitorId", "ipHash"))::int AS uniques
         FROM "PageView"
         WHERE "createdAt" >= ${start}
       `.then((rows) => rows[0]?.uniques ?? 0);
@@ -86,7 +91,7 @@ export class ViewsService {
       this.db.$queryRaw<DayRow[]>`
         SELECT to_char((("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS views,
-               COUNT(DISTINCT COALESCE("clerkId", "visitorId", "ipHash"))::int AS uniques
+               COUNT(DISTINCT COALESCE("userId", "visitorId", "ipHash"))::int AS uniques
         FROM "PageView"
         WHERE "createdAt" >= ${seriesStart}
         GROUP BY 1

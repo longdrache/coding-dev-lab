@@ -36,10 +36,10 @@ export class ProblemsController {
     @Req() req: AuthenticatedRequest,
     @Body() body: { languageId: number; sourceCode: string },
   ) {
-    const clerkId = req.user!.userId;
+    const userId = Number(req.user!.userId);
     const languageId = Number(body?.languageId);
     const sourceCode = String(body?.sourceCode ?? '');
     if (!languageId || !sourceCode) throw new NotFoundException('Thiếu languageId/sourceCode');
-    return this.problems.submit(slug, clerkId, languageId, sourceCode);
+    return this.problems.submit(slug, userId, languageId, sourceCode);
   }
 }

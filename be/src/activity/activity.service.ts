@@ -43,12 +43,12 @@ function formatKey(date: Date): string {
 export class ActivityService {
   constructor(private readonly db: DatabaseService) {}
 
-  async recordLogin(clerkId: string, meta?: { ip?: string; country?: string }) {
+  async recordLogin(userId: number, meta?: { ip?: string; country?: string }) {
     const key = todayKeyVietnam();
     const date = toDateOnly(key);
     await this.db.activityDay.upsert({
-      where: { clerkId_date: { clerkId, date } },
-      create: { clerkId, date, count: 0 },
+      where: { userId_date: { userId, date } },
+      create: { userId, date, count: 0 },
       update: {},
     });
     // Log lần đăng nhập + quốc gia. Chống spam: bỏ qua nếu đã có dòng
@@ -82,38 +82,38 @@ export class ActivityService {
       }
       const since = new Date(Date.now() - 60 * 60 * 1000);
       const recent = await this.db.loginEvent.findFirst({
-        where: { clerkId, createdAt: { gte: since } },
+        where: { userId, createdAt: { gte: since } },
         orderBy: { createdAt: 'desc' },
       });
       if (!recent || (country && recent.country !== country)) {
         await this.db.loginEvent.create({
-          data: { clerkId, ipHash, country },
+          data: { userId, ipHash, country },
         });
       }
     } catch {
       // analytics không được làm vỡ login
     }
-    return this.getMap(clerkId);
+    return this.getMap(userId);
   }
 
-  async recordRun(clerkId: string) {
+  async recordRun(userId: number) {
     const key = todayKeyVietnam();
     const date = toDateOnly(key);
     await this.db.activityDay.upsert({
-      where: { clerkId_date: { clerkId, date } },
-      create: { clerkId, date, count: 1 },
+      where: { userId_date: { userId, date } },
+      create: { userId, date, count: 1 },
       update: { count: { increment: 1 } },
     });
-    return this.getMap(clerkId);
+    return this.getMap(userId);
   }
 
-  async getMap(clerkId: string): Promise<Record<string, number>> {
+  async getMap(userId: number): Promise<Record<string, number>> {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 400);
     const cutoffKey = `${String(cutoff.getUTCDate()).padStart(2, '0')}-${String(cutoff.getUTCMonth() + 1).padStart(2, '0')}-${cutoff.getUTCFullYear()}`;
     const rows = await this.db.activityDay.findMany({
       where: {
-        clerkId,
+        userId,
         date: { gte: toDateOnly(cutoffKey) },
       },
       orderBy: { date: 'asc' },

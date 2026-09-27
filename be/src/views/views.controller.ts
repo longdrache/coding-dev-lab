@@ -18,13 +18,14 @@ export class ViewsController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async track(
     @Req() req: TrackRequest,
-    @Body() body: { path?: unknown; clerkId?: unknown; visitorId?: unknown },
+    @Body() body: { path?: unknown; userId?: unknown; visitorId?: unknown },
   ) {
     const ip = clientIp(req.headers, req.ip);
     const path = typeof body?.path === 'string' ? body.path : '/';
-    const clerkId = typeof body?.clerkId === 'string' ? body.clerkId : undefined;
+    // Khách vãng lai không gửi userId (hoặc null) — cột PageView.userId nullable.
+    const userId = typeof body?.userId === 'number' ? body.userId : null;
     const visitorId = typeof body?.visitorId === 'string' ? body.visitorId : undefined;
-    await this.views.track(this.views.hashIp(ip), path, clerkId, visitorId, req.headers, ip);
+    await this.views.track(this.views.hashIp(ip), path, userId, visitorId, req.headers, ip);
     return { ok: true };
   }
 }

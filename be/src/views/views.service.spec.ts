@@ -24,11 +24,22 @@ describe('ViewsService.hashIp', () => {
 describe('ViewsService.track', () => {
   it('cắt path/id dài và chuẩn hóa', async () => {
     const { svc, db } = makeService();
-    await svc.track('h', 'x'.repeat(500), 'u'.repeat(100), 'v'.repeat(100), {}, '1.1.1.1');
+    await svc.track('h', 'x'.repeat(500), 42, 'v'.repeat(100), {}, '1.1.1.1');
     const data = (db.pageView.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
     expect(String(data.path)).toHaveLength(200);
-    expect(String(data.clerkId)).toHaveLength(64);
+    expect(data.userId).toBe(42);
     expect(String(data.visitorId)).toHaveLength(64);
+  });
+
+  it('khách chưa đăng nhập thì userId null, không phải 0', async () => {
+    const { svc, db } = makeService();
+    await svc.track('h', '/', undefined, 'v1', {}, undefined);
+    await svc.track('h', '/', null, 'v1', {}, undefined);
+    await svc.track('h', '/', 'abc' as unknown as number, 'v1', {}, undefined);
+    for (const call of db.pageView.create.mock.calls) {
+      const data = (call[0] as { data: Record<string, unknown> }).data;
+      expect(data.userId).toBeNull();
+    }
   });
 });
 

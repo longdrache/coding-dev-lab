@@ -68,25 +68,25 @@ export function calcStreakFromMap(map: Record<string, number>): number {
 
 @Injectable()
 export class ProgressService {
-  // Khoá theo clerkId: dashboard là dữ liệu riêng của từng user, dùng chung
+  // Khoá theo userId: dashboard là dữ liệu riêng của từng user, dùng chung
   // một key sẽ lộ dữ liệu chéo. Field để giữ nguyên lời gọi
   // `new ProgressService(db)` của test cũ.
   private readonly dashboardCache = new TtlCache<Dashboard>(200);
 
   constructor(private readonly db: DatabaseService) {}
 
-  async recordSolved(clerkId: string, slug: string, difficulty: string | null) {
+  async recordSolved(userId: number, slug: string, difficulty: string | null) {
     await this.db.solvedProblem.upsert({
-      where: { clerkId_slug: { clerkId, slug } },
-      create: { clerkId, slug, difficulty: difficulty ?? undefined },
+      where: { userId_slug: { userId, slug } },
+      create: { userId, slug, difficulty: difficulty ?? undefined },
       update: {},
     });
-    await this.evaluateBadges(clerkId);
-    return this.getDashboard(clerkId);
+    await this.evaluateBadges(userId);
+    return this.getDashboard(userId);
   }
 
-  async getSolvedMap(clerkId: string) {
-    const rows = await this.db.solvedProblem.findMany({ where: { clerkId } });
+  async getSolvedMap(userId: number) {
+    const rows = await this.db.solvedProblem.findMany({ where: { userId } });
     const byDifficulty: Record<string, number> = { 'Dễ': 0, 'Trung bình': 0, 'Khó': 0 };
     for (const r of rows) {
       if (r.difficulty && r.difficulty in byDifficulty) byDifficulty[r.difficulty] += 1;
@@ -98,40 +98,40 @@ export class ProgressService {
     };
   }
 
-  async getFavorites(clerkId: string) {
+  async getFavorites(userId: number) {
     const rows = await this.db.favoriteProblem.findMany({
-      where: { clerkId },
+      where: { userId },
       orderBy: { createdAt: 'desc' },
     });
     return { total: rows.length, slugs: rows.map((r) => r.slug) };
   }
 
-  async addFavorite(clerkId: string, slug: string) {
+  async addFavorite(userId: number, slug: string) {
     await this.db.favoriteProblem.upsert({
-      where: { clerkId_slug: { clerkId, slug } },
-      create: { clerkId, slug },
+      where: { userId_slug: { userId, slug } },
+      create: { userId, slug },
       update: {},
     });
-    return this.getFavorites(clerkId);
+    return this.getFavorites(userId);
   }
 
-  async removeFavorite(clerkId: string, slug: string) {
+  async removeFavorite(userId: number, slug: string) {
     try {
       await this.db.favoriteProblem.delete({
-        where: { clerkId_slug: { clerkId, slug } },
+        where: { userId_slug: { userId, slug } },
       });
     } catch {
       // chưa từng favorite thì bỏ qua
     }
-    return this.getFavorites(clerkId);
+    return this.getFavorites(userId);
   }
 
-  async getBadges(clerkId: string) {
-    const stored = await this.db.userBadge.findMany({ where: { clerkId } });
+  async getBadges(userId: number) {
+    const stored = await this.db.userBadge.findMany({ where: { userId } });
     const _unlockedIds = new Set(stored.map((b) => b.badgeId));
     // đảm bảo đánh giá lại trước khi trả
-    await this.evaluateBadges(clerkId);
-    const refreshed = await this.db.userBadge.findMany({ where: { clerkId } });
+    await this.evaluateBadges(userId);
+    const refreshed = await this.db.userBadge.findMany({ where: { userId } });
     const unlocked = new Set(refreshed.map((b) => b.badgeId));
     return {
       total: BADGE_DEFS.length,
@@ -140,13 +140,13 @@ export class ProgressService {
     };
   }
 
-  private async evaluateBadges(clerkId: string) {
-    const activityRows = await this.db.activityDay.findMany({ where: { clerkId } });
+  private async evaluateBadges(userId: number) {
+    const activityRows = await this.db.activityDay.findMany({ where: { userId } });
     const map: Record<string, number> = {};
     for (const r of activityRows) map[formatKey(r.date)] = r.count;
     const streak = calcStreakFromMap(map);
-    const solved = await this.getSolvedMap(clerkId);
-    const _topicsCovered = await this.db.solvedProblem.findMany({ where: { clerkId }, distinct: ['slug'] });
+    const solved = await this.getSolvedMap(userId);
+    const _topicsCovered = await this.db.solvedProblem.findMany({ where: { userId }, distinct: ['slug'] });
     // điều kiện
     const checks: Record<string, boolean> = {
       streak_3: streak >= 3,
@@ -165,30 +165,30 @@ export class ProgressService {
     for (const [badgeId, ok] of Object.entries(checks)) {
       if (!ok) continue;
       await this.db.userBadge.upsert({
-        where: { clerkId_badgeId: { clerkId, badgeId } },
-        create: { clerkId, badgeId },
+        where: { userId_badgeId: { userId, badgeId } },
+        create: { userId, badgeId },
         update: {},
       });
     }
   }
 
-  async getDashboard(clerkId: string) {
+  async getDashboard(userId: number) {
     // Dashboard đọc nặng (activityMap + solved + badges + heatmap) và được
     // gọi lại liên tục. TTL rất ngắn chỉ để gom các lần gọi sát nhau, không
     // phải cache dài hạn — sau POST /solve có thể hiện dữ liệu cũ tối đa
     // 200ms, không người dùng nào nhận ra.
-    const hit = this.dashboardCache.get(clerkId);
+    const hit = this.dashboardCache.get(String(userId));
     if (hit) return hit;
-    const out = await this.computeDashboard(clerkId);
-    this.dashboardCache.set(clerkId, out);
+    const out = await this.computeDashboard(userId);
+    this.dashboardCache.set(String(userId), out);
     return out;
   }
 
-  private async computeDashboard(clerkId: string) {
-    const activityMap = await this.getActivityMap(clerkId);
+  private async computeDashboard(userId: number) {
+    const activityMap = await this.getActivityMap(userId);
     const streak = calcStreakFromMap(activityMap);
-    const solved = await this.getSolvedMap(clerkId);
-    const badges = await this.getBadges(clerkId);
+    const solved = await this.getSolvedMap(userId);
+    const badges = await this.getBadges(userId);
     // heatmap 35 ngày
     const heatmap = this.buildHeatmap(activityMap, 35);
     return {
@@ -201,12 +201,12 @@ export class ProgressService {
     };
   }
 
-  private async getActivityMap(clerkId: string): Promise<Record<string, number>> {
+  private async getActivityMap(userId: number): Promise<Record<string, number>> {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 400);
     const cutoffKey = formatKey(cutoff);
     const rows = await this.db.activityDay.findMany({
-      where: { clerkId, date: { gte: toDateOnly(cutoffKey) } },
+      where: { userId, date: { gte: toDateOnly(cutoffKey) } },
       orderBy: { date: 'asc' },
     });
     const map: Record<string, number> = {};

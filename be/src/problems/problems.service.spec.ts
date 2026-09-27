@@ -139,13 +139,13 @@ describe('ProblemsService.submit', () => {
 
   it('báo lỗi khi thiếu bài / thiếu test ẩn / quá 10 test', async () => {
     const { svc } = makeService({ problem: null });
-    await expect(svc.submit('x', 'u1', 71, 'code')).rejects.toThrow('Không tìm thấy');
+    await expect(svc.submit('x', 1, 71, 'code')).rejects.toThrow('Không tìm thấy');
     const svc2 = makeService({ problem: { slug: 'x', hiddenTests: [] } } as any);
-    await expect(svc2.svc.submit('x', 'u1', 71, 'code')).rejects.toThrow('test ẩn');
+    await expect(svc2.svc.submit('x', 1, 71, 'code')).rejects.toThrow('test ẩn');
     const svc3 = makeService({
       problem: { slug: 'x', hiddenTests: Array.from({ length: 11 }, () => ({ stdin: '', expected: '' })) },
     } as any);
-    await expect(svc3.svc.submit('x', 'u1', 71, 'code')).rejects.toThrow('Quá nhiều');
+    await expect(svc3.svc.submit('x', 1, 71, 'code')).rejects.toThrow('Quá nhiều');
   });
 
   it('fail-fast: dừng ngay khi test đầu rớt, không đợi test sau', async () => {
@@ -157,7 +157,7 @@ describe('ProblemsService.submit', () => {
     judge0.getBatchSubmissions.mockResolvedValue({
       submissions: [done('out0'), done('WRONG'), pending()],
     });
-    const res = await svc.submit('x', 'u1', 71, 'code');
+    const res = await svc.submit('x', 1, 71, 'code');
     expect(res.failedIndex).toBe(2);
     expect(res.passedCount).toBe(1);
     expect(res.passed).toBe(false);
@@ -175,7 +175,7 @@ describe('ProblemsService.submit', () => {
     judge0.getBatchSubmissions
       .mockResolvedValueOnce({ submissions: [done('out0'), pending(), pending()] })
       .mockResolvedValueOnce({ submissions: [done('out0'), done('out1'), done('out2')] });
-    const res = await svc.submit('x', 'u1', 71, 'code');
+    const res = await svc.submit('x', 1, 71, 'code');
     expect(res.failedIndex).toBeNull();
     expect(res.passedCount).toBe(3);
     expect(res.passed).toBe(true);

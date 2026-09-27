@@ -69,7 +69,7 @@ export class ProblemsService {
     return rest;
   }
 
-  async submit(slug: string, clerkId: string, languageId: number, sourceCode: string) {
+  async submit(slug: string, userId: number, languageId: number, sourceCode: string) {
     const problem = await this.db.problem.findUnique({ where: { slug } });
     if (!problem) throw new NotFoundException('Không tìm thấy bài toán');
     const hiddenTests = (problem.hiddenTests as Array<{ stdin: string; expected: string }>) ?? [];
@@ -140,7 +140,7 @@ export class ProblemsService {
 
     await this.db.submission.create({
       data: {
-        clerkId,
+        userId,
         problemSlug: slug,
         languageId,
         sourceCode,
@@ -157,13 +157,13 @@ export class ProblemsService {
     // cũng đánh dấu solved nếu đúng hết
     if (allPassed) {
       await this.db.solvedProblem.upsert({
-        where: { clerkId_slug: { clerkId, slug } },
-        create: { clerkId, slug, difficulty: (problem.difficulty as string) ?? undefined },
+        where: { userId_slug: { userId, slug } },
+        create: { userId, slug, difficulty: (problem.difficulty as string) ?? undefined },
         update: {},
       });
       // đánh giá badge
       const streakMap: Record<string, number> = {};
-      const acts = await this.db.activityDay.findMany({ where: { clerkId } });
+      const acts = await this.db.activityDay.findMany({ where: { userId } });
       for (const r of acts) streakMap[new Date(r.date).toISOString().slice(0, 10)] = r.count;
       // badge đã có logic ở ProgressService, nhưng cũng có thể gọi, ở đây bỏ qua để tránh circular
     }

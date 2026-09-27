@@ -10,7 +10,7 @@ export class ActivityController {
 
   @Post('login')
   async login(@Req() req: AuthenticatedRequest) {
-    const clerkId = req.user!.userId;
+    const userId = Number(req.user!.userId);
     const headers = (req as unknown as { headers?: Record<string, string | string[] | undefined> }).headers ?? {};
     const forwarded = headers['x-forwarded-for'];
     const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0]?.trim())
@@ -19,21 +19,21 @@ export class ActivityController {
     // Vercel tự gắn quốc gia (miễn phí, không cần GeoIP DB); local thì trống
     const rawCountry = headers['x-vercel-ip-country'];
     const country = Array.isArray(rawCountry) ? rawCountry[0] : rawCountry;
-    const map = await this.activity.recordLogin(clerkId, { ip, country });
+    const map = await this.activity.recordLogin(userId, { ip, country });
     return { map };
   }
 
   @Post('run')
   async run(@Req() req: AuthenticatedRequest) {
-    const clerkId = req.user!.userId;
-    const map = await this.activity.recordRun(clerkId);
+    const userId = Number(req.user!.userId);
+    const map = await this.activity.recordRun(userId);
     return { map };
   }
 
   @Get('me')
   async me(@Req() req: AuthenticatedRequest) {
-    const clerkId = req.user!.userId;
-    const map = await this.activity.getMap(clerkId);
+    const userId = Number(req.user!.userId);
+    const map = await this.activity.getMap(userId);
     return { map };
   }
 }

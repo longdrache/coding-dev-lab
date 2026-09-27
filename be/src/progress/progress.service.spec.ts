@@ -66,30 +66,30 @@ describe('ProgressService.getDashboard (cache 200ms)', () => {
 
   it('chỉ query DB một lần trong 200ms', async () => {
     const { svc, db } = makeService();
-    await svc.getDashboard('u1');
-    await svc.getDashboard('u1');
-    await svc.getDashboard('u1');
+    await svc.getDashboard(1);
+    await svc.getDashboard(1);
+    await svc.getDashboard(1);
     expect(db.activityDay.findMany).toHaveBeenCalledTimes(QUERIES_PER_COMPUTE);
   });
 
   it('hết 200ms thì query lại', async () => {
     const { svc, db } = makeService();
-    await svc.getDashboard('u1');
+    await svc.getDashboard(1);
     vi.advanceTimersByTime(199);
-    await svc.getDashboard('u1');
+    await svc.getDashboard(1);
     expect(db.activityDay.findMany).toHaveBeenCalledTimes(QUERIES_PER_COMPUTE);
     vi.advanceTimersByTime(1);
-    await svc.getDashboard('u1');
+    await svc.getDashboard(1);
     expect(db.activityDay.findMany).toHaveBeenCalledTimes(QUERIES_PER_COMPUTE * 2);
   });
 
-  it('tách cache theo clerkId: user B không nhận dữ liệu user A', async () => {
+  it('tách cache theo userId: user B không nhận dữ liệu user A', async () => {
     const { svc, db } = makeService();
-    db.activityDay.findMany.mockImplementation((args: { where: { clerkId: string } }) =>
-      Promise.resolve(args.where.clerkId === 'uA' ? [{ date: new Date(), count: 7 }] : []),
+    db.activityDay.findMany.mockImplementation((args: { where: { userId: number } }) =>
+      Promise.resolve(args.where.userId === 101 ? [{ date: new Date(), count: 7 }] : []),
     );
-    const a = await svc.getDashboard('uA');
-    const b = await svc.getDashboard('uB');
+    const a = await svc.getDashboard(101);
+    const b = await svc.getDashboard(102);
     expect(Object.values(a.activityMap)).toEqual([7]);
     expect(Object.values(b.activityMap)).toEqual([]);
     expect(db.activityDay.findMany).toHaveBeenCalledTimes(QUERIES_PER_COMPUTE * 2);
@@ -97,9 +97,9 @@ describe('ProgressService.getDashboard (cache 200ms)', () => {
 
   it('trả về cùng object khi trong TTL, object mới khi hết TTL', async () => {
     const { svc } = makeService();
-    const first = await svc.getDashboard('u1');
-    expect(await svc.getDashboard('u1')).toBe(first);
+    const first = await svc.getDashboard(1);
+    expect(await svc.getDashboard(1)).toBe(first);
     vi.advanceTimersByTime(200);
-    expect(await svc.getDashboard('u1')).not.toBe(first);
+    expect(await svc.getDashboard(1)).not.toBe(first);
   });
 });

@@ -10,17 +10,17 @@ export class ProgressController {
 
   @Get('dashboard')
   async dashboard(@Req() req: AuthenticatedRequest) {
-    return this.progress.getDashboard(req.user!.userId);
+    return this.progress.getDashboard(Number(req.user!.userId));
   }
 
   @Get('solved')
   async solved(@Req() req: AuthenticatedRequest) {
-    return this.progress.getSolvedMap(req.user!.userId);
+    return this.progress.getSolvedMap(Number(req.user!.userId));
   }
 
   @Get('badges')
   async badges(@Req() req: AuthenticatedRequest) {
-    return this.progress.getBadges(req.user!.userId);
+    return this.progress.getBadges(Number(req.user!.userId));
   }
 
   @Post('solve')
@@ -30,12 +30,12 @@ export class ProgressController {
   ) {
     const slug = String(body?.slug ?? '').trim();
     if (!slug) return { error: 'slug required' };
-    return this.progress.recordSolved(req.user!.userId, slug, body?.difficulty ?? null);
+    return this.progress.recordSolved(Number(req.user!.userId), slug, body?.difficulty ?? null);
   }
 
   @Get('favorites')
   async favorites(@Req() req: AuthenticatedRequest) {
-    return this.progress.getFavorites(req.user!.userId);
+    return this.progress.getFavorites(Number(req.user!.userId));
   }
 
   @Post('favorites')
@@ -45,11 +45,11 @@ export class ProgressController {
   ) {
     const slug = String(body?.slug ?? '').trim();
     if (!slug) return { error: 'slug required' };
-    return this.progress.addFavorite(req.user!.userId, slug);
+    return this.progress.addFavorite(Number(req.user!.userId), slug);
   }
 
   @Delete('favorites/:slug')
   async removeFavorite(@Req() req: AuthenticatedRequest, @Param('slug') slug: string) {
-    return this.progress.removeFavorite(req.user!.userId, slug);
+    return this.progress.removeFavorite(Number(req.user!.userId), slug);
   }
 }

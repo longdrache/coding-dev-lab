@@ -367,7 +367,7 @@ const JSON_HEADERS = { "Content-Type": "application/json" } as const;
 export default function ProblemWorkspace() {
   const params = useParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
-  const { problem: swrProblem, loading: swrLoading, error } = useProblem(slug);
+  const { problem: swrProblem, loading: swrLoading, error, missing, retry } = useProblem(slug);
   // Gate như trang list: lần render đầu khớp server, sau mount lấy cache có sẵn
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -391,18 +391,35 @@ export default function ProblemWorkspace() {
     );
   }
 
-  // if (error || !problem) {
-  //   notFound();
-  // }
+  // Chỉ ra trang 404 khi BE **thật sự** trả 404. Trước đây mọi lỗi đều bị đổi
+  // thành `notFound()`, nên một lần mạng chập chờn là bài có thật biến mất, không
+  // có lối quay lại. Lỗi tải thì đưa ra màn riêng kèm nút thử lại.
+  if (missing) notFound();
+
+  if (error || !problem) {
+    return (
+      <main className="min-h-screen bg-white px-5 py-8 sm:px-10">
+        <div className="mx-auto max-w-xl py-16 text-center">
+          <h1 className="font-display text-xl font-bold text-zinc-950">Không tải được bài toán</h1>
+          <p className="mt-2.5 text-sm leading-relaxed text-zinc-600">
+            Bài này có thể vẫn ở đó — chỉ là lần tải vừa rồi thất bại. Thử lại, hoặc kiểm tra
+            xem backend có đang chạy không.
+          </p>
+          <button
+            type="button"
+            onClick={() => void retry()}
+            className="mt-6 inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800"
+          >
+            Thử lại
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   // key theo slug: đổi bài là mount mới, mọi state (code, test, kết quả)
-  // reset sạch thay vì kẹt state bài cũ.
-  // `notFound()` ở bản Next này **không** được khai báo trả `never`, nên TypeScript
-  // không hẹp được `problem` còn `Problem` sau khối guard phía trên. Tới đây
-  // `problem` chắc chắn có (guard đã thoát), nên ép kiểu là an toàn — và ghi rõ
-  // để lần nâng Next sau này không biến thành lỗi build.
-  const ready = problem as Problem;
-  return <Workspace key={slug} slug={slug} problem={ready} />;
+  // reset sạch thay vì kẹt state bài trước.
+  return <Workspace key={slug} slug={slug} problem={problem} />;
 }
 
 function Workspace({ slug, problem }: { slug: string; problem: Problem }) {

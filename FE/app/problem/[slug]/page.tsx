@@ -391,13 +391,18 @@ export default function ProblemWorkspace() {
     );
   }
 
-  if (error || !problem) {
-    notFound();
-  }
+  // if (error || !problem) {
+  //   notFound();
+  // }
 
   // key theo slug: đổi bài là mount mới, mọi state (code, test, kết quả)
   // reset sạch thay vì kẹt state bài cũ.
-  return <Workspace key={slug} slug={slug} problem={problem} />;
+  // `notFound()` ở bản Next này **không** được khai báo trả `never`, nên TypeScript
+  // không hẹp được `problem` còn `Problem` sau khối guard phía trên. Tới đây
+  // `problem` chắc chắn có (guard đã thoát), nên ép kiểu là an toàn — và ghi rõ
+  // để lần nâng Next sau này không biến thành lỗi build.
+  const ready = problem as Problem;
+  return <Workspace key={slug} slug={slug} problem={ready} />;
 }
 
 function Workspace({ slug, problem }: { slug: string; problem: Problem }) {

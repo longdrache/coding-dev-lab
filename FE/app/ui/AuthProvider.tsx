@@ -100,10 +100,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (delay !== null) armRef.current?.(delay);
       }
     } catch {
-      // Mất mạng/CORS hỏng nghĩa là không xác minh được phiên. Hiện "khách" vẫn
-      // hơn là chặn cả trang, và không sinh thông báo đỏ giả cho một lỗi mạng.
-      signedInRef.current = false;
-      applyUser(null);
+      // `currentSession` chỉ trả `null` khi HTTP không OK (phiên thật sự hết).
+      // Tới đây là `fetch` **ném** — mạng chết, CORS, tab bị đóng giữa chừng. Xoá
+      // user ở đây là đăng xuất oan: người dùng bấm F5 vài lần là rớt phiên, rồi
+      // bị guard đá về trang chủ, dù mật khẩu vẫn đúng và cookie vẫn còn.
+      // Giữ nguyên user đang có, chỉ ngừng báo "đang tải"; lần refresh/401 sau sẽ
+      // tự đồng bộ lại. Cùng nguyên tắc với `RefreshResult` kind `'retry'`.
+      // `loadSession` lúc mount thì `user` còn `null` nên hiện khách — đúng, vì
+      // lúc đó chưa có gì để giữ.
     } finally {
       setLoading(false);
     }

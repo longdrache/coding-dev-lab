@@ -20,5 +20,6 @@
     "rewriteRelativeImportExtensions": true,
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src/**/*", "src/common/types/express-extensions.ts"]
+  "include": ["src/**/*", "scripts/**/*", "src/common/types/express-extensions.ts"],
+  "exclude": ["node_modules", "dist", "scripts/seed-problems.ts"]
 }

@@ -22,7 +22,14 @@ import { BODY, CARD, FOOTER, FOOTER_LINK, KICKER, PRIMARY, SPINNER, TITLE } from
  * Màn này **không tự render form**, nên không phải lo đăng ký trùng khi người
  * dùng bấm link hai lần.
  */
-export default function VerifyEmail({ token }: { token: string }) {
+export default function VerifyEmail({
+  token,
+  redirectTo = "/",
+}: {
+  token: string;
+  /** Đã qua `safeRedirect` ở server component trước khi tới đây. */
+  redirectTo?: string;
+}) {
   const { refresh, user } = useSession();
   const [state, setState] = useState<"busy" | "ok" | "bad">("busy");
   const [message, setMessage] = useState("");
@@ -80,7 +87,7 @@ export default function VerifyEmail({ token }: { token: string }) {
           <p className={BODY}>
             Tài khoản đã sẵn sàng. Đang đưa bạn về trang chủ để luyện tiếp bài đầu tiên hôm nay.
           </p>
-          <Link href="/" className={`${PRIMARY} mt-5`}>
+          <Link href={redirectTo} className={`${PRIMARY} mt-5`}>
             <MailCheck aria-hidden className="size-4" />
             Vào sân luyện
           </Link>

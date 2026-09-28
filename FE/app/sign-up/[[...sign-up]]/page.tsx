@@ -1,6 +1,7 @@
 import AuthForm from "@/app/ui/AuthForm";
 import AuthShell from "@/app/ui/AuthShell";
 import VerifyEmail from "@/app/ui/VerifyEmail";
+import { safeRedirect } from "@/lib/auth-form";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -23,14 +24,19 @@ export const metadata: Metadata = {
 export default async function SignUpPage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string | string[] }>;
+  searchParams: Promise<{ token?: string | string[]; redirect_url?: string | string[] }>;
 }) {
-  const { token } = await searchParams;
+  const { token, redirect_url } = await searchParams;
   const raw = Array.isArray(token) ? token[0] : token;
+  const redirectTo = safeRedirect(Array.isArray(redirect_url) ? redirect_url[0] : redirect_url);
 
   return (
     <AuthShell kicker="// join_56_bai" title="Tạo tài khoản, giải bài đầu tiên hôm nay.">
-      {raw ? <VerifyEmail token={raw} /> : <AuthForm mode="signup" />}
+      {raw ? (
+        <VerifyEmail token={raw} redirectTo={redirectTo} />
+      ) : (
+        <AuthForm mode="signup" redirectTo={redirectTo} />
+      )}
     </AuthShell>
   );
 }

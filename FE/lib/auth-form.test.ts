@@ -6,6 +6,7 @@ import {
   authErrorMessage,
   normalizeEmail,
   resendVerification,
+  safeRedirect,
   submitCredentials,
   verifyEmailToken,
 } from './auth-form';
@@ -354,5 +355,38 @@ describe('verifyEmailToken', () => {
     const r = await verifyEmailToken('ma');
 
     expect(r).toEqual({ kind: 'ok' });
+  });
+});
+describe('safeRedirect', () => {
+  it('chấp nhận đường dẫn nội bộ', () => {
+    expect(safeRedirect('/problem/two-sum')).toBe('/problem/two-sum');
+    expect(safeRedirect('/premium')).toBe('/premium');
+    expect(safeRedirect('  /problem  ')).toBe('/problem');
+  });
+
+  it('chặn URL tuyệt đối — đây là open redirect', () => {
+    expect(safeRedirect('https://evil.com')).toBe('/');
+    expect(safeRedirect('http://evil.com')).toBe('/');
+    expect(safeRedirect('javascript:alert(1)')).toBe('/');
+    expect(safeRedirect('data:text/html,<script>')).toBe('/');
+  });
+
+  it('chặn protocol-relative vì trình duyệt coi //evil.com là domain khác', () => {
+    expect(safeRedirect('//evil.com')).toBe('/');
+    expect(safeRedirect('/\\evil.com')).toBe('/');
+  });
+
+  it('rỗng / không phải chuỗi thì dùng fallback', () => {
+    expect(safeRedirect('')).toBe('/');
+    expect(safeRedirect('   ')).toBe('/');
+    expect(safeRedirect(undefined)).toBe('/');
+    expect(safeRedirect(null)).toBe('/');
+    expect(safeRedirect(['/a', '/b'])).toBe('/');
+    expect(safeRedirect(42)).toBe('/');
+  });
+
+  it('tôn trọng fallback do nơi gọi truyền vào', () => {
+    expect(safeRedirect('https://evil.com', '/problem')).toBe('/problem');
+    expect(safeRedirect(undefined, '/problem')).toBe('/problem');
   });
 });

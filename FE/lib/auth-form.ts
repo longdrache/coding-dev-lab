@@ -160,6 +160,29 @@ export type ResendResult = { kind: "ok"; message: string } | { kind: "error"; me
 export type VerifyResult = { kind: "ok" } | { kind: "error"; message: string };
 
 /**
+ * Đích đến sau khi đăng nhập, lấy từ `?redirect_url=`.
+ *
+ * Đây là **open redirect** nếu không kiểm: link kiểu
+ * `/sign-in?redirect_url=https://site-gia-mao.com` sẽ đưa người dùng vừa đăng
+ * nhập xong sang trang giả mạo để lấy mật khẩu. Vì vậy chỉ nhận đường dẫn
+ * **nội bộ**: bắt đầu bằng `/` và không phải `//` (protocol-relative), cộng thêm
+ * loại trừ `\` vì trình duyệt coi `\` như `/` trong nhiều ngữ cảnh.
+ *
+ * Trả `fallback` khi thiếu hoặc không hợp lệ — an toàn hơn là ném lỗi lộ ra
+ * chi tiết cho kẻ xấu đoán.
+ */
+export function safeRedirect(raw: unknown, fallback = "/"): string {
+  if (typeof raw !== "string") return fallback;
+  const v = raw.trim();
+  if (v === "") return fallback;
+  // Chặn mọi thứ có scheme (https:, javascript:, data:…) và protocol-relative.
+  if (!v.startsWith("/")) return fallback;
+  if (v.startsWith("//") || v.startsWith("/\\")) return fallback;
+  return v;
+}
+
+
+/**
  * Gửi lại link xác nhận cho tài khoản **chưa** xác minh.
  *
  * Không gọi lại `submitCredentials("signup", …)`: tài khoản vừa đăng ký thì chắc

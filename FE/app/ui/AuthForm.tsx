@@ -30,7 +30,17 @@ import { BODY, CARD, FOOTER, FOOTER_LINK, INPUT, KICKER, PRIMARY, SECONDARY, SPI
  * `environment: 'node'`, không jsdom (`api.ts` tách `commitSession` ra cũng vì
  * đúng lý do này).
  */
-export default function AuthForm({ mode }: { mode: AuthMode }) {
+export default function AuthForm({
+  mode,
+  redirectTo = "/",
+}: {
+  mode: AuthMode;
+  /**
+   * Đích đến sau khi đăng nhập, lấy từ `?redirect_url=` qua `safeRedirect`.
+   * Mặc định `/` (trang chủ) khi người dùng vào thẳng `/sign-in`.
+   */
+  redirectTo?: string;
+}) {
   const { refresh } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -149,13 +159,20 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
   }
 
   if (done === "signedin") {
+    // Người dùng mở `/problem/two-sum` rồi bị đá sang đây sẽ phải quay lại đúng
+    // bài đó; nếu vào thẳng `/sign-in` thì về trang chủ như trước.
+    const wentToProblem = redirectTo !== "/";
     return (
       <div className={CARD}>
         <p className={KICKER}>{"// signed in"}</p>
         <h2 className={TITLE}>Đã đăng nhập</h2>
-        <p className={BODY}>Tài khoản đã mở. Vào trang chủ để luyện tiếp bài đang dở.</p>
-        <Link href="/" className={`${PRIMARY} mt-5`}>
-          Vào trang chủ
+        <p className={BODY}>
+          {wentToProblem
+            ? "Tài khoản đã mở. Quay lại bài bạn đang làm."
+            : "Tài khoản đã mở. Vào trang chủ để luyện tiếp bài đang dở."}
+        </p>
+        <Link href={redirectTo} className={`${PRIMARY} mt-5`}>
+          {wentToProblem ? "Quay lại bài đang làm" : "Vào trang chủ"}
         </Link>
       </div>
     );

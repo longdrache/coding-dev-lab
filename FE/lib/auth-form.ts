@@ -156,6 +156,9 @@ const RESEND_SENT = "Nếu email đó có tài khoản chưa xác minh, chúng t
 
 export type ResendResult = { kind: "ok"; message: string } | { kind: "error"; message: string };
 
+/** Kết quả dùng link xác nhận: `ok` nghĩa là đã xác minh **và** đã có phiên. */
+export type VerifyResult = { kind: "ok" } | { kind: "error"; message: string };
+
 /**
  * Gửi lại link xác nhận cho tài khoản **chưa** xác minh.
  *
@@ -166,6 +169,37 @@ export type ResendResult = { kind: "ok"; message: string } | { kind: "error"; me
  * người dùng không cần biết tài khoản của mình đang ở trạng thái nào, và FE cũng
  * không được suy ra trạng thái đó từ status.
  */
+/**
+ * Dùng link xác nhận trong mail để hoàn tất đăng ký.
+ *
+ * Mail gửi link dạng `${FRONTEND_URL}/sign-up?token=…`
+ * (`be/src/auth/auth.service.ts:189`). Hàm này là nửa còn thiếu của luồng đó:
+ * BE `GET /api/auth/verify` xác minh token, **set cookie phiên** rồi trả
+ * `{ user, expiresIn }` — nên gọi xong là đã đăng nhập, không cần bấm nút nữa.
+ *
+ * `credentials: "include"` là bắt buộc: cookie do BE set phải quay lại đúng
+ * origin đó, thiếu nó thì BE vẫn xác minh thành công nhưng trình duyệt giữ
+ * phiên cũ và người dùng thấy như không có gì xảy ra.
+ *
+ * Không ném, giống `submitCredentials`: mọi thất bại thành `kind: "error"` để
+ * chỗ gọi chỉ có một đường hiển thị.
+ */
+export async function verifyEmailToken(token: string): Promise<VerifyResult> {
+  if (!token) return { kind: "error", message: "Link xác nhận không có mã. Bấm lại link trong mail." };
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/verify?token=${encodeURIComponent(token)}`, {
+      method: "GET",
+      credentials: "include",
+    });
+  } catch {
+    return { kind: "error", message: NETWORK_ERROR };
+  }
+  const body = await readErrorBody(res);
+  if (!res.ok) return { kind: "error", message: beMessage(body) ?? "Mã xác nhận không hợp lệ hoặc đã hết hạn." };
+  return { kind: "ok" };
+}
+
 export async function resendVerification(email: string): Promise<ResendResult> {
   let res: Response;
   try {

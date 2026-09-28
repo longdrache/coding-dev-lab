@@ -7,6 +7,7 @@ import {
   normalizeEmail,
   resendVerification,
   submitCredentials,
+  verifyEmailToken,
 } from './auth-form';
 import { API_URL } from './swr';
 
@@ -284,5 +285,74 @@ describe('resendVerification — nút "Gửi lại link"', () => {
       json: () => Promise.reject(new SyntaxError('Unexpected token <')),
     });
     expect(await resendVerification('a@b.co')).toEqual({ kind: 'ok', message: RESEND_CAU });
+  });
+});
+describe('verifyEmailToken', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('goi GET /api/auth/verify voi token encode, kem credentials include', async () => {
+    const fetchMock = stubFetch({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ user: { id: 1 } }),
+    });
+
+    const r = await verifyEmailToken('ma co khoang trang & ky tu dac biet');
+
+    expect(r).toEqual({ kind: 'ok' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      API_URL + '/api/auth/verify?token=ma%20co%20khoang%20trang%20%26%20ky%20tu%20dac%20biet',
+    );
+    expect(init.method).toBe('GET');
+    // Cookie phiên do BE set trong chính response nay; thieu `include` thi
+    // trinh duyet bo cookie va nguoi dung thay nhu khong co gi xay ra.
+    expect(init.credentials).toBe('include');
+  });
+
+  it('token rong thi khong goi mang, bao loi ro rang', async () => {
+    const fetchMock = stubFetch({ ok: true, status: 200, json: () => Promise.resolve({}) });
+
+    const r = await verifyEmailToken('');
+
+    expect(r.kind).toBe('error');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('mang chet ra loi "khong ket noi duoc", khong phai "ma het han"', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
+
+    const r = await verifyEmailToken('ma-hieu-luc');
+
+    expect(r.kind).toBe('error');
+    // Bao nham kiem tra lai email se day nguoi dung vao vong vo.
+    expect((r as { message: string }).message).toMatch(/mạng|ket noi/i);
+    expect((r as { message: string }).message).not.toMatch(/hết hạn|hạn/i);
+  });
+
+  it('BE tra 400 thi dung nguyen cau cua BE', async () => {
+    stubFetch({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ message: 'Mã xác nhận không hợp lệ hoặc đã hết hạn' }),
+    });
+
+    const r = await verifyEmailToken('ma-het-han');
+
+    expect(r).toEqual({ kind: 'error', message: 'Mã xác nhận không hợp lệ hoặc đã hết hạn' });
+  });
+
+  it('body 200 hong van la xac nhan thanh cong, khong bao loi', async () => {
+    stubFetch({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new SyntaxError('Unexpected token <')),
+    });
+
+    const r = await verifyEmailToken('ma');
+
+    expect(r).toEqual({ kind: 'ok' });
   });
 });

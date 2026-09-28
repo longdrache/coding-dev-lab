@@ -33,6 +33,20 @@ for (const route of ['/sign-in', '/sign-up']) {
   });
 }
 
+// Link xác nhận trong mail trỏ tới `/sign-up?token=…`. Trước đó không ai đọc
+// `token`: bấm link chỉ ra lại form đăng ký, nên người dùng đăng ký xong bấm link
+// vẫn không vào được — đúng triệu chứng báo. Test này canh đúng chỗ đó.
+test('/sign-up?token=… không rơi về form đăng ký mà hiện màn xác nhận', async ({ page }) => {
+  await page.goto('/sign-up?token=ma-khong-ton-tai');
+  // H1 vẫn là của trang đăng ký (AuthShell giữ nguyên), nên phải canh **bên
+  // trong thẻ**: màn xác nhận thay thế form, không phải thêm bên dưới form.
+  await expect(page.getByText('Link này không dùng được nữa')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('#auth-email')).toHaveCount(0);
+  await expect(page.locator('#auth-password')).toHaveCount(0);
+  // Lối thoát phải có: không thì người dùng bị kẹt ở một màn báo lỗi.
+  await expect(page.getByRole('link', { name: /Đăng nhập/ }).first()).toBeVisible();
+});
+
 test('/forgot-password hiện form quên mật khẩu', async ({ page }) => {
   await page.goto('/forgot-password');
   await expect(page.locator('#forgot-email')).toBeVisible({ timeout: 60_000 });

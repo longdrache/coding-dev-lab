@@ -1166,9 +1166,6 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
               <div className="my-3 border-t-2 border-zinc-900" />
 
               <div className="flex items-center justify-between gap-2">
-                <p className="font-mono text-xs text-zinc-400">
-                  {"// Dữ liệu đầu vào (Input):"}
-                </p>
                 <button
                   type="button"
                   onClick={() => stdinRef.current?.focus()}
@@ -1194,9 +1191,6 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
                 placeholder="Nhập stdin, mỗi dòng một giá trị..."
                 className="mt-2 w-full resize-y rounded-xl border border-zinc-300 bg-white p-3 font-mono text-[13px] leading-relaxed outline-none transition placeholder:text-zinc-300 focus:border-blue-500"
               />
-              <p className="mt-3 font-mono text-xs text-zinc-400">
-                {"// Kết quả kỳ vọng (Expected):"}
-              </p>
               <textarea
                 value={activeTestValue.expected}
                 onChange={(event) =>

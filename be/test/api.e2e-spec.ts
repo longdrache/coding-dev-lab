@@ -326,4 +326,86 @@ describe('API (e2e)', () => {
       expect(res.body.message).toBe('Phiên không hợp lệ hoặc đã hết hạn');
     });
   });
+
+  // ===== Bảng nền cho Google OAuth =====
+  //
+  // Chỉ khẳng định "bảng có thật trong database và đúng hợp đồng cột", không
+  // assert hành vi OAuth — phần đó thuộc các task sau. Đọc thẳng
+  // `information_schema`/`pg_catalog` vì đó mới là bằng chứng migration đã
+  // được áp dụng: client Prisma được sinh từ `schema.prisma` nên vẫn có
+  // `db.userAccount` ngay cả khi bảng chưa tồn tại trong database.
+  describe('bảng UserAccount + UserOAuthState', () => {
+    async function columnsOf(table: string): Promise<string[]> {
+      const rows = await db.$queryRaw<{ column_name: string }[]>`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = ${table}
+        ORDER BY column_name
+      `;
+      return rows.map((row) => row.column_name);
+    }
+
+    it('UserAccount có đúng 5 cột đã khai báo', async () => {
+      expect(await columnsOf('UserAccount')).toEqual([
+        'createdAt',
+        'id',
+        'provider',
+        'providerUserId',
+        'userId',
+      ]);
+    });
+
+    it('UserOAuthState có đúng 5 cột, stateHash là khoá chính', async () => {
+      expect(await columnsOf('UserOAuthState')).toEqual([
+        'codeVerifier',
+        'expiresAt',
+        'redirectTo',
+        'stateHash',
+        'usedAt',
+      ]);
+      const pk = await db.$queryRaw<{ column_name: string }[]>`
+        SELECT a.attname AS column_name
+        FROM pg_constraint c
+        JOIN pg_attribute a
+          ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+        WHERE c.conrelid = ${'"UserOAuthState"'}::regclass AND c.contype = 'p'
+      `;
+      expect(pk.map((row) => row.column_name)).toEqual(['stateHash']);
+    });
+
+    // Unique (provider, providerUserId) là chốt chặn đăng nhập trùng — nếu mất
+    // index này thì task sau vẫn chạy được nhưng có thể gắn một tài khoản
+    // Google vào hai user khác nhau, nên phải có test canh. Lấy cột thật của
+    // index từ `pg_catalog` thay vì so chuỗi `pg_indexes.indexdef` — chuỗi đó
+    // còn lẫn schema và `USING btree`, chi tiết không liên quan tới hợp đồng.
+    it('UserAccount có đúng một unique index trên (provider, providerUserId)', async () => {
+      const unique = await db.$queryRaw<{ index_name: string; columns: string }[]>`
+        SELECT i.relname AS index_name,
+               string_agg(a.attname, ',' ORDER BY a.attname) AS columns
+        FROM pg_index x
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_attribute a
+          ON a.attrelid = x.indrelid AND a.attnum = ANY(x.indkey)
+        WHERE x.indrelid = ${'"UserAccount"'}::regclass
+          AND x.indisunique
+          AND NOT x.indisprimary
+        GROUP BY i.relname
+      `;
+      expect(unique.map((row) => row.columns)).toEqual(['provider,providerUserId']);
+    });
+
+    it('xoá user thì bay luôn UserAccount nhờ ON DELETE CASCADE', async () => {
+      const fks = await db.$queryRaw<{ delete_rule: string }[]>`
+        SELECT rc.delete_rule
+        FROM information_schema.referential_constraints rc
+        JOIN information_schema.table_constraints tc
+          ON tc.constraint_name = rc.constraint_name
+         AND tc.constraint_schema = rc.constraint_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND tc.table_name = 'UserAccount'
+          AND tc.constraint_schema = 'public'
+      `;
+      expect(fks.map((row) => row.delete_rule)).toEqual(['CASCADE']);
+    });
+  });
 });

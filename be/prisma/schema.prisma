@@ -27,6 +27,7 @@ model User {
   updatedAt            DateTime  @updatedAt
 
   tokens        UserToken[]
+  accounts      UserAccount[]
   activityDays  ActivityDay[]
   solvedProblems SolvedProblem[]
   favorites     FavoriteProblem[]
@@ -54,6 +55,33 @@ model UserToken {
 
   @@index([userId, type])
   @@index([tokenHash])
+}
+
+// Liên kết user nội bộ với tài khoản ở nhà cung cấp danh tính bên ngoài.
+// Unique (provider, providerUserId) là chốt chặn đăng nhập trùng: cùng một
+// tài khoản Google chỉ được gắn vào đúng một user.
+model UserAccount {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  provider       String
+  providerUserId String
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+// State tạm của một lần chạy luồng OAuth, khoá theo hash để DB không chứa
+// `state`/`codeVerifier` dạng rõ. Không có quan hệ với User: state sinh ra
+// trước lúc biết user nào sẽ đăng nhập.
+model UserOAuthState {
+  stateHash    String    @id
+  codeVerifier String
+  redirectTo   String
+  expiresAt    DateTime
+  usedAt       DateTime?
 }
 
 model Test {

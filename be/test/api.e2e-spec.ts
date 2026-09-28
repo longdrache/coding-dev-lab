@@ -394,6 +394,26 @@ describe('API (e2e)', () => {
       expect(unique.map((row) => row.columns)).toEqual(['provider,providerUserId']);
     });
 
+    // Index thường trên `userId` là đường đi mà mọi truy vấn "danh sách tài
+    // khoản liên kết của user" sẽ dùng. Mất index không làm hỏng tính đúng
+    // đắn nên dễ lọt — task sau vẫn chạy được, chỉ chậm lại dần. Vì vậy phải
+    // canh riêng, tách khỏi test unique ở trên vì `indisunique` ở đây là FALSE.
+    it('UserAccount có đúng một index thường trên (userId)', async () => {
+      const plain = await db.$queryRaw<{ index_name: string; columns: string }[]>`
+        SELECT i.relname AS index_name,
+               string_agg(a.attname, ',' ORDER BY a.attname) AS columns
+        FROM pg_index x
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_attribute a
+          ON a.attrelid = x.indrelid AND a.attnum = ANY(x.indkey)
+        WHERE x.indrelid = ${'"UserAccount"'}::regclass
+          AND NOT x.indisunique
+          AND NOT x.indisprimary
+        GROUP BY i.relname
+      `;
+      expect(plain.map((row) => row.columns)).toEqual(['userId']);
+    });
+
     it('xoá user thì bay luôn UserAccount nhờ ON DELETE CASCADE', async () => {
       const fks = await db.$queryRaw<{ delete_rule: string }[]>`
         SELECT rc.delete_rule

@@ -4,9 +4,35 @@ import {
 import { DatabaseService } from '../database/database.service.ts';
 import { PremiumService } from '../premium/premium.service.ts';
 import type { UserRole } from './auth.types.ts';
+import { GOOGLE_PROVIDER } from './oauth-state.ts';
 import {
   hashPassword, hashToken, newToken, signAccessToken, verifyPassword,
 } from './tokens.ts';
+
+/**
+ * Profile Google đã chuẩn hoá. `emailVerified` là **boolean thật**, không phải
+ * giá trị thô của Google: `googleProfile` ép `email_verified === true` nên mọi
+ * thứ không phải `true` (kể cả chuỗi `"true"` hay `"false"`) đều thành `false`.
+ */
+export type GoogleProfile = {
+  sub: string;
+  email: string;
+  emailVerified: boolean;
+  name: string | null;
+};
+
+/**
+ * Bốn kết cục sau khi đã có profile Google.
+ *
+ * `needs-password` và `conflict` là hai câu trả lời **bắt buộc phải khác nhau**:
+ * gộp lại thì hoặc bị lộ tài khoản nào đã tồn tại, hoặc phải bắt mọi người nhập
+ * mật khẩu kể cả khi đang ghép tài khoản của chính mình.
+ */
+export type LinkResult =
+  | { kind: 'ok'; userId: number }
+  | { kind: 'needs-password'; email: string }
+  | { kind: 'unverified' }
+  | { kind: 'conflict' };
 
 export type PublicUser = {
   id: number; email: string; name: string | null; role: UserRole;
@@ -529,5 +555,130 @@ export class AuthService {
     const user = await this.db.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('Phiên không hợp lệ');
     return this.toPublic(user);
+  }
+
+  /**
+   * Lấy profile từ Google bằng authorization code.
+   *
+   * Trả `null` khi thiếu cấu hình hoặc Google lỗi: đó là tình trạng triển khai,
+   * không phải lỗi của người dùng, nên không được ném 500 làm nút Google báo
+   * "tài khoản của bạn sai" một cách vô lý.
+   */
+  async googleProfile(code: string, codeVerifier: string): Promise<GoogleProfile | null> {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+    if (!clientId || !clientSecret || !redirectUri) {
+      this.logger.warn('Chưa cấu hình GOOGLE_CLIENT_ID/CLIENT_SECRET/REDIRECT_URI — bỏ qua OAuth');
+      return null;
+    }
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+        code_verifier: codeVerifier,
+      }),
+    });
+    if (!res.ok) {
+      this.logger.warn(`Google trả ${res.status} khi đổi code`);
+      return null;
+    }
+    const tok = (await res.json()) as { access_token?: string };
+    if (!tok.access_token) return null;
+
+    const info = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tok.access_token}` },
+    });
+    if (!info.ok) {
+      this.logger.warn(`Google trả ${info.status} khi lấy userinfo`);
+      return null;
+    }
+    const raw = (await info.json()) as {
+      sub?: string;
+      email?: string;
+      email_verified?: boolean;
+      name?: string;
+    };
+    if (!raw.sub || !raw.email) return null;
+    return {
+      sub: raw.sub,
+      email: raw.email,
+      // `=== true`, không phải truthy: JSON của Google không hứa kiểu dữ liệu, và
+      // chuỗi `"false"` thì truthy — dùng phép kiểm tra truthy ở đây là mọi
+      // profile không xác minh đều đi lọt.
+      emailVerified: raw.email_verified === true,
+      name: raw.name ?? null,
+    };
+  }
+
+  /**
+   * Bốn nhánh xử lý tài khoản sau khi đã có profile Google.
+   *
+   * Nhánh `needs-password` là **ranh giới bảo mật**: nếu tự ghép theo email thì
+   * kẻ nào đăng ký Google với email của bạn cũng vào được tài khoản bạn. Nên khi
+   * email đã tồn tại mà người dùng chưa đăng nhập, ta bắt họ đăng nhập bằng
+   * mật khẩu trước — bấm lại nút Google lúc đó sẽ rơi vào nhánh `ok`.
+   *
+   * Khớp theo `sub`, không theo email: `sub` ổn định, email thì Google cho đổi.
+   * Một `sub` chỉ được gắn vào một user (khoá unique `(provider, providerUserId)`
+   * ở DB), nên nếu nó đã thuộc về user khác thì báo `conflict` chứ không ghép lại.
+   */
+  async linkOrCreateFromGoogle(
+    p: GoogleProfile,
+    signedInUserId: number | null,
+  ): Promise<LinkResult> {
+    // `!== true` chứ không phải `!p.emailVerified`: chuỗi `"false"` cũng truthy,
+    // nên phép kiểm tra truthy là mọi profile không xác minh đều qua được cửa
+    // này. Chặn ở đây, trước cả lần tra cặp nào với DB.
+    if (p.emailVerified !== true) return { kind: 'unverified' };
+
+    const existingLink = await this.db.userAccount.findUnique({
+      where: { provider_providerUserId: { provider: GOOGLE_PROVIDER, providerUserId: p.sub } },
+    });
+    if (existingLink) {
+      // Đã đăng nhập mà khác user thì `sub` này đang bị kéo sang tài khoản khác —
+      // trả `conflict` thay vì trả `ok`, kẻ ghép sẽ vào nhầm tài khoản người khác.
+      if (signedInUserId !== null && existingLink.userId !== signedInUserId) {
+        return { kind: 'conflict' };
+      }
+      return { kind: 'ok', userId: existingLink.userId };
+    }
+
+    const byEmail = await this.db.user.findUnique({ where: { email: p.email } });
+    if (byEmail) {
+      // Email đã có mà chưa đăng nhập: KHÔNG ghép, kể cả khi `sub` chưa từng
+      // xuất hiện. Ghép ở đây là lỗ hổng chiếm tài khoản theo email.
+      if (signedInUserId === null) return { kind: 'needs-password', email: p.email };
+      if (byEmail.id !== signedInUserId) return { kind: 'conflict' };
+      await this.db.userAccount.create({
+        data: { userId: byEmail.id, provider: GOOGLE_PROVIDER, providerUserId: p.sub },
+      });
+      return { kind: 'ok', userId: byEmail.id };
+    }
+
+    const created = await this.db.user.create({
+      data: {
+        email: p.email,
+        name: p.name,
+        // Email do Google xác minh rồi, và không có đường nào để gửi mã xác minh
+        // tới hộp thư đó: để `emailVerifiedAt` null thì tài khoản vừa sinh ra sẽ
+        // bị `login` chặn vĩnh viễn.
+        emailVerifiedAt: new Date(),
+        // Không có mật khẩu: user này chỉ dùng Google. `passwordHash` để null —
+        // đó là tín hiệu mà `login` dựa vào để biết tài khoản không đăng nhập
+        // được bằng mật khẩu, và sinh một mật khẩu ngẫu nhiên ở đây là tạo ra
+        // bí mật không ai giữ.
+        role: 'user',
+      },
+    });
+    await this.db.userAccount.create({
+      data: { userId: created.id, provider: GOOGLE_PROVIDER, providerUserId: p.sub },
+    });
+    return { kind: 'ok', userId: created.id };
   }
 }

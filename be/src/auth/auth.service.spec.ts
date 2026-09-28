@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
-import { AuthService } from './auth.service.ts';
+import { AuthService, type GoogleProfile } from './auth.service.ts';
 import * as tokens from './tokens.ts';
 
 // verifyEmail ký access token RS256, tokens.ts nạp khoá lazy và throw nếu thiếu
@@ -17,6 +17,7 @@ afterAll(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 /** Mã xác minh cố định để test biết trước; các lần sinh mã sau vẫn ngẫu nhiên. */
@@ -77,7 +78,7 @@ function sortByOrder(rows: any[], orderBy: any): any[] {
 
 // `any` cố ý: đây là db giả, không phải DatabaseService thật.
 function makeDb(): any {
-  const state: Record<string, any[]> = { user: [], userToken: [] };
+  const state: Record<string, any[]> = { user: [], userToken: [], userAccount: [] };
   return {
     state,
     user: {
@@ -127,13 +128,35 @@ function makeDb(): any {
         return { count: dong.length };
       }),
       deleteMany: vi.fn(async ({ where }: any) => {
-        const keep = state.userToken.filter((t) => !tokenMatches(t, where));
+        const keep = state.userToken.filter((t: any) => !tokenMatches(t, where));
         const count = state.userToken.length - keep.length;
         state.userToken.length = 0;
         state.userToken.push(...keep);
         return { count };
       }),
     },
+    userAccount:
+      // `findUnique` trên UserAccount dùng khoá **compound**
+      // `(provider, providerUserId)`, nên Prisma nhận nó lồng trong
+      // `provider_providerUserId` chứ không phải hai field phẳng. Db giả phải
+      // đọc đúng hình dạng đó: đọc `where.provider` (phẳng) thì luôn trả
+      // `null`, mọi test "khớp theo sub" sẽ xanh vì lý do hoàn toàn khác —
+      // service có thể tra sai cột mà test vẫn không đỏ. Cùng lý do với `orderBy`
+      // ở `sortByOrder`.
+      {
+        findUnique: vi.fn(async ({ where }: any) => {
+          const k = where?.provider_providerUserId;
+          if (!k) return null;
+          return state.userAccount.find(
+            (a) => a.provider === k.provider && a.providerUserId === k.providerUserId,
+          ) ?? null;
+        }),
+        create: vi.fn(async ({ data }: any) => {
+          const r = { id: state.userAccount.length + 1, createdAt: new Date(), ...data };
+          state.userAccount.push(r);
+          return r;
+        }),
+      },
   };
 }
 
@@ -1455,5 +1478,243 @@ describe('hạ VIP hết hạn lúc ký access token', () => {
     const refreshed = await svc.refresh(r.refreshToken, 'UA');
     const claims = await tokens.verifyAccessToken(refreshed!.accessToken);
     expect(claims?.role).toBe('user');
+  });
+});
+
+/**
+ * Profile Google hợp lệ. `sub` là mã định danh bền vững, `email` thì Google cho
+ * người dùng đổi — mọi quyết định ghép tài khoản phải dựa vào `sub`.
+ */
+const GOOGLE_OK = { sub: 'g-1', email: 'a@b.co', emailVerified: true, name: 'A B' };
+
+/**
+ * db giả **trống** + service. Nhánh "email mới" cần đúng trạng thái này, nên
+ * không dùng `seedVerified`: hàm đó đã tạo sẵn user `a@b.co`, và mọi test bắt
+ * đầu từ đó đều rơi vào nhánh "email đã tồn tại" chứ không phải nhánh tạo mới.
+ */
+function makeEmptySvc() {
+  const db = makeDb();
+  return { db, svc: new AuthService(db, { send: async () => {} } as any, makePremium()) };
+}
+
+describe('linkOrCreateFromGoogle', () => {
+  it('email mới thì tạo user đã xác minh và ghi UserAccount', async () => {
+    const { db, svc } = makeEmptySvc();
+    const r = await svc.linkOrCreateFromGoogle(GOOGLE_OK, null);
+    expect(r).toEqual({ kind: 'ok', userId: 1 });
+    // Bỏ `emailVerifiedAt: new Date()` là test này đỏ: user sinh ra từ Google mà
+    // chưa xác minh thì `login` chặn vĩnh viễn — họ không có mật khẩu để tự xác
+    // minh, và cũng không có màn hình nào để bấm.
+    expect(db.state.user[0].emailVerifiedAt).toBeTruthy();
+    expect(db.state.user[0].email).toBe('a@b.co');
+    expect(db.state.user[0].name).toBe('A B');
+    expect(db.state.userAccount[0]).toMatchObject({
+      userId: db.state.user[0].id, provider: 'google', providerUserId: 'g-1',
+    });
+  });
+
+  it('user sinh ra từ Google không có passwordHash', async () => {
+    // Không sinh mật khẩu ngẫu nhiên. `passwordHash = null` là tín hiệu mà cả
+    // `login` (nhánh `burnCompare`) dựa vào để biết "tài khoản này không đăng
+    // nhập được bằng mật khẩu"; điền hash của một mật khẩu không ai giữ vào đó
+    // là tạo ra bí mật mà không ai quản lý, đồng thời làm mất chính tín hiệu
+    // phân biệt đó.
+    const { db, svc } = makeEmptySvc();
+    await svc.linkOrCreateFromGoogle(GOOGLE_OK, null);
+    expect(db.state.user[0].passwordHash ?? null).toBeNull();
+  });
+
+  it('email_verified false thì từ chối, không ghi gì', async () => {
+    const { db, svc } = await seedVerified();
+    // `register` của seed đã gọi `user.create`, nên phải chụp mốc trước thay vì
+    // đòi `not.toHaveBeenCalled()`.
+    const soUser = db.user.create.mock.calls.length;
+    const r = await svc.linkOrCreateFromGoogle({ ...GOOGLE_OK, emailVerified: false }, null);
+    expect(r).toEqual({ kind: 'unverified' });
+    expect(db.state.userAccount).toHaveLength(0);
+    expect(db.user.create).toHaveBeenCalledTimes(soUser);
+  });
+
+  it('email_verified là chuỗi thì vẫn từ chối — chỉ tin đúng `=== true`', async () => {
+    // Google trả JSON nên không hứa kiểu dữ liệu. Nếu kiểm tra truthy thì chuỗi
+    // `"false"` cũng truthy và **mọi** profile không xác minh đều lọt vào — đúng
+    // nhánh bảo mật chính, nên có test riêng chứ không gộp vào case `false`.
+    const { db, svc } = await seedVerified();
+    const soUser = db.user.create.mock.calls.length;
+    const p = { ...GOOGLE_OK, emailVerified: 'true' } as unknown as GoogleProfile;
+    const r = await svc.linkOrCreateFromGoogle(p, null);
+    expect(r).toEqual({ kind: 'unverified' });
+    expect(db.state.userAccount).toHaveLength(0);
+    expect(db.user.create).toHaveBeenCalledTimes(soUser);
+  });
+
+  it('email đã có và đang đăng nhập thì ghép vào user đó', async () => {
+    const { db, svc } = await seedVerified();
+    const id = db.state.user[0].id;
+    const r = await svc.linkOrCreateFromGoogle(GOOGLE_OK, id);
+    expect(r).toEqual({ kind: 'ok', userId: id });
+    expect(db.state.user).toHaveLength(1);
+    expect(db.state.userAccount).toHaveLength(1);
+    expect(db.state.userAccount[0]).toMatchObject({
+      userId: id, provider: 'google', providerUserId: 'g-1',
+    });
+  });
+
+  it('email đã có mà CHƯA đăng nhập thì không ghép — ranh giới bảo mật', async () => {
+    // Tự ghép theo email ở đây là lỗ hổng: kẻ nào đăng ký được một tài khoản
+    // Google mang đúng email của nạn nhân cũng vào thẳng tài khoản đó. Bắt họ
+    // đăng nhập bằng mật khẩu trước là cách duy nhất chứng minh mình giữ tài
+    // khoản; bấm lại nút Google sau đó sẽ rơi vào nhánh `ok`.
+    const { db, svc } = await seedVerified();
+    const r = await svc.linkOrCreateFromGoogle(GOOGLE_OK, null);
+    expect(r).toEqual({ kind: 'needs-password', email: 'a@b.co' });
+    expect(db.state.user).toHaveLength(1);
+    // Không chỉ trả `needs-password`: **không được** ghi UserAccount. Ghi luôn
+    // thì lần sau bấm nút Google là vào thẳng mà không cần mật khẩu nữa — nhánh
+    // `needs-password` trở thành trang trắng.
+    expect(db.state.userAccount).toHaveLength(0);
+  });
+
+  it('khớp theo sub chứ không theo email: sub đã gắn user khác thì báo conflict', async () => {
+    const { db, svc } = await seedVerified();
+    const idA = db.state.user[0].id;
+    // Cần tài khoản thứ hai để thử chuyện gắn sub đã thuộc về A vào tài khoản B.
+    await svc.register('b@b.co', 'matkhau123');
+    const idB = db.state.user[1].id;
+    await db.user.update({ where: { id: idB }, data: { emailVerifiedAt: new Date() } });
+    expect(await svc.linkOrCreateFromGoogle(GOOGLE_OK, idA)).toEqual({ kind: 'ok', userId: idA });
+
+    // Cùng `sub`, nhưng email đã đổi sang của B, và người gọi đang đăng nhập B.
+    const r = await svc.linkOrCreateFromGoogle({ ...GOOGLE_OK, email: 'b@b.co' }, idB);
+    expect(r).toEqual({ kind: 'conflict' });
+    // Sub vẫn phải trỏ về A. Nếu khớp theo email thì B nuốt mất liên kết này —
+    // tức một tài khoản Google duy nhất bị gắn vào hai user khác nhau.
+    expect(db.state.userAccount).toHaveLength(1);
+    expect(db.state.userAccount[0].userId).toBe(idA);
+    // Và phải tra bằng khoá compound thật của Prisma, không phải field phẳng:
+    // đây là hợp đồng với db, và là chỗ duy nhất chống trùng.
+    expect(db.userAccount.findUnique).toHaveBeenCalledWith({
+      where: { provider_providerUserId: { provider: 'google', providerUserId: 'g-1' } },
+    });
+  });
+
+  it('đã gắn rồi thì bấm lại nút Google khi chưa đăng nhập vẫn vào đúng tài khoản cũ', async () => {
+    const { db, svc } = await seedVerified();
+    const id = db.state.user[0].id;
+    await svc.linkOrCreateFromGoogle(GOOGLE_OK, id);
+    // Lần hai không còn phiên — đây đúng là lúc người dùng bấm nút Google để
+    // đăng nhập, nên phải trả về tài khoản đã gắn chứ không phải
+    // `needs-password` (bắt nhập mật khẩu vô ích), và không tạo liên kết thứ hai.
+    const r = await svc.linkOrCreateFromGoogle(GOOGLE_OK, null);
+    expect(r).toEqual({ kind: 'ok', userId: id });
+    expect(db.state.userAccount).toHaveLength(1);
+  });
+});
+
+describe('googleProfile', () => {
+  const ENV = {
+    GOOGLE_CLIENT_ID: 'cid',
+    GOOGLE_CLIENT_SECRET: 'csec',
+    GOOGLE_REDIRECT_URI: 'https://app.go.vn/auth/google/callback',
+  };
+  const KEYS = Object.keys(ENV) as (keyof typeof ENV)[];
+  let truoc: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    truoc = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
+    Object.assign(process.env, ENV);
+    // `googleProfile` log cảnh báo ở các nhánh lỗi; để output của test sạch.
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    for (const k of KEYS) {
+      if (truoc[k] === undefined) delete process.env[k];
+      else process.env[k] = truoc[k];
+    }
+  });
+
+  const res = (body: unknown, ok = true, status = 200) => ({ ok, status, json: async () => body });
+
+  /**
+   * Giả `fetch` theo đúng thứ tự lời gọi và ghi lại từng lời gọi, để test kiểm
+   * được request token có mang `code_verifier` (thiếu nó thì PKCE hỏng, mà
+   * Google chỉ trả 400 — lúc đó mọi assert về kết quả vẫn xanh vì lý do khác)
+   * và để phát hiện service gọi thừa hay gọi sai thứ tự.
+   */
+  function stubFetch(...kq: any[]) {
+    const calls: { url: string; init: any }[] = [];
+    let i = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: any, init: any) => {
+      calls.push({ url: String(url), init });
+      const r = kq[i++];
+      if (!r) throw new Error(`fetch được gọi lần ${i} không có trong kịch bản`);
+      return r;
+    }));
+    return calls;
+  }
+
+  it('thiếu cấu hình thì trả null chứ không ném 500', async () => {
+    // Không cấu hình là tình trạng triển khai, không phải lỗi của người dùng:
+    // ném 500 khiến nút Google báo "tài khoản sai" một cách vô lý.
+    delete process.env.GOOGLE_CLIENT_ID;
+    const calls = stubFetch(res({}), res({}));
+    const { svc } = makeEmptySvc();
+    await expect(svc.googleProfile('code', 'verifier')).resolves.toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('Google trả lỗi khi đổi code thì trả null, không gọi tiếp userinfo', async () => {
+    const calls = stubFetch(res({ error: 'invalid_grant' }, false, 400), res({}));
+    const { svc } = makeEmptySvc();
+    await expect(svc.googleProfile('code', 'verifier')).resolves.toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('lấy được profile thì trả đúng 4 trường, và có mang code_verifier', async () => {
+    const calls = stubFetch(
+      res({ access_token: 'tok' }),
+      res({ sub: 'g-1', email: 'a@b.co', email_verified: true, name: 'A B' }),
+    );
+    const { svc } = makeEmptySvc();
+    await expect(svc.googleProfile('code-1', 'verifier-1')).resolves.toEqual({
+      sub: 'g-1', email: 'a@b.co', emailVerified: true, name: 'A B',
+    });
+    expect(calls.map((c) => c.url)).toEqual([
+      'https://oauth2.googleapis.com/token',
+      'https://openidconnect.googleapis.com/v1/userinfo',
+    ]);
+    const body = String(calls[0].init.body);
+    expect(body).toContain('grant_type=authorization_code');
+    expect(body).toContain('code_verifier=verifier-1');
+    expect(calls[1].init.headers).toMatchObject({ Authorization: 'Bearer tok' });
+  });
+
+  it('email_verified là chuỗi "true" thì thành false — không tin kiểu của Google', async () => {
+    // Lớp thứ hai trước khi tới `linkOrCreateFromGoogle`: chỗ này ép về boolean
+    // thật nên `"true"` không bao giờ đi tiếp được. Sửa `=== true` thành
+    // `raw.email_verified` là test này đỏ.
+    stubFetch(
+      res({ access_token: 'tok' }),
+      res({ sub: 'g-1', email: 'a@b.co', email_verified: 'true', name: 'A B' }),
+    );
+    const { svc } = makeEmptySvc();
+    const p = await svc.googleProfile('code', 'verifier');
+    expect(p?.emailVerified).toBe(false);
+  });
+
+  it('thiếu sub hoặc email thì trả null chứ không làm profile nửa vời', async () => {
+    const { svc } = makeEmptySvc();
+    stubFetch(res({ access_token: 'tok' }), res({ email: 'a@b.co', email_verified: true }));
+    await expect(svc.googleProfile('code', 'verifier')).resolves.toBeNull();
+
+    stubFetch(res({ access_token: 'tok' }), res({ sub: 'g-1', email_verified: true }));
+    await expect(svc.googleProfile('code', 'verifier')).resolves.toBeNull();
+  });
+
+  it('Google trả lỗi khi lấy userinfo thì trả null', async () => {
+    const calls = stubFetch(res({ access_token: 'tok' }), res({}, false, 401));
+    const { svc } = makeEmptySvc();
+    await expect(svc.googleProfile('code', 'verifier')).resolves.toBeNull();
+    expect(calls).toHaveLength(2);
   });
 });

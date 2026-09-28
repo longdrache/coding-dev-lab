@@ -4,9 +4,10 @@ import { AuthMailer } from './auth.mailer.ts';
 import { AuthService, AuthMailPort } from './auth.service.ts';
 import { AuthGuard } from './auth.guard.ts';
 import { DatabaseModule } from '../database/database.module.ts';
+import { PremiumModule } from '../premium/premium.module.ts';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, PremiumModule],
   controllers: [AuthController],
   providers: [
     AuthService,

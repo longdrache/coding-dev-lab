@@ -138,9 +138,21 @@ function makeDb(): any {
 }
 
 /** Đăng ký rồi xác minh email, trả về db giả + service để test dùng tiếp. */
+/** AuthService goi checkAndDowngradeIfExpired khi ky token; mac dinh user chua het han. */
+function makePremium(over: Record<string, unknown> = {}) {
+  return {
+    checkAndDowngradeIfExpired: vi.fn(async () => ({
+      downgraded: false,
+      wasVip: false,
+      expired: false,
+      expiresAt: null,
+      ...over,
+    })),
+  } as any;
+}
 async function seedVerified(email = 'a@b.co') {
   const db = makeDb();
-  const svc = new AuthService(db, { send: async () => {} } as any);
+  const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
   await svc.register(email, 'matkhau123');
   await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
   return { db, svc };
@@ -158,7 +170,7 @@ describe('đăng ký', () => {
   let db: any; let svc: AuthService; let sent: any[];
   beforeEach(() => {
     db = makeDb(); sent = [];
-    svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
   });
 
   it('tạo user chưa xác minh và gửi mail, không cấp phiên', async () => {
@@ -229,7 +241,7 @@ describe('đăng ký', () => {
     const bom = makeDb();
     const svcBom = new AuthService(bom, {
       send: async () => { throw new Error('SMTP chết'); },
-    } as any);
+    } as any, makePremium());
     const r = await svcBom.register('a@b.co', 'matkhau123');
     expect(bom.state.user).toHaveLength(1);
     expect(bom.state.userToken).toHaveLength(1);
@@ -240,7 +252,7 @@ describe('đăng ký', () => {
 describe('xác minh email', () => {
   it('mã đúng thì xác minh xong cấp phiên', async () => {
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     fixVerifyToken();
     await svc.register('a@b.co', 'matkhau123');
     expect(db.state.userToken[0].type).toBe('verify_email');
@@ -256,7 +268,7 @@ describe('xác minh email', () => {
 
   it('mã dùng lần hai trả null vì mã là dùng một lần', async () => {
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     fixVerifyToken();
     await svc.register('a@b.co', 'matkhau123');
     expect(await svc.verifyEmail(MA, 'UA')).not.toBeNull();
@@ -267,7 +279,7 @@ describe('xác minh email', () => {
 
   it('mã sai trả null và không tạo phiên', async () => {
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await expect(svc.verifyEmail('sai', 'UA')).resolves.toBeNull();
     expect(db.state.userToken.filter((t: any) => t.type === 'refresh')).toHaveLength(0);
@@ -276,7 +288,7 @@ describe('xác minh email', () => {
   it('mã xác minh sống đúng 24 giờ kể từ lúc đăng ký', async () => {
     freezeAt('2026-01-01T00:00:00Z');
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     fixVerifyToken();
     await svc.register('a@b.co', 'matkhau123');
     const row = db.state.userToken[0];
@@ -286,7 +298,7 @@ describe('xác minh email', () => {
   it('mã xác minh còn dùng được ở giây thứ 23:59:59', async () => {
     freezeAt('2026-01-01T00:00:00Z');
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     fixVerifyToken();
     await svc.register('a@b.co', 'matkhau123');
 
@@ -298,7 +310,7 @@ describe('xác minh email', () => {
   it('mã xác minh hết hạn thì trả null, không cấp phiên', async () => {
     freezeAt('2026-01-01T00:00:00Z');
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     fixVerifyToken();
     await svc.register('a@b.co', 'matkhau123');
 
@@ -312,7 +324,7 @@ describe('xác minh email', () => {
   // nên refresh token thô đưa vào verifyEmail sẽ xác minh email rồi cấp phiên.
   it('refresh token thô đưa vào verifyEmail thì trả null, không cấp phiên mới', async () => {
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     fixVerifyToken();
     await svc.register('a@b.co', 'matkhau123');
     const session = await svc.verifyEmail(MA, 'UA');
@@ -359,7 +371,7 @@ function quayLai(db: any, gio = 2) {
 async function seedUnverified(email = 'a@b.co') {
   const db = makeDb();
   const sent: any[] = [];
-  const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+  const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
   await svc.register(email, 'matkhau123');
   quayLai(db);
   // Mail xác minh lúc đăng ký đã nằm trong `sent`; đếm lại từ đây.
@@ -370,7 +382,7 @@ describe('gửi lại link xác nhận', () => {
   it('bốn trường hợp trả đúng MỘT câu, giống nhau tuyệt đối', async () => {
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     // Hai tài khoản có thật, khác nhau ở đúng `emailVerifiedAt` — đó là biến duy
     // nhất quyết định có gửi mail hay không. Ba nhánh còn lại là ảo.
     await svc.register('chua-xac-minh@b.co', 'matkhau123');
@@ -531,7 +543,7 @@ describe('gửi lại link xác nhận', () => {
     // mà số IP dùng chung ở Việt Nam gây ra hằng ngày.
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await svc.register('b@b.co', 'matkhau123');
     quayLai(db);
@@ -552,7 +564,7 @@ describe('gửi lại link xác nhận', () => {
     let hong = true;
     const svc = new AuthService(db, {
       send: async () => { if (hong) throw new Error('SMTP chết'); },
-    } as any);
+    } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     quayLai(db);
 
@@ -568,7 +580,7 @@ describe('gửi lại link xác nhận', () => {
 
   it('userAgent dài bị cắt còn 200 ký tự', async () => {
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     quayLai(db);
     await svc.resendVerification('a@b.co', 'U'.repeat(500));
@@ -586,7 +598,7 @@ describe('gửi lại link xác nhận', () => {
     let lan = 0;
     const svc = new AuthService(db, {
       send: () => (lan++ === 0 ? Promise.resolve() : treo),
-    } as any);
+    } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     quayLai(db);
 
@@ -604,7 +616,7 @@ describe('gửi lại link xác nhận', () => {
   it('mailer hỏng thì vẫn trả đúng câu đó, và ghi log chứ không nuốt im lặng', async () => {
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => { throw new Error('SMTP chết'); } } as any);
+    const svc = new AuthService(db, { send: async () => { throw new Error('SMTP chết'); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     quayLai(db);
     warn.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
@@ -636,7 +648,7 @@ describe('đăng nhập', () => {
 
   it('tài khoản chưa xác minh email thì không đăng nhập được', async () => {
     const db = makeDb();
-    const svc = new AuthService(db, { send: async () => {} } as any);
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
     await svc.register('b@b.co', 'matkhau123');
     await expect(svc.login('b@b.co', 'matkhau123', 'UA')).rejects.toMatchObject({ status: 401 });
     expect(db.state.userToken.filter((t: any) => t.type === 'refresh')).toHaveLength(0);
@@ -676,7 +688,7 @@ describe('đăng nhập', () => {
     const spy = vi.spyOn(tokens, 'verifyPassword');
     const { svc } = await seedVerified();
     const chuaXacMinh = makeDb();
-    const svcChuaXacMinh = new AuthService(chuaXacMinh, { send: async () => {} } as any);
+    const svcChuaXacMinh = new AuthService(chuaXacMinh, { send: async () => {} } as any, makePremium());
     await svcChuaXacMinh.register('b@b.co', 'matkhau123');
 
     const moc = spy.mock.calls.length;
@@ -811,7 +823,7 @@ describe('xoay vòng refresh', () => {
   it('mã xác minh email chưa dùng, chưa hết hạn đưa vào refresh thì trả null', async () => {
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     await svc.register('b@b.co', 'matkhau123');
     const raw = sent[0].text.match(/token=([0-9a-f]{64})/)?.[1];
     expect(raw).toBeTruthy();
@@ -962,7 +974,7 @@ const RESET_MSG = 'Nếu email đó có tài khoản, chúng tôi đã gửi lin
 async function seedReset(email = 'a@b.co') {
   const db = makeDb();
   const sent: any[] = [];
-  const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+  const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
   await svc.register(email, 'matkhau123');
   await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
   await svc.forgotPassword(email);
@@ -992,7 +1004,7 @@ describe('quên mật khẩu', () => {
   it('email không tồn tại, chưa xác minh và sai định dạng trả đúng MỘT câu, giống nhau', async () => {
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     // Tài khoản có thật nhưng chưa xác minh: khác email-không-tồn-tại ở chỗ DB có
     // dòng user, nên nếu chỉ kiểm "user có tồn tại" thì lỡ tay gửi mail cho nó.
     await svc.register('chua-xac-minh@b.co', 'matkhau123');
@@ -1038,7 +1050,7 @@ describe('quên mật khẩu', () => {
   it('email viết HOA và có khoảng trắng vẫn ra mã (thiếu .trim()/.toLowerCase() là hỏng)', async () => {
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
 
@@ -1088,7 +1100,7 @@ describe('quên mật khẩu', () => {
     // hộp thư một người. Bỏ `userId` khỏi truy vấn là test này đỏ.
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await svc.register('b@b.co', 'matkhau123');
     for (const u of [0, 1]) {
@@ -1104,7 +1116,7 @@ describe('quên mật khẩu', () => {
   it('mailer hỏng thì vẫn trả đúng câu đó, không lộ lỗi ra ngoài', async () => {
     const bom = makeDb();
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    const svcBom = new AuthService(bom, { send: async () => { throw new Error('SMTP chết'); } } as any);
+    const svcBom = new AuthService(bom, { send: async () => { throw new Error('SMTP chết'); } } as any, makePremium());
     await svcBom.register('a@b.co', 'matkhau123');
     await bom.user.update({ where: { id: bom.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
     const r = await svcBom.forgotPassword('a@b.co');
@@ -1127,7 +1139,7 @@ describe('quên mật khẩu', () => {
     // cả hai thì test hỏng ở `register` chứ không phải ở `forgotPassword`.
     const svc = new AuthService(db, {
       send: (m: any) => (String(m.subject).includes('Đặt lại') ? treo : Promise.resolve()),
-    } as any);
+    } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
 
@@ -1150,7 +1162,7 @@ describe('quên mật khẩu', () => {
     const db = makeDb();
     const svc = new AuthService(db, {
       send: async () => { throw new Error('SMTP chết'); },
-    } as any);
+    } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
     warn.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
@@ -1173,7 +1185,7 @@ describe('quên mật khẩu', () => {
     let hong = true;
     const svc = new AuthService(db, {
       send: async () => { if (hong) throw new Error('SMTP chết'); },
-    } as any);
+    } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
 
@@ -1227,7 +1239,7 @@ describe('đặt lại mật khẩu', () => {
     freezeAt('2026-06-01T00:00:00Z');
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
     const ma = (n: number) => String(
@@ -1258,7 +1270,7 @@ describe('đặt lại mật khẩu', () => {
     freezeAt('2026-06-01T00:00:00Z');
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
     const ma = (n: number) => String(
@@ -1284,7 +1296,7 @@ describe('đặt lại mật khẩu', () => {
   it('mã xác minh email và refresh token đưa vào resetPassword thì trả false', async () => {
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
     const maXacNhan = String(sent[0].text).match(/token=([0-9a-f]{64})/)![1];
@@ -1360,7 +1372,7 @@ describe('đặt lại mật khẩu', () => {
   it('đổi mật khẩu không đụng tài khoản khác', async () => {
     const db = makeDb();
     const sent: any[] = [];
-    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any);
+    const svc = new AuthService(db, { send: async (m: any) => { sent.push(m); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await svc.register('b@b.co', 'matkhau123');
     for (const u of [0, 1]) {
@@ -1388,5 +1400,60 @@ describe('thông tin tài khoản', () => {
   it('tài khoản không còn thì trả 401', async () => {
     const { svc } = await seedVerified();
     await expect(svc.me(999)).rejects.toMatchObject({ status: 401 });
+  });
+});
+describe('hạ VIP hết hạn lúc ký access token', () => {
+  /** Dựng user đã xác minh, role tuỳ ý, kèm premium mock trả về kết quả mong muốn. */
+  async function seedVip(role: string, premiumResult: Record<string, unknown>) {
+    const db = makeDb();
+    const premium = makePremium(premiumResult);
+    const svc = new AuthService(db, { send: async () => {} } as any, premium);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({
+      where: { id: db.state.user[0].id },
+      data: { emailVerifiedAt: new Date(), role, vipExpiresAt: new Date(Date.now() + 86_400_000) },
+    });
+    return { db, svc, premium };
+  }
+
+  it('VIP đã quá hạn: token đăng nhập mang role user chứ không phải vip', async () => {
+    const { svc } = await seedVip('vip', { downgraded: true, wasVip: true, expired: true });
+    const r = await svc.login('a@b.co', 'matkhau123', 'UA');
+    const claims = await tokens.verifyAccessToken(r.accessToken);
+    expect(claims?.role).toBe('user');
+  });
+
+  it('VIP chưa hết hạn: token đăng nhập vẫn mang role vip', async () => {
+    const { svc } = await seedVip('vip', { downgraded: false, wasVip: true, expired: false });
+    const r = await svc.login('a@b.co', 'matkhau123', 'UA');
+    const claims = await tokens.verifyAccessToken(r.accessToken);
+    expect(claims?.role).toBe('vip');
+  });
+
+  it('admin không bị hạ nhầm xuống user', async () => {
+    const { svc } = await seedVip('admin', { downgraded: false, wasVip: false, expired: false });
+    const r = await svc.login('a@b.co', 'matkhau123', 'UA');
+    const claims = await tokens.verifyAccessToken(r.accessToken);
+    expect(claims?.role).toBe('admin');
+  });
+
+  it('hết hạn phải hạ DB trước, không chỉ đổi role trong token', async () => {
+    const { db, svc, premium } = await seedVip('vip', { downgraded: true, wasVip: true, expired: true });
+    await svc.login('a@b.co', 'matkhau123', 'UA');
+    expect(premium.checkAndDowngradeIfExpired).toHaveBeenCalledWith(db.state.user[0].id);
+  });
+
+  it('luôn hỏi trạng thái hạn khi ký token, kể cả user thường', async () => {
+    const { db, svc, premium } = await seedVip('user', { downgraded: false, wasVip: false, expired: false });
+    await svc.login('a@b.co', 'matkhau123', 'UA');
+    expect(premium.checkAndDowngradeIfExpired).toHaveBeenCalledWith(db.state.user[0].id);
+  });
+
+  it('refresh cũng phải hạ VIP hết hạn, không chỉ đăng nhập', async () => {
+    const { svc } = await seedVip('vip', { downgraded: true, wasVip: true, expired: true });
+    const r = await svc.login('a@b.co', 'matkhau123', 'UA');
+    const refreshed = await svc.refresh(r.refreshToken, 'UA');
+    const claims = await tokens.verifyAccessToken(refreshed!.accessToken);
+    expect(claims?.role).toBe('user');
   });
 });

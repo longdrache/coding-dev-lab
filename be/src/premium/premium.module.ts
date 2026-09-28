@@ -8,5 +8,7 @@ import { DatabaseModule } from '../database/database.module.ts';
     imports: [DatabaseModule],
     controllers: [PremiumController],
     providers: [PremiumService],
+    // AuthService goi checkAndDowngradeIfExpired khi ky access token.
+    exports: [PremiumService],
 })
 export class PremiumModule { }

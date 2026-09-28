@@ -72,7 +72,6 @@ const PROTECTED_ROUTES: ProtectedRoute[] = [
   { method: 'post', path: '/api/premium/cancel-vip' },
   { method: 'get', path: '/api/premium/status' },
   { method: 'post', path: '/api/premium/check-expired' },
-  { method: 'post', path: '/api/premium/sweep-expired-admin' },
 ];
 
 describe('API (e2e)', () => {

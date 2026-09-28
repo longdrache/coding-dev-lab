@@ -2,6 +2,7 @@ import {
   BadRequestException, ConflictException, Injectable, Logger, UnauthorizedException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
+import { PremiumService } from '../premium/premium.service.ts';
 import type { UserRole } from './auth.types.ts';
 import {
   hashPassword, hashToken, newToken, signAccessToken, verifyPassword,
@@ -89,7 +90,25 @@ export class AuthService {
   constructor(
     private readonly db: DatabaseService,
     private readonly mail: AuthMailPort,
+    private readonly premium: PremiumService,
   ) {}
+
+  /**
+   * Ký access token với role ĐÚNG tại thời điểm phát hạn.
+   *
+   * checkAndDowngradeIfExpired hạ VIP đã quá hạn trong DB, nên role trả về là
+   * 'user' sau khi hạ và token ký theo đúng role đó. Nhờ vậy quyền truy cập đúng
+   * ngay lần đăng nhập/refresh kế tiếp, không phụ thuộc quét định kỳ có chạy hay không
+   * (trên Vercel serverless setInterval gần như không kêu).
+   *
+   * Chỉ hỏi thêm 1 lượt khi downgraded — lúc đó emoveVip đã ghi role='user'
+   * nên không cần đọc lại DB. Không hạ thì user.role vẫn còn nguyên hiệu lực.
+   * Admin (ole='admin') không đi qua nhánh này vì wasVip sai.
+   */
+  private async roleForToken(userId: number, current: UserRole): Promise<UserRole> {
+    const { downgraded } = await this.premium.checkAndDowngradeIfExpired(userId);
+    return downgraded ? 'user' : current;
+  }
 
   private toPublic(u: Record<string, unknown>): PublicUser {
     const role = String(u.role ?? 'user') as UserRole;
@@ -182,7 +201,10 @@ export class AuthService {
     const user = await this.db.user.update({
       where: { id: row.userId }, data: { emailVerifiedAt: new Date() },
     });
-    const accessToken = await signAccessToken(user.id, (user.role as UserRole) ?? 'user');
+    const accessToken = await signAccessToken(
+      user.id,
+      await this.roleForToken(user.id, (user.role as UserRole) ?? 'user'),
+    );
     const refreshToken = await this.issueRefresh(user.id, userAgent);
     return { accessToken, refreshToken, user: this.toPublic(user) };
   }
@@ -298,7 +320,10 @@ export class AuthService {
     if (!(await verifyPassword(String(password ?? ''), user.passwordHash))) this.denyCredentials();
     if (!user.emailVerifiedAt) this.denyCredentials();
 
-    const accessToken = await signAccessToken(user.id, (user.role as UserRole) ?? 'user');
+    const accessToken = await signAccessToken(
+      user.id,
+      await this.roleForToken(user.id, (user.role as UserRole) ?? 'user'),
+    );
     const refreshToken = await this.issueRefresh(user.id, userAgent);
     await this.trimSessions(user.id);
     return { accessToken, refreshToken, user: this.toPublic(user) };
@@ -364,7 +389,10 @@ export class AuthService {
         expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
       },
     });
-    const accessToken = await signAccessToken(user.id, (user.role as UserRole) ?? 'user');
+    const accessToken = await signAccessToken(
+      user.id,
+      await this.roleForToken(user.id, (user.role as UserRole) ?? 'user'),
+    );
     return { accessToken, refreshToken: fresh, user: this.toPublic(user) };
   }
 

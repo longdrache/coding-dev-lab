@@ -20,7 +20,7 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "test:e2e": "node scripts/guard-e2e-db.mjs && vitest run --config ./vitest.config.e2e.ts",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate && prisma skills sync || exit 0"
   },

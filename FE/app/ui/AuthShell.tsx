@@ -15,7 +15,14 @@ export default function AuthShell({
   title,
   children,
 }: {
-  kicker: string;
+  /**
+   * Nhãn mono phía trên tiêu đề, dạng `// welcome back`.
+   *
+   * **Không bắt buộc** — màn đăng nhập, đăng ký và xác nhận email đã bỏ hẳn.
+   * `DESIGN.md` từng ghim nhãn mono, nhưng ở màn auth nó đọc như chữ trang trí
+   * lơ lửng không nói gì; bỏ đi thì màn gọn hơn mà không mất thông tin nào.
+   */
+  kicker?: string;
   title: string;
   children: ReactNode;
 }) {
@@ -33,8 +40,11 @@ export default function AuthShell({
       <div className="relative mx-auto grid min-h-screen max-w-5xl items-center gap-10 px-6 py-12 lg:grid-cols-[1fr_auto]">
         <div>
           <Logo />
-          <p className="mt-8 font-mono text-xs font-medium text-emerald-600">{kicker}</p>
-          <h1 className="mt-3 max-w-md font-display text-3xl font-bold leading-tight tracking-tight text-zinc-950 sm:text-4xl">
+          {/* Không render dòng trống khi màn bỏ kicker. */}
+          {kicker && (
+            <p className="mt-8 font-mono text-xs font-medium text-emerald-600">{kicker}</p>
+          )}
+          <h1 className={`${kicker ? "mt-3" : "mt-8"} max-w-md font-display text-3xl font-bold leading-tight tracking-tight text-zinc-950 sm:text-4xl`}>
             {title}
           </h1>
           <ul className="mt-6 space-y-3">

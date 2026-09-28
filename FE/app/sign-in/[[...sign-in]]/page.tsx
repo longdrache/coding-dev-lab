@@ -28,7 +28,7 @@ export default async function SignInPage({
   const redirectTo = safeRedirect(Array.isArray(redirect_url) ? redirect_url[0] : redirect_url);
 
   return (
-    <AuthShell kicker="// welcome back" title="Chào mừng trở lại sân luyện.">
+    <AuthShell title="Chào mừng trở lại sân luyện.">
       <AuthForm mode="signin" redirectTo={redirectTo} />
     </AuthShell>
   );

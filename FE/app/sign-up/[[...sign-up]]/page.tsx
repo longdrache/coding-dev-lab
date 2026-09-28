@@ -31,7 +31,7 @@ export default async function SignUpPage({
   const redirectTo = safeRedirect(Array.isArray(redirect_url) ? redirect_url[0] : redirect_url);
 
   return (
-    <AuthShell kicker="// join_56_bai" title="Tạo tài khoản, giải bài đầu tiên hôm nay.">
+    <AuthShell title="Tạo tài khoản, giải bài đầu tiên hôm nay.">
       {raw ? (
         <VerifyEmail token={raw} redirectTo={redirectTo} />
       ) : (

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CircleAlert, LoaderCircle, MailCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CircleAlert, LoaderCircle } from "lucide-react";
 import { verifyEmailToken } from "@/lib/auth-form";
 import { useSession } from "./AuthProvider";
-import { BODY, CARD, FOOTER, FOOTER_LINK, KICKER, PRIMARY, SPINNER, TITLE } from "./auth-tokens";
+import { BODY, CARD, FOOTER, FOOTER_LINK, PRIMARY, SPINNER, TITLE } from "./auth-tokens";
 
 /**
  * Màn hiện ra khi mở link xác nhận trong mail.
@@ -31,6 +32,7 @@ export default function VerifyEmail({
   redirectTo?: string;
 }) {
   const { refresh, user } = useSession();
+  const router = useRouter();
   const [state, setState] = useState<"busy" | "ok" | "bad">("busy");
   const [message, setMessage] = useState("");
 
@@ -56,6 +58,10 @@ export default function VerifyEmail({
         return;
       }
       setState("ok");
+      // Vào luôn, không dừng ở màn "thành công" rồi bắt bấm thêm một cái. Chỉ
+      // đợi một nhịp để chữ "Đang xác nhận" không nhảy thẳng sang trang mới —
+      // nếu không người dùng thấy màn trắng rồi mới hiện trang đích.
+      window.setTimeout(() => router.replace(redirectTo), 600);
     })();
   }, [token, refresh]);
 
@@ -71,7 +77,6 @@ export default function VerifyEmail({
     <div className={CARD}>
       {shown === "busy" && (
         <>
-          <p className={KICKER}>{"// verifying"}</p>
           <h2 className={TITLE}>Đang xác nhận email</h2>
           <p className={BODY}>
             <LoaderCircle aria-hidden className={`${SPINNER} mr-1.5 inline-block align-[-2px]`} />
@@ -82,21 +87,15 @@ export default function VerifyEmail({
 
       {shown === "ok" && (
         <>
-          <p className={KICKER}>{"// verified"}</p>
-          <h2 className={TITLE}>Đã xác nhận, vào sân luôn</h2>
+          <h2 className={TITLE}>Đã xác nhận, đang vào…</h2>
           <p className={BODY}>
-            Tài khoản đã sẵn sàng. Đang đưa bạn về trang chủ để luyện tiếp bài đầu tiên hôm nay.
+            Tài khoản đã sẵn sàng. Đang đưa bạn tới trang đã chọn.
           </p>
-          <Link href={redirectTo} className={`${PRIMARY} mt-5`}>
-            <MailCheck aria-hidden className="size-4" />
-            Vào sân luyện
-          </Link>
         </>
       )}
 
       {shown === "bad" && (
         <>
-          <p className={KICKER}>{"// link_expired"}</p>
           <h2 className={TITLE}>Link này không dùng được nữa</h2>
           <p className={BODY}>{message}</p>
           <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">

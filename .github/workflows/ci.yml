@@ -86,6 +86,23 @@ jobs:
   backend:
     name: Backend checks
     runs-on: ubuntu-latest
+    # e2e cần Postgres that. Khong dung Neon production: test ghi vao DB that.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gocode_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode_test
     defaults:
       run:
         working-directory: be
@@ -114,6 +131,17 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      # e2e: migration nen tao du 13 bang, can seed de co du lieu de test.
+      # Spec tu sinh cap khoa RSA nen khong can ADMIN_JWT_* o day.
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy
+
+      - name: Seed problems
+        run: node scripts/seed-problems.ts
+
+      - name: Test (e2e)
+        run: pnpm test:e2e
 
       - name: Build
         run: pnpm build

@@ -2,12 +2,22 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { generateKeyPairSync } from 'node:crypto';
 import { PrismaClient } from './../src/generated/prisma/client.ts';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { generateKeyPair, SignJWT } from 'jose';
 import { AppModule } from './../src/app.module.ts';
 import { signAccessToken } from './../src/auth/tokens.ts';
 import type { UserRole } from './../src/auth/auth.types.ts';
+
+// `tokens.ts` đọc khoá RSA một cách lazy, nên đặt ở đây (sau các import, trước
+// lúc ký token đầu tiên) là đủ. Nếu biến đã có sẵn thì giữ nguyên, để chạy
+// local vẫn dùng khoá trong `be/.env`.
+if (!process.env.ADMIN_JWT_PRIVATE_KEY || !process.env.ADMIN_JWT_PUBLIC_KEY) {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  process.env.ADMIN_JWT_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+  process.env.ADMIN_JWT_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+}
 
 /**
  * `AuthGuard` chỉ xác minh chữ ký RS256 rồi đọc claim `sub`/`role`, KHÔNG tra

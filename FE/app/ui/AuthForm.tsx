@@ -116,7 +116,6 @@ export default function AuthForm({
       // cần heading có khoảng trên rộng hơn khoảng dưới, mà `space-y-4 > *` thắng
       // `mt-2.5` về độ ưu tiên nên không dùng chung được hai kiểu.
       <div className={CARD}>
-        <p className={KICKER}>{"// check your inbox"}</p>
         <h2 className={TITLE}>Kiểm tra hộp thư</h2>
         <p className={BODY}>
           Mình vừa gửi link xác nhận tới{" "}
@@ -164,7 +163,6 @@ export default function AuthForm({
     const wentToProblem = redirectTo !== "/";
     return (
       <div className={CARD}>
-        <p className={KICKER}>{"// signed in"}</p>
         <h2 className={TITLE}>Đã đăng nhập</h2>
         <p className={BODY}>
           {wentToProblem

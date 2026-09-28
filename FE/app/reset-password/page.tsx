@@ -75,7 +75,6 @@ function ResetForm() {
   if (done) {
     return (
       <div className={CARD}>
-        <p className={KICKER}>{"// done"}</p>
         <h2 className={TITLE}>Đã đổi mật khẩu</h2>
         <p className={BODY}>
           Mọi phiên đang mở trên các thiết bị khác đã bị đóng. Đang đưa bạn sang trang đăng
@@ -157,7 +156,6 @@ const CARD = "w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-6 sh
  * `letterSpacing: 0.04em` cho mono-label. `emerald-700` (5.5:1) thay vì
  * `emerald-600` (3.8:1) vì nhãn này nhỏ — cần mức tương phản của chữ thường.
  */
-const KICKER = "font-mono text-xs font-medium uppercase tracking-wide text-emerald-700";
 const TITLE = "mt-2.5 font-display text-xl font-bold tracking-tight text-zinc-950";
 const BODY = "mt-2 text-sm leading-relaxed text-zinc-600";
 const INPUT =

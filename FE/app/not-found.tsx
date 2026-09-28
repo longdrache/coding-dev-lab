@@ -27,9 +27,6 @@ export default function NotFound() {
           <Logo />
         </div>
 
-        <p className="mt-10 font-mono text-xs font-medium tracking-widest text-emerald-600">
-          {"// lỗi 404 — không tìm thấy trang"}
-        </p>
         <h1 className="mt-4 font-display text-[96px] font-black leading-none tracking-tight text-zinc-950 sm:text-[150px]">
           4<span className="text-emerald-500">0</span>4
         </h1>

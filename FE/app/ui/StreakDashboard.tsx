@@ -16,7 +16,11 @@ export default function StreakDashboard() {
   const { data, loading } = useDashboard();
   const { problems: dbProblems } = useProblems();
   const problems = dbProblems ?? [];
-  const streak = data?.streak ?? 0;
+  // Đừng rơi về `0` khi chưa tải xong: `useDashboard` trả `data: null` lúc phiên
+  // còn đang đọc, và `?? 0` khiến tài khoản mới vừa đăng nhập thấy chuỗi 0
+  // ngay cả khi backend sẽ trả 1. Số 0 là một khẳng định ("chưa luyện ngày nào"),
+  // không phải một trạng thái chờ — nên nó phải chờ dữ liệu rồi mới hiện.
+  const streak = data ? data.streak : null;
   const solved = data?.solved;
   const heatmap = data?.heatmap ?? [];
   const badges = data?.badges;
@@ -80,7 +84,7 @@ export default function StreakDashboard() {
     { days: 14, label: "14 ngày", badge: "Kỷ luật" },
     { days: 30, label: "30 ngày", badge: "Bền bỉ" },
   ] as const;
-  const nextMilestone = MILESTONES.find((m) => m.days > streak);
+  const nextMilestone = MILESTONES.find((m) => m.days > (streak ?? 0));
 
   // đề xuất & tiến độ theo chủ đề
   const solvedSlugs = new Set(solved?.slugs ?? []);
@@ -105,14 +109,23 @@ export default function StreakDashboard() {
       {/* Streak large card - tự động điểm danh khi đăng nhập */}
       <div className="rounded-3xl border border-orange-200 bg-gradient-to-br from-orange-50/60 via-white to-amber-50/40 p-6 shadow-sm md:p-7">
             <div className="flex items-baseline gap-3">
-              <span className="text-5xl font-black tracking-tight text-zinc-900">{streak}</span>
+              {streak === null ? (
+                <span
+                  aria-hidden
+                  className="inline-block h-11 w-16 animate-pulse rounded-lg bg-zinc-200 motion-reduce:animate-none"
+                />
+              ) : (
+                <span className="text-5xl font-black tracking-tight text-zinc-900">{streak}</span>
+              )}
               <Flame className="size-9 fill-orange-500 text-orange-500" />
               <span className="text-xl font-bold tracking-tight text-zinc-700">ngày liên tiếp</span>
             </div>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-zinc-600">
-              {streak > 0
-                ? `Xuất sắc! Chuỗi ${streak} ngày liên tiếp — hôm nay đã điểm danh, phong độ đang vững vàng.`
-                : `Chuỗi hiện tại đã đứt. Đăng nhập hôm nay để bắt đầu lại từ 1 ngày.`}
+              {streak === null
+                ? " "
+                : streak > 0
+                  ? `Xuất sắc! Chuỗi ${streak} ngày liên tiếp — hôm nay đã điểm danh, phong độ đang vững vàng.`
+                  : `Chuỗi hiện tại đã đứt. Đăng nhập hôm nay để bắt đầu lại từ 1 ngày.`}
             </p>
 
             <p className="mt-6 font-mono text-xs uppercase tracking-widest text-zinc-400">
@@ -143,7 +156,7 @@ export default function StreakDashboard() {
                 <span className="inline-flex items-center gap-1.5">
                   <Trophy className="size-4 text-amber-500" /> Mốc tiếp theo:{" "}
                   <b className="text-zinc-900">{nextMilestone.label}</b> (+Huy hiệu {nextMilestone.badge})
-                  <span className="text-zinc-400">— còn {nextMilestone.days - streak} ngày</span>
+                  <span className="text-zinc-400">— còn {nextMilestone.days - (streak ?? 0)} ngày</span>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-emerald-600">

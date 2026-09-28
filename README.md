@@ -9,7 +9,7 @@ streak/heatmap, gói Premium (Stripe), trang quản trị riêng.
 
 ```
 ┌─────────┐  ┌─────────┐
-│   FE    │  │  Admin  │   Next.js 16 + React 19 (Clerk auth / JWT cookie)
+│   FE    │  │  Admin  │   Next.js 16 + React 19 (custom auth / JWT cookie)
 │  :3000  │  │  :3001  │
 └────┬────┘  └────┬────┘
      │            │  BFF proxy (admin, cùng-domain cookie)
@@ -20,7 +20,7 @@ streak/heatmap, gói Premium (Stripe), trang quản trị riêng.
 │    :4000            │      │  :2358   │  auth X-Auth-Token (judge0.conf)
 └────────┬────────────┘      └──────────┘
          │ Prisma 7                    ┌──────────┐
-         ▼                             │ Clerk    │  auth user
+          ▼                             │ Auth     │  local user + token
 ┌─────────────────────┐                ├──────────┤
 │  Neon (Postgres)    │                │ Stripe   │  Premium + webhook
 └─────────────────────┘                └──────────┘
@@ -37,7 +37,7 @@ streak/heatmap, gói Premium (Stripe), trang quản trị riêng.
 - **Sân luyện**: editor Monaco, chạy test mẫu + nộp bài chấm test ẩn, lịch sử submissions
 - **Tiến độ**: streak, heatmap, huy hiệu, tiến độ theo 8 chủ đề, đã giải/yêu thích đồng bộ server
 - **Premium**: gói ngày/tuần/năm qua Stripe, tự hết hạn + hạ VIP, webhook idempotent
-- **Bảo mật**: Clerk JWT, admin RS256 riêng, throttle (login/QNA 5, submit 10/phút), validate mọi input, Judge0 có token
+- **Bảo mật**: bcrypt, access token RS256 15 phút + refresh token xoay vòng theo từng thiết bị, admin RS256 riêng, throttle (login 30/15 phút, register 20/giờ), validate mọi input, Judge0 có token
 
 ## Chạy local
 
@@ -48,12 +48,13 @@ Yêu cầu: Node 20+, pnpm 10, Judge0 (Docker) hoặc dùng Judge0 sẵn có.
 pnpm --dir be install && pnpm --dir FE install && pnpm --dir admin install
 
 # 2. Env: copy be/.env.example, FE/.env.example, admin/.env.example thành .env
-#    Điền: DATABASE_URL (Neon), CLERK_*, STRIPE_*, JUDGE0_URL, JUDGE0_API_TOKEN,
-#    ADMIN_EMAIL, ADMIN_PASSWORD_HASH, ADMIN_JWT_PRIVATE_KEY / PUBLIC_KEY, CRON_SECRET
+#    Điền: DATABASE_URL, DATABASE_URL_UNPOOLED, STRIPE_*, JUDGE0_URL, JUDGE0_API_TOKEN,
+#    ADMIN_EMAIL, ADMIN_PASSWORD_HASH, ADMIN_JWT_PRIVATE_KEY / PUBLIC_KEY,
+#    EMAIL_HOST, EMAIL_USERNAME, EMAIL_PASSWORD, FRONTEND_URL
 
-# 3. Đẩy schema + seed 56 đề
-pnpm --dir be prisma db push
-pnpm --dir be exec tsx scripts/seed-problems.ts
+# 3. Đẩy schema (1 migration nền tạo đủ 13 bảng) + seed 56 đề
+pnpm --dir be prisma migrate deploy
+pnpm --dir be node scripts/seed-problems.ts
 
 # 4. Chạy (BE + FE, thêm admin khi cần)
 pnpm dev            # BE :4000 + FE :3000
@@ -65,9 +66,9 @@ Tài khoản admin mặc định dev: `admin` / `admin` (đặt `ADMIN_PASSWORD_
 ## Deploy (Vercel)
 
 - FE, Admin, BE là 3 project Vercel riêng (BE chạy qua `be/api/index.ts`).
-- Env bắt buộc trên BE: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `CLERK_SECRET_KEY`,
+- Env bắt buộc trên BE: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `JUDGE0_URL`, `JUDGE0_API_TOKEN`,
-  `ADMIN_*`, `CRON_SECRET`, `FRONTEND_URL`, `FRONTEND_ADMIN_URL`, `MAIL_API_TOKEN`.
+  `ADMIN_*`, `FRONTEND_URL`, `FRONTEND_ADMIN_URL`, `EMAIL_*` (hoặc `MAIL_API_TOKEN`).
 - Stripe webhook trỏ tới `https://<be>/api/premium/webhook`.
 
 ## Bảo mật Judge0 (VM riêng)
@@ -91,12 +92,12 @@ Có thể siết thêm: `MAX_QUEUE_SIZE=50` cho VM yếu. Chi tiết: `be/README
 | --- | ---- | ----- |
 | `GET /api/problems` | public | Danh sách đề đã duyệt |
 | `GET /api/problems/:slug` | public | Chi tiết đề (ẩn test ẩn) |
-| `POST /api/problems/:slug/submit` | Clerk | Chấm test ẩn, lưu lịch sử + đã giải |
-| `POST /api/submissions/batch` | Clerk | Gửi batch lên Judge0 |
-| `GET /api/submissions/batch?tokens=` | Clerk | Poll kết quả |
-| `GET/POST /api/history` | Clerk | Lịch sử nộp bài |
-| `GET /api/progress/solved`, `/favorites` | Clerk | Tiến độ user |
-| `POST /api/premium/checkout`, `/webhook` | Clerk / Stripe | Thanh toán |
+| `POST /api/problems/:slug/submit` | JWT cookie | Chấm test ẩn, lưu lịch sử + đã giải |
+| `POST /api/submissions/batch` | JWT cookie | Gửi batch lên Judge0 |
+| `GET /api/submissions/batch?tokens=` | JWT cookie | Poll kết quả |
+| `GET/POST /api/history` | JWT cookie | Lịch sử nộp bài |
+| `GET /api/progress/solved`, `/favorites` | JWT cookie | Tiến độ user |
+| `POST /api/premium/checkout`, `/webhook` | JWT cookie / Stripe | Thanh toán |
 | `POST /api/qna` | public (throttle) | Gửi câu hỏi |
 | `POST /api/admin/login` | admin | Đăng nhập admin (throttle 5/phút) |
 
@@ -107,11 +108,7 @@ Có thể siết thêm: `MAX_QUEUE_SIZE=50` cho VM yếu. Chi tiết: `be/README
 
 ## Tech stack
 
-FE: Next.js 16, React 19, TypeScript, Tailwind v4, shadcn, Clerk, SWR, R3F, Framer Motion,
+FE: Next.js 16, React 19, TypeScript, Tailwind v4, shadcn, SWR, R3F, Framer Motion,
 GSAP, Monaco • BE: NestJS 12, Prisma 7, Neon Postgres, Stripe, Nodemailer/Mailtrap •
 Infra: Vercel, pnpm, Judge0 Docker
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 6c3dd219656d6bdb199c2654594bf11f25c3d589

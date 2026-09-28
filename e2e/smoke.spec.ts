@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-// Trước đây không test `/` vì route render client-side trong ClerkProvider và
-// ClerkJS không init được ở headless. Clerk đã gỡ trọn vẹn nên `/` phải render
-// được — đó đúng là lỗi từng làm hỏng app ("useUser can only be used within
-// the <ClerkProvider />") nên phải có test canh.
+// `/` trước đây không được test vì route render client-side và bọc hook auth của
+// bên thứ ba nên không khởi tạo được ở headless. Auth tự quản lý đã thay thế
+// nên `/` phải render được — đó đúng là lỗi từng làm hỏng trang chủ, nên phải
+// có test canh.
 
 test('landing render tiêu đề', async ({ page }) => {
   await page.goto('/');

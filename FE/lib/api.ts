@@ -113,9 +113,17 @@ export function commitSession(
  * đăng nhập thì `/me` trả 401 và đó là câu trả lời đúng. Vì vậy chỉ `2xx` mới
  * được coi là "có phiên", còn lại trả `null` chứ không ném — nếu ném thì mọi
  * khách đều thấy một lỗi đỏ giả tưởng là hỏng.
+ *
+ * Riêng `5xx` thì **phải ném**, khác với 401/403. Đây là lỗi tạm của server, không
+ * phải "phiên đã hết" — trả `null` sẽ khiến `AuthProvider` xoá user và đá người
+ * đã đăng nhập ra khỏi trang, chỉ vì Neon chập chờn một giây. Chỗ này trước đây
+ * gộp chung mọi status không 2xx nên `try/catch` ở `AuthProvider` không che được.
  */
 export async function currentSession(): Promise<SessionPayload | null> {
   const res = await fetch(ME_URL, { credentials: "include" });
+  if (res.status >= 500) {
+    throw new Error(`Phiên kiểm tra lỗi ${res.status} — lỗi tạm, đừng coi là hết phiên`);
+  }
   if (!res.ok) return null;
   const data = await readJson(res);
   if (!data.user) return null;

@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
 import { PremiumService } from '../premium/premium.service.ts';
+import { markAttendanceToday } from '../activity/activity.service.ts';
 import type { UserRole } from './auth.types.ts';
 import { GOOGLE_PROVIDER, STATE_TTL_MS, consumeState, createState } from './oauth-state.ts';
 import {
@@ -334,6 +335,11 @@ export class AuthService implements OnModuleInit {
    * `trimSessions` để **ngoài** hàm này: `login` cắt phiên cũ còn
    * `verifyEmail` thì không, và việc đó là hành vi đã có sẵn. `refresh` không
    * đi qua đây vì nó xoay vòng dòng phiên sẵn có chứ không tạo dòng mới.
+   *
+   * Đây cũng là chỗ duy nhất đánh dấu ngày đầu tiên user **thật sự** vào app:
+   * `verifyEmail`, `login` và callback Google đều đi qua đây, còn `register`
+   * thì không — lúc ghi bản ghi tài khoản còn chưa xác minh, chưa có phiên, và
+   * đặt trước thì một tài khoản bỏ dở không xác minh cũng "đã chơi 1 ngày".
    */
   private async issueSession(
     user: { id: number; role?: unknown },
@@ -341,6 +347,15 @@ export class AuthService implements OnModuleInit {
   ): Promise<{ accessToken: string; refreshToken: string }> {
     const accessToken = await this.signFor(user);
     const refreshToken = await this.issueRefresh(user.id, userAgent);
+    // Điểm danh ngày đầu. Nhờ `update: {}` + `@@unique([userId, date])` nên
+    // đăng nhập lại bao nhiêu lần, tài khoản cũ có sẵn chuỗi ngày, và client gọi
+    // `/api/activity/login` song song — tất cả đều không làm streak nhảy lên 2.
+    // Lỗi ở đây chỉ mất điểm danh, không được làm hỏng lúc đăng nhập.
+    try {
+      await markAttendanceToday(this.db, user.id);
+    } catch (e) {
+      this.logger.error(`Ghi điểm danh ngày cho user ${user.id} lỗi`, e as Error);
+    }
     return { accessToken, refreshToken };
   }
 

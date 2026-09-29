@@ -39,18 +39,55 @@ function formatKey(date: Date): string {
   return `${day}-${month}-${year}`;
 }
 
+/**
+ * Chỉ cần `activityDay.upsert` — không cần cả `DatabaseService`. Cấu hình kiểu
+ * vậy để hàm này nhận được cả client Prisma thật lẫn db giả trong test mà không
+ * phải cast.
+ */
+type AttendanceStore = {
+  activityDay: {
+    upsert(args: {
+      where: { userId_date: { userId: number; date: Date } };
+      create: { userId: number; date: Date; count: number };
+      update: Record<string, never>;
+    }): Promise<unknown>;
+  };
+};
+
+/**
+ * Đánh dấu "hôm nay user đã vào app": tạo dòng `ActivityDay` **nếu chưa có**,
+ * và **không đụng** vào dòng đã có.
+ *
+ * Đây là nguồn sự thật duy nhất của nguyên tắc điểm danh — `ActivityService.recordLogin`
+ * (gọi từ FE) và `AuthService.issueSession` (gọi khi cấp phiên) cùng đi qua đây.
+ * Hai chỗ tự viết upsert riêng thì sẽ lệch `update: {}` với nhau, và chỗ sai
+ * là chỗ **ghi đè mất** số lượt chạy thật của hôm nay.
+ *
+ * Vì sao `update: {}` là mấu chốt chống "thành 2":
+ * - `@@unique([userId, date])` khiến một ngày chỉ có **một** dòng, nên gọi bao
+ *   nhiêu lần trong ngày cũng không sinh dòng thứ hai.
+ * - `update: {}` khiến dòng đã có giữ nguyên `count` — tài khoản cũ đã giải bài
+ *   hôm nay không bị đè về 0, và chuỗi nhiều ngày của họ không bị reset.
+ *
+ * Lưu ý: streak **không** phải một cột nào đó, nó luôn được `calcStreakFromMap`
+ * tính lại từ các dòng ở đây. Nên "đặt streak = 1" thực chất là "bảo đảm có
+ * dòng của hôm nay", và chỉ ngày đầu mới tạo được dòng đó.
+ */
+export async function markAttendanceToday(db: AttendanceStore, userId: number): Promise<void> {
+  const date = toDateOnly(todayKeyVietnam());
+  await db.activityDay.upsert({
+    where: { userId_date: { userId, date } },
+    create: { userId, date, count: 0 },
+    update: {},
+  });
+}
+
 @Injectable()
 export class ActivityService {
   constructor(private readonly db: DatabaseService) {}
 
   async recordLogin(userId: number, meta?: { ip?: string; country?: string }) {
-    const key = todayKeyVietnam();
-    const date = toDateOnly(key);
-    await this.db.activityDay.upsert({
-      where: { userId_date: { userId, date } },
-      create: { userId, date, count: 0 },
-      update: {},
-    });
+    await markAttendanceToday(this.db, userId);
     // Log lần đăng nhập + quốc gia. Chống spam: bỏ qua nếu đã có dòng
     // trong 1h qua, TRỪ khi quốc gia đổi (đi nước khác/bật VPN thì vẫn ghi)
     try {

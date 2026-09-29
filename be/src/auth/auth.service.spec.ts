@@ -2,6 +2,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { AuthService, type GoogleProfile } from './auth.service.ts';
+import { calcStreakFromMap } from '../progress/progress.service.ts';
 import * as tokens from './tokens.ts';
 
 // verifyEmail ký access token RS256, tokens.ts nạp khoá lazy và throw nếu thiếu
@@ -78,7 +79,7 @@ function sortByOrder(rows: any[], orderBy: any): any[] {
 
 // `any` cố ý: đây là db giả, không phải DatabaseService thật.
 function makeDb(): any {
-  const state: Record<string, any[]> = { user: [], userToken: [], userAccount: [], userOAuthState: [] };
+  const state: Record<string, any[]> = { user: [], userToken: [], userAccount: [], userOAuthState: [], activityDay: [] };
   return {
     state,
     user: {
@@ -157,6 +158,34 @@ function makeDb(): any {
           return r;
         }),
       },
+    // `ActivityDay` có `@@unique([userId, date])` nên db giả phải **tra chính
+    // khoá đó** chứ không tự thêm dòng: nếu upsert cứ create thì "đăng nhập lại
+    // thành 2" sẽ xanh trong khi Postgres thật sẽ ném P2002. `update` rỗng thì
+    // dòng cũ giữ nguyên — đó chính là câu hỏi "tài khoản cũ có bị reset không".
+    activityDay: {
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const { userId, date } = where.userId_date;
+        const existing = state.activityDay.find(
+          (r) => r.userId === userId && r.date.getTime() === date.getTime(),
+        );
+        if (existing) {
+          if (update?.count?.increment !== undefined) existing.count += update.count.increment;
+          Object.assign(existing, update?.set ?? {});
+          return existing;
+        }
+        const r = { id: String(state.activityDay.length + 1), userId, date, count: 0, ...create };
+        state.activityDay.push(r);
+        return r;
+      }),
+      findMany: vi.fn(async ({ where }: any) => {
+        let rows = state.activityDay;
+        if (where?.userId !== undefined) rows = rows.filter((r) => r.userId === where.userId);
+        if (where?.date?.gte !== undefined) {
+          rows = rows.filter((r) => r.date.getTime() >= where.date.gte.getTime());
+        }
+        return rows;
+      }),
+    },
     userOAuthState:
       // `oauth-state.ts` tra bằng khoá chính `stateHash` (lưu dạng hash) và **xoá
       // hẳn** dòng khi ăn state, nên db giả phải có `deleteMany` chứ không có
@@ -2229,5 +2258,108 @@ describe('quét state OAuth hết hạn', () => {
     svc.onModuleInit();
     await expect(vi.advanceTimersByTimeAsync(30_000)).resolves.not.toThrow();
     expect(Logger.prototype.error).toHaveBeenCalled();
+  });
+});
+
+describe('điểm danh ngày đầu: streak tài khoản mới', () => {
+  /**
+   * `keyOf` là `formatKey` mà `ActivityService.getMap` dùng để dựng map
+   * mà `calcStreakFromMap` đọc. Test phải đi qua đúng hàm số streak thật —
+   * không tự đếm "1 dòng" rồi kết luận "đẳng 1".
+   */
+  const keyOf = (d: Date) =>
+    `${String(d.getUTCDate()).padStart(2, '0')}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${d.getUTCFullYear()}`;
+
+  /** Đầy lệch `offset` so với hôm nay, đề về UTC-midnight. */
+  const dayOffset = (offset: number) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + offset);
+    d.setUTCHours(0, 0, 0, 0);
+    return d;
+  };
+
+  function streakOf(db: any, userId: number): number {
+    const map: Record<string, number> = {};
+    for (const r of db.state.activityDay) if (r.userId === userId) map[keyOf(r.date)] = r.count;
+    return calcStreakFromMap(map);
+  }
+
+  beforeEach(() => {
+    // 10:00 UTC = 17:00 ở VN, nên "hôm nay" không lệch sang ngày khác.
+    freezeAt('2026-09-28T10:00:00Z');
+  });
+
+  it('đăng ký mới chưa vào app thì chưa có streak — không set lúc ghi bản ghi', async () => {
+    const db = makeDb();
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
+    fixVerifyToken();
+    await svc.register('moi@b.co', 'matkhau123');
+    // Tài khoản chưa có phiên: mới là điểm danh, chưa là điểm danh.
+    expect(streakOf(db, db.state.user[0].id)).toBe(0);
+  });
+
+  it('tài khoản mới xác minh xong, vào app thì streak đúng 1', async () => {
+    const db = makeDb();
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
+    fixVerifyToken();
+    await svc.register('moi@b.co', 'matkhau123');
+
+    await svc.verifyEmail(MA, 'UA');
+    expect(streakOf(db, db.state.user[0].id)).toBe(1);
+  });
+
+  it('đăng nhập lại nhiều lần vẫn là 1, không thành 2', async () => {
+    const { db, svc } = await seedVerified('lai@b.co');
+    const id = db.state.user[0].id;
+    await svc.login('lai@b.co', 'matkhau123', 'UA');
+    await svc.login('lai@b.co', 'matkhau123', 'UA');
+    await svc.login('lai@b.co', 'matkhau123', 'UA');
+    expect(db.state.activityDay.filter((r: any) => r.userId === id)).toHaveLength(1);
+    expect(streakOf(db, id)).toBe(1);
+  });
+
+  it('tài khoản cũ đã có sẵn ngày thì không bị reset', async () => {
+    const { db, svc } = await seedVerified('cu@b.co');
+    const id = db.state.user[0].id;
+    for (const off of [-2, -1, 0]) {
+      db.state.activityDay.push({ id: `seed${off}`, userId: id, date: dayOffset(off), count: 3 });
+    }
+    expect(streakOf(db, id)).toBe(3);
+
+    await svc.login('cu@b.co', 'matkhau123', 'UA');
+    expect(db.state.activityDay.filter((r: any) => r.userId === id)).toHaveLength(3);
+    expect(streakOf(db, id)).toBe(3);
+    // Dòng hôm nay giữ nguyên count: `update: {}` không ghi đè lên.
+    const homNay = db.state.activityDay.find(
+      (r: any) => r.date.getTime() === dayOffset(0).getTime(),
+    );
+    expect(homNay.count).toBe(3);
+  });
+
+  it('tài khoản tạo qua Google cũng có streak 1 ngay khi cấp phiên', async () => {
+    const db = makeDb();
+    const svc = new AuthService(db, { send: async () => {} } as any, makePremium());
+    const g: GoogleProfile = {
+      sub: 'sub-1', email: 'gg@b.co', emailVerified: true, name: 'GG', avatarUrl: null,
+    };
+    const r = await svc.linkOrCreateFromGoogle(g, null);
+    expect(r.kind).toBe('ok');
+    const id = (r as { userId: number }).userId;
+    expect(streakOf(db, id)).toBe(0);
+
+    await svc.issueSessionForUserId(id, 'UA');
+    expect(streakOf(db, id)).toBe(1);
+  });
+
+  it('lỗi ghi điểm danh không được làm hỏng phiên', async () => {
+    const { db, svc } = await seedVerified('hetphi@b.co');
+    const id = db.state.user[0].id;
+    await svc.login('hetphi@b.co', 'matkhau123', 'UA');
+    const truoc = db.state.activityDay.length;
+    db.activityDay.upsert.mockRejectedValueOnce(new Error('db chết'));
+
+    // Cấp phiên phải còn; mất dòng điểm danh thì tài khoản vẫn đăng nhập được.
+    await expect(svc.login('hetphi@b.co', 'matkhau123', 'UA')).resolves.not.toBeNull();
+    expect(db.state.activityDay.filter((r: any) => r.userId === id)).toHaveLength(truoc);
   });
 });

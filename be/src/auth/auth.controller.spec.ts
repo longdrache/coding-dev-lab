@@ -826,7 +826,18 @@ describe('đăng nhập bằng Google — callback', () => {
  * link đó cho nạn nhân — nạn nhân bị đăng nhập vào tài khoản của hắn.
  */
 describe('đăng nhập bằng Google — chống login CSRF', () => {
-  beforeEach(() => setEnv('FRONTEND_URL', FE));
+  // `start` kiểm **cả ba** biến Google rồi mới set cookie, nên thiếu bất kỳ biến
+  // nào thì `res.cookie` không bao giờ chạy và các test dưới đây kiểm cookie sẽ
+  // đỏ sai lý do. Đặt ở `beforeEach` để không test nào trong nhóm này phụ thuộc
+  // `.env` của máy đang chạy — `afterEach` khôi phục về `OLD_ENV`, mà ở CI
+  // `OLD_ENV` không có các biến này nên trước đây nhóm này chỉ xanh ở máy có
+  // `.env` thật.
+  beforeEach(() => {
+    setEnv('FRONTEND_URL', FE);
+    setEnv('GOOGLE_CLIENT_ID', 'cid');
+    setEnv('GOOGLE_CLIENT_SECRET', 'csec');
+    setEnv('GOOGLE_REDIRECT_URI', 'https://api/cb');
+  });
 
   it('start đặt cookie httpOnly chứa state, cùng khuôn với cookie phiên', async () => {
     // Cookie này là thứ kẻ tấn công không dựng lại được. Bỏ lời gọi `res.cookie`

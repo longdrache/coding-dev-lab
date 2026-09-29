@@ -59,13 +59,26 @@ export const AUTH_TIMEOUT_MS = 20_000;
  * mình có đúng không, vì server chưa hề trả lời. Nói "không kết nối được" thì
  * họ đi kiểm tra wifi rồi quay lại với câu hỏi cũ; nói "sai mật khẩu" thì là nói
  * dối. Vì vậy câu này nói đúng ba điều: đã chờ bao lâu, mình đã **dừng**, và
- * bấm lại được.
+ * làm gì tiếp theo.
+ *
+ * **Vì sao phải khác nhau theo mode** mà không dùng một câu chung: BE tạo user
+ * **trước** rồi mới gửi mail (`auth.service.ts`). Nên lúc hết giờ ở chế độ đăng
+ * ký, tài khoản có thể **đã có trong DB**; bấm lại lúc đó là `/register` trả 409
+ * và không gửi mail — tức lời khuyên "bấm lại" làm hỏng đúng thứ còn dở, và làm
+ * người dùng tin là có lỗi với email của họ. Chỉ có một việc đúng ở ca đó: đi
+ * kiểm tra hộp thư. Còn `/login` không sinh ra tài khoản nào, nên "bấm lại" là
+ * đúng và là đủ.
  *
  * Dựng bằng template từ `AUTH_TIMEOUT_MS` để hai thứ không thể lệch nhau: đổi
  * hằng mà quên sửa câu thì người dùng được hứa một số giây khác với số giây họ
  * thật sự phải chờ — và tin sai đó còn tệ hơn không có câu.
  */
-export const AUTH_TIMEOUT_MESSAGE = `Máy chủ không phản hồi sau ${AUTH_TIMEOUT_MS / 1000} giây nên mình đã dừng lại. Kiểm tra mạng rồi bấm lại — tài khoản của bạn không bị mất.`;
+export function authTimeoutMessage(mode: AuthMode): string {
+  const waited = `Máy chủ không phản hồi sau ${AUTH_TIMEOUT_MS / 1000} giây nên mình đã dừng lại.`;
+  return mode === "signup"
+    ? `${waited} Kiểm tra hộp thư trước: nếu link xác nhận đã tới thì tài khoản đã tạo xong, mở link là vào được. Chưa thấy link thì kiểm tra mạng rồi bấm lại.`
+    : `${waited} Kiểm tra mạng rồi bấm lại — email và mật khẩu của bạn vẫn còn trong ô.`;
+}
 
 /**
  * Câu báo khi có lỗi mà ta không dự đoán được (lỗi của chính FE, `refresh()` ném,
@@ -195,7 +208,7 @@ export function createAuthRunner(): AuthRunner {
      */
     function stopIfTimedOut(): boolean {
       if (!deadline.timedOut()) return false;
-      effects.setError(AUTH_TIMEOUT_MESSAGE);
+      effects.setError(authTimeoutMessage(req.mode));
       return true;
     }
 
@@ -238,7 +251,7 @@ export function createAuthRunner(): AuthRunner {
        * được vì sao. `submitCredentials` tự dịch lỗi mạng rồi nên tới đây là
        * lỗi của chính FE hoặc của `refresh()`. */
       console.error("[auth] một lần gửi thất bại ngoài dự kiến", err);
-      effects.setError(deadline.timedOut() ? AUTH_TIMEOUT_MESSAGE : UNEXPECTED_MESSAGE);
+      effects.setError(deadline.timedOut() ? authTimeoutMessage(req.mode) : UNEXPECTED_MESSAGE);
     } finally {
       /* Huỷ timer ở `finally` chứ không ở từng nhánh: sót một nhánh là sót
        * timer, và timer sót sẽ nổ giữa lượt gửi kế tiếp rồi huỷ `signal` của

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  AUTH_TIMEOUT_MESSAGE,
-  AUTH_TIMEOUT_MS,
   UNEXPECTED_MESSAGE,
+  authTimeoutMessage,
+  AUTH_TIMEOUT_MS,
   createAuthRunner,
   createDeadline,
   pendingLabel,
@@ -143,7 +143,30 @@ describe('hợp đồng thời gian chờ', () => {
   it('câu hết giờ nói đúng số giây đang chờ, không lệch với hằng', () => {
     // Hai nơi một luật: đổi hằng mà quên sửa câu thì người dùng được hứa một số
     // giây khác với số giây họ thật sự phải chờ.
-    expect(AUTH_TIMEOUT_MESSAGE).toContain('20 giây');
+    for (const mode of ['signin', 'signup'] as const) {
+      expect(authTimeoutMessage(mode)).toContain('20 giây');
+    }
+  });
+
+  it('hết giờ lúc đăng ký thì bảo kiểm tra hộp thư, KHÔNG bảo bấm lại', () => {
+    // Đây là cái bẫy của câu chung: BE tạo user **trước** rồi mới gửi mail
+    // (`auth.service.ts`). Nếu người dùng bấm lại ở đúng lúc đó thì `/register`
+    // trả 409 và **không gửi mail** — bấm lại là làm hỏng đúng thứ còn dở. Họ
+    // phải đi kiểm tra hộp thư trước đã.
+    const signup = authTimeoutMessage('signup');
+    expect(signup).toContain('hộp thư');
+    // "bấm lại" vẫn được nhắc, nhưng **sau** khi bảo kiểm tra hộp thư. Nếu nó
+    // đứng trước thì lời khuyên đầu tiên người đọc thấy lại là cái làm hỏng
+    // việc.
+    expect(signup.indexOf('hộp thư')).toBeLessThan(signup.indexOf('bấm lại'));
+  });
+
+  it('hết giờ lúc đăng nhập thì bảo bấm lại, vì không có gì đã tạo ra', () => {
+    // Ngược lại: `/login` không sinh ra tài khoản nào, nên bấm lại là đúng và
+    // là điều duy nhất cần làm.
+    const signin = authTimeoutMessage('signin');
+    expect(signin).toContain('bấm lại');
+    expect(signin).not.toContain('hộp thư');
   });
 
   it('hạn chờ đủ rộng cho việc hợp lệ nhưng không vô hạn', () => {
@@ -308,7 +331,7 @@ describe('hết giờ — dừng được và báo rõ', () => {
     await jumpToTimeout();
     await first;
 
-    expect(lastError(seen)).toBe(AUTH_TIMEOUT_MESSAGE);
+    expect(lastError(seen)).toBe(authTimeoutMessage('signin'));
     expect(seen.pending[seen.pending.length - 1]).toBeNull();
     // Không được có "đã xong" khi thật ra chưa ai trả lời.
     expect(seen.done).toEqual([]);
@@ -378,7 +401,7 @@ describe('hết giờ — dừng được và báo rõ', () => {
 
     await vi.advanceTimersByTimeAsync(1);
     await quick;
-    expect(lastError(seen)).toBe(AUTH_TIMEOUT_MESSAGE);
+    expect(lastError(seen)).toBe(authTimeoutMessage('signin'));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -491,7 +514,7 @@ describe('ba loại lỗi phải là ba câu khác nhau', () => {
     await running;
     const timedOut = lastError(seen);
 
-    expect(timedOut).toBe(AUTH_TIMEOUT_MESSAGE);
+    expect(timedOut).toBe(authTimeoutMessage('signin'));
     expect(timedOut).not.toContain('không đúng');
     expect(timedOut).toBeTruthy();
   });
@@ -517,7 +540,7 @@ describe('ba loại lỗi phải là ba câu khác nhau', () => {
   it('mọi câu lỗi đều nêu cách khắc phục, và cho phép thử lại', async () => {
     // craft-floor: "errors name the problem and the recovery". Hết giờ mà không
     // nói bấm lại được thì người dùng không biết form đã sẵn sàng hay chưa.
-    for (const message of [AUTH_TIMEOUT_MESSAGE, UNEXPECTED_MESSAGE]) {
+    for (const message of [authTimeoutMessage('signin'), UNEXPECTED_MESSAGE]) {
       expect(message.length).toBeGreaterThan(20);
       expect(message).toMatch(/[.!?]/);
       expect(message).toMatch(/thử lại|bấm lại|kiểm tra mạng/i);

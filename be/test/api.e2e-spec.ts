@@ -1172,10 +1172,26 @@ describe('API (e2e)', () => {
    * trên ghim "đúng 20 bài VIP khớp `VIP_SLUGS`", nên để sót một bài VIP ngoài danh
    * sách đó sẽ làm đỏ chúng ở lần chạy kế tiếp. Dùng slug riêng, không đụng vào
    * 20 bài thật.
+   *
+   * `beforeEach` chứ không `beforeAll`: test "bài vừa bật VIP..." dọn dòng probe của
+   * nó ở `finally` (đúng để lần chạy sau không kế thừa bài VIP "mồ côi"), nên
+   * `beforeAll` — vốn chạy **một** lần cho cả nhóm — đã xoá sạch bài probe trước khi
+   * test cuối kịp chạy. Test sau đó gọi `PATCH .../vip` trên một slug không còn
+   * trong DB và nhận 404. 404 đó là hành vi **đúng** của sản phẩm, nhưng ở chỗ này
+   * nó che mất ý nghĩa của test. Xem `taoProbe` bên dưới.
    */
   describe('admin bật/tắt cờ VIP: cờ có hiệu lực thật, không chỉ trả 200', () => {
     const SLUG = 'e2e-admin-vip-toggle-probe';
+    /**
+     * Bài thường đi cùng nhóm, dùng cho test "đổi cờ bài này không đụng bài kia".
+     * Tự tạo chứ không bòe ra một bài từ seed: bài lấy từ seed là dữ liệu của
+     * `scripts/seed-problems.ts`, đổi seed là đổi cả ý nghĩa test, và lần chạy
+     * sau test này sẽ để sót một bài `isVip` bằng true ngoài 20 slug VIP ghim ở
+     * các test phía trên.
+     */
+    const SLUG_KHAC = 'e2e-admin-vip-toggle-probe-khac';
     const MO_TA = 'NOI_DUNG_BAI_PROBE_HAI_CHU_THAT_ABCDEFGHIJ';
+    const MO_TA_KHAC = 'NOI_DUNG_BAI_PROBE_KHAC_HAI_CHU_THAT_ZYXWVUTSRQP';
 
     /** Token admin ký bằng đúng khoá mà `AdminGuard` dùng để verify. */
     function adminCookie(): string {
@@ -1193,26 +1209,43 @@ describe('API (e2e)', () => {
         .send({ isVip });
     }
 
-    beforeAll(async () => {
-      await db.problem.upsert({
-        where: { slug: SLUG },
+    /**
+     * Tạo (hoặc tạo lại) một bài probe ở trạng thái đã biết: `isVip: false` và
+     * `hiddenTests: []` để không bao giờ chạm Judge0, `description` riêng để assert
+     * "bài này còn mô tả" không lẫn với bài kia.
+     *
+     * `upsert` chứ không `create` vì phải chạy lại được sau mỗi lần test tự dọn.
+     */
+    function taoProbe(slug: string, description: string, status: 'draft' | 'published') {
+      return db.problem.upsert({
+        where: { slug },
         create: {
-          slug: SLUG,
+          slug,
           title: 'probe toggle VIP',
           difficulty: 'Dễ',
           topic: 'array',
-          status: 'draft',
+          status,
           isVip: false,
-          description: MO_TA,
+          description,
           tests: [],
           hiddenTests: [],
         },
-        update: { isVip: false, status: 'draft', description: MO_TA, hiddenTests: [] },
+        update: { isVip: false, status, description, hiddenTests: [] },
       });
+    }
+
+    beforeEach(async () => {
+      // Mỗi test bắt đầu từ cùng một trạng thái, không phụ thuộc test trước để
+      // lại bỏ sót dữ liệu. `SLUG_KHAC` để `draft` ở đây và chỉ publish trong
+      // test cần nó — bài thật của seed không bị đụng tới ở bất kỳ đâu.
+      await taoProbe(SLUG, MO_TA, 'draft');
+      await taoProbe(SLUG_KHAC, MO_TA_KHAC, 'draft');
     });
 
     afterAll(async () => {
-      await db.problem.deleteMany({ where: { slug: SLUG } });
+      await db.problem.deleteMany({
+        where: { slug: { in: [SLUG, SLUG_KHAC] } },
+      });
     });
 
     it('thiếu token → 401, role không phải admin → 401', async () => {
@@ -1328,21 +1361,23 @@ describe('API (e2e)', () => {
     });
 
     it('đổi cờ một bài không làm đổi khoá của bài khác', async () => {
-      const thuong = await db.problem.findFirst({
-        where: { isVip: false, status: 'published' },
-        select: { slug: true, description: true },
-        orderBy: { slug: 'asc' },
-      });
-      expect(thuong).toBeTruthy();
+      // Bài "bên kia" tự tạo và tự xoá, không mượn bài nào của seed: bài thật thì
+      // cột `isVip` của nó nằm trong tầm tay các test ghim "đúng 20 bài VIP".
+      await taoProbe(SLUG_KHAC, MO_TA_KHAC, 'published');
       await doiVip(true).expect(200);
       try {
         // Bài thường vẫn mở được, và vẫn có mô tả trong danh sách.
         const res = await request(app.getHttpServer())
-          .get(`/api/problems/${thuong!.slug}`)
+          .get(`/api/problems/${SLUG_KHAC}`)
           .expect(200);
-        expect(res.body.description).toBe(thuong!.description);
+        expect(res.body.description).toBe(MO_TA_KHAC);
+        const list = await request(app.getHttpServer()).get('/api/problems').expect(200);
+        expect(
+          JSON.stringify(list.body.find((p: { slug: string }) => p.slug === SLUG_KHAC)),
+        ).toContain(MO_TA_KHAC);
       } finally {
         await doiVip(false).catch(() => undefined);
+        await db.problem.deleteMany({ where: { slug: SLUG_KHAC } });
       }
     });
   });

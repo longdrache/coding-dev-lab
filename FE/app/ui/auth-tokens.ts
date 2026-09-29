@@ -1,6 +1,6 @@
 /**
- * Lớp ngoài dùng chung cho màn auth: khung thẻ, nhãn mono, tiêu đề, câu chữ,
- * và ba nút. Tách ra để các màn (form, màn "đã đăng ký", màn "xác nhận email")
+ * Lớp ngoài dùng chung cho màn auth: khung thẻ, tiêu đề, câu chữ, và ba nút.
+ * Tách ra để các màn (form, màn "đã đăng ký", màn "xác nhận email")
  * không tự chép lại class mỗi chỗ.
  *
  * Quy tắc này do chính `AuthForm.tsx` đề ra: "hai nơi một luật là hai nơi sẽ
@@ -8,13 +8,6 @@
  */
 
 export const CARD = "w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm";
-/**
- * `tracking-wide` chứ không phải `tracking-widest` như brief gợi ý: `DESIGN.md`
- * ghim `letterSpacing: 0.04em` cho mono-label, và 0.1em làm nhãn rời rạc khỏi
- * câu nó dẫn. `emerald-700` (5.5:1) thay vì `emerald-600` (3.8:1) vì nhãn này
- * nhỏ — cần mức tương phản của chữ thường, không phải của chữ lớn.
- */
-export const KICKER = "font-mono text-xs font-medium uppercase tracking-wide text-emerald-700";
 export const TITLE = "mt-2.5 font-display text-xl font-bold tracking-tight text-zinc-950";
 export const BODY = "mt-2 text-sm leading-relaxed text-zinc-600";
 /** `bg-white` + `ring-offset-white` để vòng focus nhìn thấy trên nền thẻ. */

@@ -11,18 +11,14 @@ const POINTS = [
 
 // Khung brand cho sign-in/up: trái pitch, phải form đăng nhập/đăng ký.
 export default function AuthShell({
-  kicker,
   title,
   children,
 }: {
   /**
-   * Nhãn mono phía trên tiêu đề, dạng `// welcome back`.
-   *
-   * **Không bắt buộc** — màn đăng nhập, đăng ký và xác nhận email đã bỏ hẳn.
-   * `DESIGN.md` từng ghim nhãn mono, nhưng ở màn auth nó đọc như chữ trang trí
-   * lơ lửng không nói gì; bỏ đi thì màn gọn hơn mà không mất thông tin nào.
+   * Mọi màn dùng khung này đã bỏ nhãn mono `// …` phía trên tiêu đề: nó đọc
+   * như chữ trang trí lơ lửng, không nói gì với người đọc. Khung không nhận
+   * `kicker` nữa — thêm lại là kicker quay lại đúng như đợt này.
    */
-  kicker?: string;
   title: string;
   children: ReactNode;
 }) {
@@ -40,11 +36,7 @@ export default function AuthShell({
       <div className="relative mx-auto grid min-h-screen max-w-5xl items-center gap-10 px-6 py-12 lg:grid-cols-[1fr_auto]">
         <div>
           <Logo />
-          {/* Không render dòng trống khi màn bỏ kicker. */}
-          {kicker && (
-            <p className="mt-8 font-mono text-xs font-medium text-emerald-600">{kicker}</p>
-          )}
-          <h1 className={`${kicker ? "mt-3" : "mt-8"} max-w-md font-display text-3xl font-bold leading-tight tracking-tight text-zinc-950 sm:text-4xl`}>
+          <h1 className="mt-8 max-w-md font-display text-3xl font-bold leading-tight tracking-tight text-zinc-950 sm:text-4xl">
             {title}
           </h1>
           <ul className="mt-6 space-y-3">

@@ -132,7 +132,7 @@ function ResetForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <AuthShell kicker="// new password" title="Đặt mật khẩu mới.">
+    <AuthShell title="Đặt mật khẩu mới.">
       <Suspense
         fallback={
           // Trạng thái loading thật, không phải chấm chờ: `useSearchParams` chỉ
@@ -151,11 +151,6 @@ export default function ResetPasswordPage() {
 
 /** Thẻ trắng viền hairline + một bóng rất mềm — đúng card của app, không nặng hơn. */
 const CARD = "w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm";
-/**
- * `tracking-wide` chứ không phải `tracking-widest`: `DESIGN.md` ghim
- * `letterSpacing: 0.04em` cho mono-label. `emerald-700` (5.5:1) thay vì
- * `emerald-600` (3.8:1) vì nhãn này nhỏ — cần mức tương phản của chữ thường.
- */
 const TITLE = "mt-2.5 font-display text-xl font-bold tracking-tight text-zinc-950";
 const BODY = "mt-2 text-sm leading-relaxed text-zinc-600";
 const INPUT =

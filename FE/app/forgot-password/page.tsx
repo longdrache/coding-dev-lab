@@ -40,7 +40,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <AuthShell kicker="// reset access" title="Lấy lại quyền truy cập.">
+    <AuthShell title="Lấy lại quyền truy cập.">
       <form
         onSubmit={onSubmit}
         className="w-full max-w-sm space-y-5 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm"

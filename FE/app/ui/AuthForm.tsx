@@ -15,7 +15,7 @@ import {
 } from "@/lib/auth-form";
 import { useSession } from "./AuthProvider";
 import GoogleMark from "./GoogleMark";
-import { BODY, CARD, FOOTER, FOOTER_LINK, INPUT, KICKER, PRIMARY, SECONDARY, SPINNER, TITLE } from "./auth-tokens";
+import { BODY, CARD, FOOTER, FOOTER_LINK, INPUT, PRIMARY, SECONDARY, SPINNER, TITLE } from "./auth-tokens";
 
 /**
  * Form đăng nhập / đăng ký, thay `<SignIn>` / `<SignUp>` của nhà cung cấp danh

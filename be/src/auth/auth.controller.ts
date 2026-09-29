@@ -12,17 +12,25 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { AuthService, REFRESH_TTL_MS } from './auth.service.ts';
 import { AuthGuard } from './auth.guard.ts';
 import { readCookie } from './auth.cookies.ts';
-import { GOOGLE_SCOPES, safeInternalPath } from './oauth-state.ts';
+import { GOOGLE_SCOPES, STATE_TTL_MS, safeInternalPath } from './oauth-state.ts';
 import { ACCESS_TTL_SECONDS, verifyAccessToken } from './tokens.ts';
 import type { AuthenticatedRequest } from './auth.types.ts';
 
 export const SESSION_COOKIE = 'session';
 export const REFRESH_COOKIE = 'refresh';
+/**
+ * Cookie ràng buộc `state` với đúng trình duyệt đã bấm nút (chống login CSRF).
+ *
+ * Tên có tiền tố `g_` và **không** phải tên cookie phiên: nó được xoá ngay khi
+ * dùng xong, nên nếu đặt nhầm tên `session`/`refresh` thì `clearSessionCookies` ở
+ * `logout` sẽ xoá nhầm (và ngược lại, xoá cookie này sẽ làm đăng xuất).
+ */
+export const OAUTH_STATE_COOKIE = 'g_oauth_state';
 
 /** Giống `admin.controller.ts`: chỉ khai phần `res` mà controller này dùng. */
 type CookieOptions = {
@@ -103,6 +111,11 @@ function readRefresh(req: CookieRequest): string | undefined {
   return req.cookies?.[REFRESH_COOKIE] ?? readCookie(req.headers.cookie, REFRESH_COOKIE);
 }
 
+/** Cookie ràng buộc state, đọc y hệt cookie `refresh` — cùng lý do, cùng thứ tự. */
+function readOauthStateCookie(req: CookieRequest): string | undefined {
+  return req.cookies?.[OAUTH_STATE_COOKIE] ?? readCookie(req.headers.cookie, OAUTH_STATE_COOKIE);
+}
+
 /** `user-agent` sai kiểu (mảng) thì bỏ trống chứ không truyền mảng xuống DB. */
 function userAgent(req: AuthenticatedRequest): string | undefined {
   const ua = req.headers['user-agent'];
@@ -125,25 +138,40 @@ function frontendUrl(path: string): string {
 }
 
 /**
- * Người gọi đang đăng nhập hay không, đọc **tùy chọn** từ cookie `session`.
+ * Người gọi đang đăng nhập hay không, đọc **tùy chọn** từ cookie `session`, rồi tới
+ * cookie `refresh`.
  *
  * Không dùng `AuthGuard`: callback phải chạy được với cả khách (lần đầu bấm nút
  * Google thì chưa có cookie nào) lẫn người đã đăng nhập (để ghép Google vào đúng
  * tài khoản đó). `null` = không có phiên hoặc phiên không xác minh được — không
  * phải lỗi, vì thiếu phiên là chuyện bình thường ở route này.
  *
- * `req.cookies` trước, header thô sau: đúng thứ tự và đúng hàm `AuthGuard` dùng.
+ * **Vì sao phải có nhánh `refresh`.** Cookie `session` sống 15 phút, còn phiên
+ * thật sống 30 ngày. Người chỉ dùng Google để đăng nhập mở trang, để đó quá 15
+ * phút rồi mới bấm nút Google thì `signedInUserId` trả `null` — và `linkOrCreateFromGoogle`
+ * rơi vào nhánh `needs-password` **cho một tài khoản không có mật khẩu**: ngõ cụt,
+ * vì không có màn hình nào để họ đăng nhập bằng mật khẩu. Nhánh `refresh` đọc đúng
+ * logic kiểm token mà `AuthService.refresh` dùng (dùng chung `findRotatable`), tức
+ * vẫn tôn trọng `expiresAt`, đệm 30 giây, và loại token không phải phiên.
+ *
+ * Cố ý **không** gọi `auth.refresh()` ở đây: hàm đó **xoá dòng phiên** sau khi cấp
+ * token mới, mà ở route này ta chỉ cần biết id — xoá phiên người dùng chỉ để hỏi
+ * "ai đang bấm" thì không có cách nào chấp nhận được.
  */
-async function signedInUserId(req: CookieRequest): Promise<number | null> {
+async function signedInUserId(req: CookieRequest, auth: AuthService): Promise<number | null> {
   const token = req.cookies?.[SESSION_COOKIE] ?? readCookie(req.headers.cookie, SESSION_COOKIE);
-  if (!token) return null;
-  const claims = await verifyAccessToken(token);
-  if (!claims) return null;
-  // `sub` do ta tự ký nên luôn là số nguyên dương, nhưng nó là **dữ liệu từ token**
-  // nên vẫn kiểm — `Number('abc')` là `NaN` và `NaN` sẽ thành id `NaN` trong
-  // truy vấn `findUnique`.
-  const id = Number(claims.sub);
-  return Number.isSafeInteger(id) && id > 0 ? id : null;
+  if (token) {
+    const claims = await verifyAccessToken(token);
+    if (claims) {
+      // `sub` do ta tự ký nên luôn là số nguyên dương, nhưng nó là **dữ liệu từ
+      // token** nên vẫn kiểm — `Number('abc')` là `NaN` và `NaN` sẽ thành id `NaN`
+      // trong truy vấn `findUnique`.
+      const id = Number(claims.sub);
+      if (Number.isSafeInteger(id) && id > 0) return id;
+    }
+  }
+  const refreshToken = readRefresh(req);
+  return refreshToken ? await auth.userIdForRefresh(refreshToken) : null;
 }
 
 /**
@@ -334,13 +362,33 @@ export class AuthController {
     // Chưa cấu hình thì đừng đẩy người dùng sang trang lỗi của Google với
     // `client_id` rỗng — cùng lý do `googleProfile` trả `null` thay vì ném:
     // đây là tình trạng triển khai, không phải lỗi của người dùng.
-    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REDIRECT_URI) {
+    //
+    // Kiểm **cả ba** biến, kể cả `GOOGLE_CLIENT_SECRET`. Thiếu riêng secret thì
+    // `start` vẫn chạy trơn: người dùng đi trọn màn hình đồng ý của Google, chọn
+    // tài khoản, rồi mới nhận `failed` — tức lỗi cấu hình của ta biến thành
+    // "sản phẩm hỏng" đúng ở bước người dùng đã tin ta nhất. Secret chỉ dùng ở
+    // `callback` nên không có cách nào phát hiện sớm hơn thế này.
+    if (
+      !process.env.GOOGLE_CLIENT_ID
+      || !process.env.GOOGLE_CLIENT_SECRET
+      || !process.env.GOOGLE_REDIRECT_URI
+    ) {
       return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
     }
     // Lần đầu trong hai lần kiểm `redirectTo`: lần thứ hai ở `callback`, lúc
     // đọc lại giá trị đã nằm trong DB.
     const safe = safeInternalPath(redirectTo);
     const { state, codeVerifier } = await this.auth.beginGoogleOAuth(safe);
+    // Ràng buộc `state` với trình duyệt này (chống login CSRF): trình duyệt không
+    // đọc được cookie httpOnly nên không thể tự dựng lại nó ở request khác.
+    //
+    // Dùng lại `cookieOptions` — cùng khuôn với `session`/`refresh`, nên production
+    // ra `SameSite=None; Secure` cho đúng với việc cookie phải sống sót qua bước
+    // điều hướng từ `accounts.google.com`, và local ra `lax` (mà `Lax` vẫn được
+    // gửi cho điều hướng top-level `GET` — callback đúng là điều hướng top-level).
+    // Cookie này **không** phải access token: nó hết hạn cùng `state` và bị xoá ngay
+    // ở `callback` sau lần dùng đầu.
+    res.cookie(OAUTH_STATE_COOKIE, state, cookieOptions(STATE_TTL_MS));
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     url.searchParams.set('client_id', process.env.GOOGLE_CLIENT_ID);
     url.searchParams.set('redirect_uri', process.env.GOOGLE_REDIRECT_URI);
@@ -359,6 +407,10 @@ export class AuthController {
   /**
    * Google trả kết quả về đây bằng `?code&state` (hoặc `?error` nếu người dùng
    * bấm Hủy).
+   *
+   * Có một nhánh **không** ném và cũng trả `302`: so khớp cookie chống login CSRF,
+   * chạy trước khi ăn `state` và trước mọi lời gọi DB. Xem khối so khớp bên dưới
+   * để biết vì sao bước đó không nằm trong `try`.
    *
    * **Mọi nhánh đều trả `302` về FE, không nhánh nào ném ra ngoài** — nhưng
    * đây là điều *đã được bảo đảm*, không phải điều hiển nhiên: callback là trang
@@ -383,9 +435,48 @@ export class AuthController {
     @Query('error') err: unknown,
     @Res() res: CookieResponse,
   ) {
+    // Cố ý **không** xoá cookie state ở nhánh hủy: mọi thứ ở request này đều do
+    // bên kia kiểm soát, kể cả `?error=`. Xoá ở đây là trao cho kẻ tấn công một
+    // cách phá luồng OAuth đang dở của người dùng (gửi
+    // `callback?error=access_denied` là xoá). Bất biến của cả route: **chỉ** xoá
+    // khi so khớp chứng minh được trình duyệt này là trình duyệt đã bấm nút.
     if (err || !code) return res.redirect(302, frontendUrl('/sign-in?oauth=cancelled'));
+    // ---- Chống login CSRF: so khớp TRƯỚC khi ăn state, không phải sau ----
+    //
+    // Không có bước này thì `state` chỉ chứng minh "một ai đó từng bấm nút", chứ
+    // không chứng minh "trình duyệt này đã bấm nút": kẻ tấn công làm trọn luồng
+    // của mình, chụp lại `callback?code=C&state=S` **trước khi** dùng, rồi gửi
+    // link đó cho nạn nhân. Nạn nhân bấm, `code` hợp lệ, `state` còn hạn ⇒ hắn
+    // bị đăng nhập vào **tài khoản của kẻ tấn công**, và hắn đọc được dữ liệu.
+    //
+    // Cookie `httpOnly` là thứ kẻ tấn công không dựng lại được (trình duyệt không
+    // cho JS đọc, và `SameSite` chặn việc dán nó từ trang khác). Nhưng kẻ tấn
+    // công **không cần** dán — hắn chỉ cần gửi `code`+`state` của mình, và trình
+    // duyệt nạn nhân sẽ tự gửi cookie *của nạn nhân*, lệch với `state` ⇒ bị chặn.
+    //
+    // So khớp bằng `timingSafeEqual` chứ không phải `===`: `state` là nonce 64 ký
+    // tự, và so sánh tuần tự dính lỗi thời gian là đủ để dò từng ký tự.
+    const stateCookie = readOauthStateCookie(req);
+    const stateParam = String(state ?? '');
+    const coCookie =
+      typeof stateCookie === 'string' && stateCookie.length === stateParam.length
+        ? timingSafeEqual(Buffer.from(stateCookie), Buffer.from(stateParam))
+        : false;
+    if (!coCookie) {
+      // **Không** xoá cookie ở nhánh lệch: người dùng thật có thể đang mở song
+      // song hai luồng, và luồng còn khớp phải sống tiếp. Xoá ở đây biến một
+      // request của kẻ tấn công thành công cụ phá phiên của người dùng.
+      this.logger.warn(
+        'callback Google không khớp cookie state — từ chối (có thể là link được '
+          + 'chia sẻ, hoặc cookie state đã hết hạn)',
+      );
+      return res.redirect(302, frontendUrl('/sign-in?oauth=expired'));
+    }
+    // Khớp rồi thì xoá **ngay**: nonce dùng một lần. Giữ lại là mở lại đúng cái
+    // lỗ hổng trên cho lần request sau.
+    res.clearCookie(OAUTH_STATE_COOKIE, { path: '/' });
     try {
-      const consumed = await this.auth.takeGoogleState(String(state ?? ''));
+      const consumed = await this.auth.takeGoogleState(stateParam);
       // State sai, hết hạn hoặc đã dùng: từ chối trước khi đụng tới Google.
       if (!consumed) return res.redirect(302, frontendUrl('/sign-in?oauth=expired'));
       // `googleProfile` trả `null` cho lỗi phía Google, nhưng `fetch` tới Google
@@ -396,7 +487,10 @@ export class AuthController {
         .catch(() => null);
       if (!profile) return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
 
-      const r = await this.auth.linkOrCreateFromGoogle(profile, await signedInUserId(req));
+      const r = await this.auth.linkOrCreateFromGoogle(
+        profile,
+        await signedInUserId(req, this.auth),
+      );
       if (r.kind === 'conflict') {
         return res.redirect(302, frontendUrl('/sign-in?oauth=conflict'));
       }

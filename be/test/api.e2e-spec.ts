@@ -7,8 +7,10 @@ import { PrismaClient } from './../src/generated/prisma/client.ts';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { generateKeyPair, SignJWT } from 'jose';
 import { AppModule } from './../src/app.module.ts';
-import { signAccessToken } from './../src/auth/tokens.ts';
+import { signAccessToken, hashToken } from './../src/auth/tokens.ts';
+import { OAUTH_STATE_COOKIE } from './../src/auth/auth.controller.ts';
 import type { UserRole } from './../src/auth/auth.types.ts';
+
 
 // `tokens.ts` đọc khoá RSA một cách lazy, nên đặt ở đây (sau các import, trước
 // lúc ký token đầu tiên) là đủ. Nếu biến đã có sẵn thì giữ nguyên, để chạy
@@ -88,6 +90,38 @@ describe('API (e2e)', () => {
   let app: INestApplication<App>;
   let db: PrismaClient;
 
+  /**
+   * Hash của mọi `state` mà các test dưới đây tạo ra, để `afterAll` xoá **đúng**
+   * dòng của test này.
+   *
+   * Vì sao phải theo dõi thay vì `deleteMany({})`: bảng `UserOAuthState` là bảng
+   * dùng chung với người thật, và state chỉ sống 10 phút — xoá vô hạn là xoá luôn
+   * luồng OAuth đang dở của họ, và người dùng bấm Google xong bị `expired` vì
+   * chạy test của ta. Đây là database Neon production, không phải database riêng
+   * cho test.
+   */
+  const stateDaTao = new Set<string>();
+
+  /**
+   * Dòng `UserOAuthState` ứng với `state` mà `start` vừa phát ra, đồng thời ghi
+   * nhớ hash để `afterAll` xoá. `null` nghĩa là dòng đó không còn trong bảng — tức
+   * đã bị `consumeState` ăn, hoặc đã hết hạn và bị lịch quét dọn.
+   *
+   * Tra theo `stateHash` chứ không phải `findMany()[0]`: bảng dùng chung với người
+   * thật nên `[0]` có thể là dòng của ai đó, và mọi assert trên nó sẽ xanh vì lý do
+   * hoàn toàn khác.
+   *
+   * Dùng `hashToken` của `tokens.ts` thay vì `hashState` riêng của `oauth-state.ts`:
+   * cả hai đều là sha256 hex, nên nếu thuật toán đổi thì test này **đỏ** (không tìm
+   * thấy dòng) chứ không xanh oan — đây là phụ thuộc thật, không phải khẳng định
+   * trùng hợp.
+   */
+  async function dongState(state: string) {
+    const stateHash = hashToken(state);
+    stateDaTao.add(stateHash);
+    return db.userOAuthState.findUnique({ where: { stateHash } });
+  }
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -109,9 +143,12 @@ describe('API (e2e)', () => {
   });
 
   afterAll(async () => {
-    // dọn dữ liệu test
+    // Dọn dữ liệu test. **Không** `userOAuthState.deleteMany({})`: bảng đó dùng
+    // chung với người thật, và xoá vô hạn là xoá luôn luồng OAuth đang dở của họ
+    // (state chỉ sống 10 phút, xoá đi thì người dùng bấm Google xong bị `expired`).
+    // Chỉ xoá dòng mà chính test này tạo — xem `xoaStateCuaTest`.
     await db.qnaQuestion.deleteMany({ where: { email: 'e2e@test.local' } });
-    await db.userOAuthState.deleteMany({});
+    for (const hash of stateDaTao) await db.userOAuthState.deleteMany({ where: { stateHash: hash } });
     await db.pageView.deleteMany({ where: { path: '/e2e-probe' } });
     await db.$disconnect();
     await app.close();
@@ -336,17 +373,29 @@ describe('API (e2e)', () => {
   // metadata `__guards__` để `@UseGuards(AuthGuard)` bị gắn nhầm là lộ ra.
   describe('route Google OAuth không yêu cầu phiên', () => {
     const FRONTEND_URL_CU = process.env.FRONTEND_URL;
+    const CLIENT_ID_CU = process.env.GOOGLE_CLIENT_ID;
+    const CLIENT_SECRET_CU = process.env.GOOGLE_CLIENT_SECRET;
+    const REDIRECT_URI_CU = process.env.GOOGLE_REDIRECT_URI;
 
-    /** `start` từ chối phát redirect khi chưa cấu hình, nên test tự đặt. */
+    /** `start` từ chối phát redirect khi chưa cấu hình đủ ba biến, nên test tự đặt. */
     function cauHinhGoogle() {
       process.env.GOOGLE_CLIENT_ID = 'e2e.apps.googleusercontent.com';
+      process.env.GOOGLE_CLIENT_SECRET = 'e2e-client-secret';
       process.env.GOOGLE_REDIRECT_URI = 'https://api.go-code.vercel.app/api/auth/oauth/google/callback';
       process.env.FRONTEND_URL = 'https://go-code.vercel.app';
     }
 
     afterEach(() => {
-      delete process.env.GOOGLE_CLIENT_ID;
-      delete process.env.GOOGLE_REDIRECT_URI;
+      // Phải khôi phục **có điều kiện** cả ba biến, y hệt `FRONTEND_URL`: `start` kiểm
+      // cả ba nên để sót giá trị đã đặt ở test trước là các test sau "chưa cấu
+      // hình" xanh sai lý do. Trước đây `GOOGLE_CLIENT_SECRET` không hề được set
+      // cũng không được khôi phục, tức test này sẽ rò cấu hình sang test sau.
+      if (CLIENT_ID_CU === undefined) delete process.env.GOOGLE_CLIENT_ID;
+      else process.env.GOOGLE_CLIENT_ID = CLIENT_ID_CU;
+      if (CLIENT_SECRET_CU === undefined) delete process.env.GOOGLE_CLIENT_SECRET;
+      else process.env.GOOGLE_CLIENT_SECRET = CLIENT_SECRET_CU;
+      if (REDIRECT_URI_CU === undefined) delete process.env.GOOGLE_REDIRECT_URI;
+      else process.env.GOOGLE_REDIRECT_URI = REDIRECT_URI_CU;
       if (FRONTEND_URL_CU === undefined) delete process.env.FRONTEND_URL;
       else process.env.FRONTEND_URL = FRONTEND_URL_CU;
     });
@@ -375,52 +424,114 @@ describe('API (e2e)', () => {
 
     it('redirect_to ngoài nội bộ thì dòng state lưu "/" chứ không lưu URL đó', async () => {
       cauHinhGoogle();
-      // Xoá trước: nếu không, `findMany()[0]` là dòng của test trước và test
-      // xanh vì lý do hoàn toàn khác.
-      await db.userOAuthState.deleteMany({});
       const res = await request(app.getHttpServer())
         .get('/api/auth/oauth/google/start?redirect_to=https://evil.com');
       expect(res.status).toBe(302);
-      const dong = await db.userOAuthState.findMany();
-      expect(dong).toHaveLength(1);
-      expect(dong[0].redirectTo).toBe('/');
+      const state = new URL(String(res.headers.location)).searchParams.get('state')!;
+      const dong = await dongState(state);
+      expect(dong?.redirectTo).toBe('/');
       // State lưu dạng hash, không lưu bản rõ — rò bảng này cũng không cấp được
       // phiên.
-      const state = new URL(String(res.headers.location)).searchParams.get('state')!;
-      expect(dong[0].stateHash).not.toBe(state);
-      expect(dong[0].stateHash).toHaveLength(64);
+      expect(dong?.stateHash).not.toBe(state);
+      expect(dong?.stateHash).toHaveLength(64);
     });
 
     it('redirect_to hợp lệ thì dòng state lưu nguyên đường dẫn', async () => {
       cauHinhGoogle();
-      await db.userOAuthState.deleteMany({});
-      await request(app.getHttpServer())
+      const res = await request(app.getHttpServer())
         .get('/api/auth/oauth/google/start?redirect_to=/problem/two-sum');
-      const dong = await db.userOAuthState.findMany();
-      expect(dong).toHaveLength(1);
-      expect(dong[0].redirectTo).toBe('/problem/two-sum');
+      const state = new URL(String(res.headers.location)).searchParams.get('state')!;
+      const dong = await dongState(state);
+      expect(dong?.redirectTo).toBe('/problem/two-sum');
+    });
+
+    it('start đặt cookie ràng buộc state, httpOnly và Path=/', async () => {
+      cauHinhGoogle();
+      const res = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/start?redirect_to=/premium');
+      const cookies = (res.headers['set-cookie'] as unknown as string[]).join(' | ');
+      // Cookie này là thứ chặn login CSRF: callback so nó với `?state=`, và trình
+      // duyệt không dựng lại được vì `HttpOnly`.
+      expect(cookies).toContain(`${OAUTH_STATE_COOKIE}=`);
+      expect(cookies).toContain('HttpOnly');
+      expect(cookies).toContain('Path=/');
     });
 
     it('state dùng một lần rồi chết: callback thứ hai về expired', async () => {
       cauHinhGoogle();
-      await db.userOAuthState.deleteMany({});
       const start = await request(app.getHttpServer())
         .get('/api/auth/oauth/google/start?redirect_to=/premium');
       const state = new URL(String(start.headers.location)).searchParams.get('state')!;
+      // Cookie phải mang **đúng** `state` mà `start` vừa sinh: đây là bằng chứng
+      // `Set-Cookie` thật sự đi kèm `Location`, ở tầng HTTP chứ không phải ở unit
+      // với `res.cookie` là mock. Không có nó thì callback chặn ở bước so khớp và
+      // lần đầu cũng ra `expired` — test xanh vì lý do khác.
+      const cookie = `${OAUTH_STATE_COOKIE}=${state}`;
 
       // Bỏ cấu hình trước khi gọi callback: `googleProfile` không có `fetch`
       // nào để gọi nên trả `null` ngay, test chạy ngoài mạng và chỉ chứng minh
       // "state chết sau một lần" chứ không lẫn vào nhánh thành công.
       delete process.env.GOOGLE_CLIENT_ID;
       const lan1 = await request(app.getHttpServer())
-        .get('/api/auth/oauth/google/callback?code=abc&state=' + state);
+        .get('/api/auth/oauth/google/callback?code=abc&state=' + state)
+        .set('Cookie', cookie);
       expect(lan1.status).toBe(302);
       expect(lan1.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=failed');
 
       const lan2 = await request(app.getHttpServer())
-        .get('/api/auth/oauth/google/callback?code=abc&state=' + state);
+        .get('/api/auth/oauth/google/callback?code=abc&state=' + state)
+        .set('Cookie', cookie);
       expect(lan2.status).toBe(302);
       expect(lan2.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=expired');
+    });
+
+    it('callback không có cookie state thì chặn, không đụng tới state trong DB', async () => {
+      cauHinhGoogle();
+      const start = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/start?redirect_to=/premium');
+      const state = new URL(String(start.headers.location)).searchParams.get('state')!;
+      // Không `.set('Cookie', ...)`: mô phỏng đúng link độc hại — `code`+`state` của
+      // kẻ tấn công được gửi cho trình duyệt nạn nhân, nạn nhân không hề bấm nút.
+      delete process.env.GOOGLE_CLIENT_ID;
+      const res = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/callback?code=abc&state=' + state);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=expired');
+      // Dòng state phải **còn nguyên**: ăn nó ở nhánh lệch biến một request rác
+      // thành công cụ phá phiên của người dùng thật.
+      expect(await dongState(state)).not.toBeNull();
+    });
+
+    it('cookie state lệch với ?state= thì chặn và không xoá cookie', async () => {
+      cauHinhGoogle();
+      const start = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/start?redirect_to=/premium');
+      const state = new URL(String(start.headers.location)).searchParams.get('state')!;
+      delete process.env.GOOGLE_CLIENT_ID;
+      const res = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/callback?code=abc&state=' + state)
+        .set('Cookie', `${OAUTH_STATE_COOKIE}=cookie-cua-nguoi-khac`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=expired');
+      expect(await dongState(state)).not.toBeNull();
+      // **Không** `Clear-Cookie` ở nhánh lệch: người dùng thật có thể đang mở hai
+      // luồng song song, và xoá ở đây là cho phép request rác phá phiên họ.
+      const cleared = (res.headers['set-cookie'] as unknown as string[] | undefined) ?? [];
+      expect(cleared.join(' | ')).not.toContain(`${OAUTH_STATE_COOKIE}=;`);
+    });
+
+    it('callback khớp cookie thì xoá cookie state ngay', async () => {
+      cauHinhGoogle();
+      const start = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/start?redirect_to=/premium');
+      const state = new URL(String(start.headers.location)).searchParams.get('state')!;
+      delete process.env.GOOGLE_CLIENT_ID;
+      const res = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/callback?code=abc&state=' + state)
+        .set('Cookie', `${OAUTH_STATE_COOKIE}=${state}`);
+      const cleared = ((res.headers['set-cookie'] as unknown as string[]) ?? []).join(' | ');
+      expect(cleared).toContain(`${OAUTH_STATE_COOKIE}=;`);
+      expect(cleared).toContain('Path=/');
     });
 
     it('state không tồn tại thì về expired, không 500', async () => {
@@ -435,6 +546,18 @@ describe('API (e2e)', () => {
       process.env.FRONTEND_URL = 'https://go-code.vercel.app';
       delete process.env.GOOGLE_CLIENT_ID;
       delete process.env.GOOGLE_REDIRECT_URI;
+      const res = await request(app.getHttpServer()).get('/api/auth/oauth/google/start');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=failed');
+    });
+
+    it('thiếu GOOGLE_CLIENT_SECRET thì start báo lỗi ngay, không đẩy sang Google', async () => {
+      // Secret chỉ dùng ở `callback`. Thiếu nó thì `start` chạy trơn và người dùng
+      // đi trọn màn hình đồng ý của Google rồi mới nhận `failed`.
+      process.env.FRONTEND_URL = 'https://go-code.vercel.app';
+      process.env.GOOGLE_CLIENT_ID = 'e2e.apps.googleusercontent.com';
+      process.env.GOOGLE_REDIRECT_URI = 'https://api.go-code.vercel.app/api/auth/oauth/google/callback';
+      delete process.env.GOOGLE_CLIENT_SECRET;
       const res = await request(app.getHttpServer()).get('/api/auth/oauth/google/start');
       expect(res.status).toBe(302);
       expect(res.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=failed');
@@ -526,6 +649,41 @@ describe('API (e2e)', () => {
         GROUP BY i.relname
       `;
       expect(plain.map((row) => row.columns)).toEqual(['userId']);
+    });
+
+    // Lịch dọn dòng OAuth hết hạn quét bằng `WHERE expiresAt <= now()`. Không có
+    // index thì mỗi lần quét phải quét cả bảng, và bảng này phình theo **số lần
+    // bấm nút** chứ không theo số người. Mất index không làm hỏng tính đúng đắn
+    // nên rất dễ lọt, vì vậy phải canh riêng.
+    it('UserOAuthState có index thường trên (expiresAt) cho lịch dọn', async () => {
+      const plain = await db.$queryRaw<{ index_name: string; columns: string }[]>`
+        SELECT i.relname AS index_name,
+               string_agg(a.attname, ',' ORDER BY a.attname) AS columns
+        FROM pg_index x
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_attribute a
+          ON a.attrelid = x.indrelid AND a.attnum = ANY(x.indkey)
+        WHERE x.indrelid = ${'"UserOAuthState"'}::regclass
+          AND NOT x.indisunique
+          AND NOT x.indisprimary
+        GROUP BY i.relname
+      `;
+      expect(plain.map((row) => row.columns)).toEqual(['expiresAt']);
+    });
+
+    // `avatarUrl` phải **nullable**: migration này chạy trên bảng `User` đã có dữ
+    // liệu, và tài khoản đăng ký bằng mật khẩu không có ảnh nào. Nếu cột là NOT
+    // NULL thì hoặc migration hỏng, hoặc nó phải ghi đè dữ liệu — test này canh
+    // đúng điều đó thay vì tin lời cam kết trong comment của migration.
+    it('User.avatarUrl tồn tại và nullable', async () => {
+      const cot = await db.$queryRaw<{ column_name: string; is_nullable: string }[]>`
+        SELECT column_name, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'User'
+          AND column_name = 'avatarUrl'
+      `;
+      expect(cot).toEqual([{ column_name: 'avatarUrl', is_nullable: 'YES' }]);
     });
 
     it('xoá user thì bay luôn UserAccount nhờ ON DELETE CASCADE', async () => {

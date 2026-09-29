@@ -1,10 +1,10 @@
 import {
-  BadRequestException, ConflictException, Injectable, Logger, UnauthorizedException,
+  BadRequestException, ConflictException, Injectable, Logger, OnModuleInit, UnauthorizedException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
 import { PremiumService } from '../premium/premium.service.ts';
 import type { UserRole } from './auth.types.ts';
-import { GOOGLE_PROVIDER, consumeState, createState } from './oauth-state.ts';
+import { GOOGLE_PROVIDER, STATE_TTL_MS, consumeState, createState } from './oauth-state.ts';
 import {
   hashPassword, hashToken, newToken, signAccessToken, verifyPassword,
 } from './tokens.ts';
@@ -19,6 +19,12 @@ export type GoogleProfile = {
   email: string;
   emailVerified: boolean;
   name: string | null;
+  /**
+   * Ảnh đại diện từ `picture` của Google userinfo, hoặc `null` khi Google không
+   * trả. `null` nghĩa là **không biết**, nên `linkOrCreateFromGoogle` không ghi
+   * đè ảnh sẵn có bằng `null`.
+   */
+  avatarUrl: string | null;
 };
 
 /**
@@ -36,6 +42,8 @@ export type LinkResult =
 
 export type PublicUser = {
   id: number; email: string; name: string | null; role: UserRole;
+  /** Ảnh đại diện, `null` với tài khoản không có ảnh nào. */
+  avatarUrl: string | null;
 };
 
 export type Mail = { to: string; subject: string; text: string; html?: string };
@@ -78,7 +86,23 @@ const RESET_TTL_MS = 60 * 60 * 1000;
  * — nút chết đúng lúc sinh ra để chữa.
  */
 const RESEND_COOLDOWN_MS = 60 * 60 * 1000;
+/**
+ * Chu kỳ quét dòng OAuth hết hạn. Mặc định 10 phút — bằng `STATE_TTL_MS` trong
+ * `oauth-state.ts`: quét chậm hơn TTL nghĩa là dữ liệu thừa tồn tại lâu hơn cần
+ * thiết, quét nhanh hơn chỉ là ghi thêm vào DB cho những gì không còn dùng.
+ */
+const OAUTH_SWEEP_INTERVAL_MS = STATE_TTL_MS;
 const UA_MAX = 200;
+/**
+ * Ảnh đại diện chỉ được ghi vào DB khi là chuỗi không rỗng; mọi thứ khác trả
+ * `null`. Lý do: `picture` là JSON từ Google và kiểu `GoogleProfile.avatarUrl` là
+ * do **ta** khai, nên chỗ duy nhất phải phòng thủ trước là lúc ghi vào cột
+ * `TEXT` — một object hay số ở đây là `PrismaClientValidationError`, tức callback
+ * thành 500 và người dùng thấy màn trắng chỉ vì Google trả thêm một trường.
+ */
+function normalizeAvatarUrl(raw: unknown): string | null {
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+}
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_TAKEN = 'Email này đã được dùng để đăng ký';
 const PASSWORD_TOO_SHORT = 'Mật khẩu phải có ít nhất 8 ký tự';
@@ -110,14 +134,51 @@ const BAD_CREDENTIALS = 'Email hoặc mật khẩu không đúng';
 const TIMING_EQUALIZER_HASH = '$2b$10$b4pTuLSFB9UWPmXDOcV9Pei0s.dOb8rVP50fuAAW.bqvkWAjSpalO';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
+  private oauthSweepInterval?: NodeJS.Timeout;
 
   constructor(
     private readonly db: DatabaseService,
     private readonly mail: AuthMailPort,
     private readonly premium: PremiumService,
   ) {}
+
+  /**
+   * Cùng khuôn `PremiumService.onModuleInit`: chạy lần đầu sau 30 giây để không
+   * block startup, rồi lặp theo chu kỳ, `unref()` để process thoát được, và tắt
+   * được bằng biến môi trường.
+   *
+   * `AuthService` là singleton mặc định của Nest nên chỉ có **một** instance và
+   * chỉ một `onModuleInit` — không có nguy cơ mỗi request lại sinh một interval.
+   */
+  onModuleInit() {
+    if (process.env.DISABLE_OAUTH_STATE_SWEEP === '1') {
+      this.logger.log('Quét state OAuth tắt qua DISABLE_OAUTH_STATE_SWEEP=1');
+      return;
+    }
+    const intervalMs = Number(process.env.OAUTH_STATE_SWEEP_INTERVAL_MS ?? OAUTH_SWEEP_INTERVAL_MS);
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) return;
+    const quet = () => this.sweepExpiredOAuthStates().catch((e) => this.logger.error('Quét state OAuth lỗi', e as Error));
+    setTimeout(quet, 30_000);
+    this.oauthSweepInterval = setInterval(quet, intervalMs);
+    if (this.oauthSweepInterval.unref) this.oauthSweepInterval.unref();
+    this.logger.log(`Đã bật quét state OAuth hết hạn mỗi ${Math.round(intervalMs / 60000)} phút`);
+  }
+
+  /**
+   * Xoá mọi dòng state đã hết hạn. Lọc **chỉ theo hạn**, không theo `usedAt`:
+   * `consumeState` xoá dòng đã dùng rồi nên cột đó luôn null ở dòng còn lại, và
+   * dòng `usedAt` từ bản deploy cũ cũng phải được dọn — cùng một điều kiện với
+   * index `@@index([expiresAt])` trong schema.
+   */
+  private async sweepExpiredOAuthStates(): Promise<number> {
+    const { count } = await this.db.userOAuthState.deleteMany({
+      where: { expiresAt: { lte: new Date() } },
+    });
+    if (count > 0) this.logger.log(`Đã dọn ${count} dòng state OAuth hết hạn`);
+    return count;
+  }
 
   /**
    * Ký access token với role ĐÚNG tại thời điểm phát hạn.
@@ -127,9 +188,9 @@ export class AuthService {
    * ngay lần đăng nhập/refresh kế tiếp, không phụ thuộc quét định kỳ có chạy hay không
    * (trên Vercel serverless setInterval gần như không kêu).
    *
-   * Chỉ hỏi thêm 1 lượt khi downgraded — lúc đó emoveVip đã ghi role='user'
+   * Chỉ hỏi thêm 1 lượt khi downgraded — lúc đó `removeVip` đã ghi role='user'
    * nên không cần đọc lại DB. Không hạ thì user.role vẫn còn nguyên hiệu lực.
-   * Admin (ole='admin') không đi qua nhánh này vì wasVip sai.
+   * Admin (`role='admin'`) không đi qua nhánh này vì wasVip sai.
    */
   private async roleForToken(userId: number, current: UserRole): Promise<UserRole> {
     const { downgraded } = await this.premium.checkAndDowngradeIfExpired(userId);
@@ -138,7 +199,16 @@ export class AuthService {
 
   private toPublic(u: Record<string, unknown>): PublicUser {
     const role = String(u.role ?? 'user') as UserRole;
-    return { id: Number(u.id), email: String(u.email), name: (u.name as string) ?? null, role };
+    return {
+      id: Number(u.id),
+      email: String(u.email),
+      name: (u.name as string) ?? null,
+      role,
+      // `?? null` chứ không phải `as string`: cột nullable và mọi db giả trong
+      // test đều có thể thiếu trường, mà `PublicUser` hứa `string | null` —
+      // trả `undefined` là so sánh với `null` ở FE trượt.
+      avatarUrl: (u.avatarUrl as string) ?? null,
+    };
   }
 
   /**
@@ -441,6 +511,21 @@ export class AuthService {
     return { accessToken, refreshToken: fresh, user: this.toPublic(user) };
   }
 
+  /**
+   * `userId` mà một refresh token **đang dùng được** thuộc về, hoặc `null`.
+   *
+   * Cửa sổ hẹp hơn `refresh()` có chủ đích: hàm này **chỉ đọc**, không cấp token mới
+   * và **không xoá dòng phiên** — nó phục vụ cho câu hỏi "phiên này của ai", không
+   * phục vụ cho "làm mới phiên". Việc kiểm token thì đi qua `findRotatable`, cùng hàm
+   * và cùng điều kiện với `refresh()`, nên "dùng được" ở đây và ở đó **không thể
+   * lệch nhau**: cùng kiểu token, cùng `expiresAt`, cùng đệm 30 giây, cùng từ chối
+   * dòng không phải phiên refresh.
+   */
+  async userIdForRefresh(token: string): Promise<number | null> {
+    const live = await this.findRotatable(hashToken(String(token ?? '')));
+    return live ? live.userId : null;
+  }
+
   /** Đăng xuất một thiết bị: xoá dòng phiên dùng token này hoặc token vừa bị thay. */
   async logout(token: string): Promise<void> {
     const hash = hashToken(String(token ?? ''));
@@ -622,6 +707,7 @@ export class AuthService {
       email?: string;
       email_verified?: boolean;
       name?: string;
+      picture?: unknown;
     };
     if (!raw.sub || !raw.email) return null;
     return {
@@ -632,6 +718,11 @@ export class AuthService {
       // profile không xác minh đều đi lọt.
       emailVerified: raw.email_verified === true,
       name: raw.name ?? null,
+      // `typeof === 'string'` vì `picture` là JSON bên ngoài: số hay object đều
+      // không được lọt vào cột TEXT, và `.trim()` vì URL bọc khoảng trắng là URL
+      // hỏng. `picture` thiếu là chuyện bình thường (tài khoản Google không đặt
+      // ảnh) nên đây không phải lý do để bỏ cả luồng đăng nhập.
+      avatarUrl: typeof raw.picture === 'string' ? raw.picture.trim() || null : null,
     };
   }
 
@@ -652,6 +743,24 @@ export class AuthService {
    * nhất chỉ ra. Chỉ `id` và `sub` — **không** log `email`: đó là PII, và log ở
    * đây đang ở chế độ công khai.
    */
+  /**
+   * Đồng bộ ảnh đại diện từ Google cho một user **đã tồn tại**.
+   *
+   * Gọi ở cả hai nhánh trả `ok`, không chỉ lúc tạo user: người dùng đổi ảnh
+   * Google giữa chừng là chuyện thật, mà lần đăng nhập kế tiếp đi qua `existingLink`
+   * chứ không qua nhánh tạo mới — bỏ hàm này ở đây là ảnh đóng băng ở lần đầu.
+   *
+   * **`null` = không biết, không phải "không có ảnh".** Không thấy `picture` thì
+   * bỏ trống, tuyệt đối không `update` `avatarUrl` thành `null`: một lần Google
+   * không gửi `picture` sẽ xoá mất ảnh người dùng đã có. Xoá ảnh thật là việc
+   * của người dùng, không phải của lần đăng nhập im tiếng.
+   */
+  private async syncAvatarUrl(userId: number, avatarUrl: string | null): Promise<void> {
+    const clean = normalizeAvatarUrl(avatarUrl);
+    if (!clean) return;
+    await this.db.user.update({ where: { id: userId }, data: { avatarUrl: clean } });
+  }
+
   async linkOrCreateFromGoogle(
     p: GoogleProfile,
     signedInUserId: number | null,
@@ -683,6 +792,7 @@ export class AuthService {
         );
         return { kind: 'conflict' };
       }
+      await this.syncAvatarUrl(existingLink.userId, p.avatarUrl);
       return { kind: 'ok', userId: existingLink.userId };
     }
 
@@ -701,6 +811,7 @@ export class AuthService {
       await this.db.userAccount.create({
         data: { userId: byEmail.id, provider: GOOGLE_PROVIDER, providerUserId: p.sub },
       });
+      await this.syncAvatarUrl(byEmail.id, p.avatarUrl);
       return { kind: 'ok', userId: byEmail.id };
     }
 
@@ -714,6 +825,7 @@ export class AuthService {
           // minh tới hộp thư đó: để `emailVerifiedAt` null thì tài khoản vừa
           // sinh ra sẽ bị `login` chặn vĩnh viễn.
           emailVerifiedAt: new Date(),
+          avatarUrl: normalizeAvatarUrl(p.avatarUrl),
           // Không có mật khẩu: user này chỉ dùng Google. `passwordHash` để null
           // — đó là tín hiệu mà `login` dựa vào để biết tài khoản không đăng
           // nhập được bằng mật khẩu, và sinh một mật khẩu ngẫu nhiên ở đây là

@@ -17,6 +17,11 @@ model User {
   id                   Int       @id @default(autoincrement())
   email                String    @unique
   name                 String?
+  // Ảnh đại diện lấy từ `picture` của Google userinfo. `String?` chứ không phải
+  // `String` vì tài khoản đăng ký bằng mật khẩu không có ảnh nào, và tài khoản
+  // đã tồn tại từ trước cũng để null — cột nullable mới thêm được mà không phải
+  // ghi đè dữ liệu.
+  avatarUrl            String?
   passwordHash         String?
   role                 String    @default("user")
   vipExpiresAt         DateTime?
@@ -76,12 +81,21 @@ model UserAccount {
 // State tạm của một lần chạy luồng OAuth, khoá theo hash để DB không chứa
 // `state`/`codeVerifier` dạng rõ. Không có quan hệ với User: state sinh ra
 // trước lúc biết user nào sẽ đăng nhập.
+//
+// `usedAt` giữ lại dù dòng đã dùng thì bị **xoá hẳn** (`consumeState`): nó là
+// bất biến `usedAt IS NULL` mà câu `DELETE` của `consumeState` lọc, nên dữ liệu
+// cũ đã đánh dấu đã dùng vẫn bị từ chối đúng, và lịch dọn bên dưới xoá được cả
+// dòng cũ lẫn dòng mới theo cùng một điều kiện.
 model UserOAuthState {
   stateHash    String    @id
   codeVerifier String
   redirectTo   String
   expiresAt    DateTime
   usedAt       DateTime?
+
+  // Lịch dọn xoá theo hạn: không có index này thì mỗi lần quét phải quét cả
+  // bảng, và bảng này phình theo **số lần bấm nút** chứ không theo số người.
+  @@index([expiresAt])
 }
 
 model Test {

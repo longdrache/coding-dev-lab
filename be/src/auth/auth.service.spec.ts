@@ -158,10 +158,14 @@ function makeDb(): any {
         }),
       },
     userOAuthState:
-      // `oauth-state.ts` tra bằng khoá chính `stateHash` (lưu dạng hash) và đánh
-      // dấu đã dùng bằng `update`, không xoá dòng. Db giả phải giữ đúng hình
-      // dạng đó, kể cả `usedAt: null`: so sánh `undefined === null` là false sẽ
-      // làm `consumeState` tưởng state chưa dùng lần thứ hai.
+      // `oauth-state.ts` tra bằng khoá chính `stateHash` (lưu dạng hash) và **xoá
+      // hẳn** dòng khi ăn state, nên db giả phải có `deleteMany` chứ không có
+      // `update`: còn `update` thì db giả vẫn chạy được trong khi code thật đã đổi
+      // sang xoá, và mọi test "state dùng một lần rồi chết" sẽ xanh vì lý do
+      // khác. `deleteMany` lọc đúng ba điều kiện service dùng và **xoá thật khỏi
+      // mảng** — không xoá thì `findUnique` lần sau vẫn thấy dòng cũ.
+      // `usedAt` phải dựng sẵn `null` như schema: so `undefined === null` là
+      // false sẽ khiến mọi dòng bị điều kiện lọc loại.
       {
         create: vi.fn(async ({ data }: any) => {
           const r = { usedAt: null, ...data };
@@ -170,10 +174,20 @@ function makeDb(): any {
         }),
         findUnique: vi.fn(async ({ where }: any) =>
           state.userOAuthState.find((x) => x.stateHash === where?.stateHash) ?? null),
-        update: vi.fn(async ({ where, data }: any) => {
-          const x = state.userOAuthState.find((r) => r.stateHash === where.stateHash)!;
-          Object.assign(x, data);
-          return x;
+        deleteMany: vi.fn(async ({ where }: any) => {
+          const con = state.userOAuthState.filter((r) => {
+            if (where?.stateHash !== undefined && r.stateHash !== where.stateHash) return false;
+            if (where?.usedAt !== undefined && r.usedAt !== where.usedAt) return false;
+            if (where?.expiresAt?.gt !== undefined && r.expiresAt.getTime() <= where.expiresAt.gt.getTime()) {
+              return false;
+            }
+            if (where?.expiresAt?.lte !== undefined && r.expiresAt.getTime() > where.expiresAt.lte.getTime()) {
+              return false;
+            }
+            return true;
+          });
+          state.userOAuthState = state.userOAuthState.filter((r) => !con.includes(r));
+          return { count: con.length };
         }),
       },
   };
@@ -745,7 +759,9 @@ describe('đăng nhập', () => {
     const r = await svc.login('a@b.co', 'matkhau123', 'may-tinh');
     expect(typeof r.accessToken).toBe('string');
     expect(r.refreshToken).toMatch(/^[0-9a-f]{64}$/);
-    expect(r.user).toEqual({ id: db.state.user[0].id, email: 'a@b.co', name: null, role: 'user' });
+    expect(r.user).toEqual({
+      id: db.state.user[0].id, email: 'a@b.co', name: null, role: 'user', avatarUrl: null,
+    });
     expect(db.state.userToken.find((t: any) => t.type === 'refresh')!.userAgent).toBe('may-tinh');
   });
 
@@ -1435,7 +1451,7 @@ describe('thông tin tài khoản', () => {
   it('trả user công khai, không lộ passwordHash', async () => {
     const { db, svc } = await seedVerified();
     expect(await svc.me(db.state.user[0].id)).toEqual({
-      id: db.state.user[0].id, email: 'a@b.co', name: null, role: 'user',
+      id: db.state.user[0].id, email: 'a@b.co', name: null, role: 'user', avatarUrl: null,
     });
   });
 
@@ -1504,7 +1520,90 @@ describe('hạ VIP hết hạn lúc ký access token', () => {
  * Profile Google hợp lệ. `sub` là mã định danh bền vững, `email` thì Google cho
  * người dùng đổi — mọi quyết định ghép tài khoản phải dựa vào `sub`.
  */
-const GOOGLE_OK = { sub: 'g-1', email: 'a@b.co', emailVerified: true, name: 'A B' };
+/** `avatarUrl: null` = Google không trả `picture`; xem describe `avatarUrl` bên dưới. */
+const GOOGLE_OK = {
+  sub: 'g-1', email: 'a@b.co', emailVerified: true, name: 'A B', avatarUrl: null,
+};
+
+/** URL ảnh kiểu Google trả (dùng chung cho cả test `googleProfile` lẫn test DB). */
+const GOOGLE_CO = 'https://lh3.googleusercontent.com/a/photo-1';
+
+/**
+ * Profile Google có ảnh đại diện. `picture` là URL do Google trả, nên nó là **dữ
+ * liệu bên ngoài**: `avatarUrl` phải chịu được việc thiếu, rỗng, hoặc sai kiểu
+ * mà không làm hỏng luồng đăng nhập.
+ */
+const GOOGLE_WITH_PHOTO = { ...GOOGLE_OK, avatarUrl: GOOGLE_CO };
+
+describe('avatarUrl từ Google', () => {
+  it('profile có picture thì user mới nhận avatarUrl', async () => {
+    // Bỏ `avatarUrl` khỏi `user.create` là test này đỏ: cột nullable thì không
+    // ai bắt buộc phải ghi, và không có test nì ảnh sẽ luôn null.
+    const { db, svc } = makeEmptySvc();
+    await svc.linkOrCreateFromGoogle(GOOGLE_WITH_PHOTO, null);
+    expect(db.state.user[0].avatarUrl).toBe(GOOGLE_CO);
+  });
+
+  it('ghép vào tài khoản cũ thì cập nhật avatarUrl chứ không chỉ set lúc tạo', async () => {
+    // Người dùng đổi ảnh Google giữa chừng là chuyện thật, và nhánh "đã có tài
+    // khoản" mới là nhánh mà mọi lần đăng nhập sau đều đi qua. Bỏ `user.update`
+    // ở nhánh này là test đỏ.
+    const { db, svc } = await seedVerified();
+    const id = db.state.user[0].id;
+    expect(db.state.user[0].avatarUrl).toBeUndefined();
+    expect(await svc.linkOrCreateFromGoogle(GOOGLE_WITH_PHOTO, id)).toEqual({ kind: 'ok', userId: id });
+    expect(db.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id }, data: { avatarUrl: GOOGLE_CO } }),
+    );
+    expect(db.state.user[0].avatarUrl).toBe(GOOGLE_CO);
+  });
+
+  it('sub đã gắn sẵn thì cũng cập nhật avatarUrl', async () => {
+    // Lần đăng nhập Google thứ hai đi qua nhánh `existingLink` chứ không qua
+    // nhánh "email đã có" — bỏ `user.update` ở đây là ảnh Google không bao giờ
+    // được cập nhật sau lần đăng nhập đầu tiên.
+    const { db, svc } = makeEmptySvc();
+    await svc.linkOrCreateFromGoogle(GOOGLE_WITH_PHOTO, null);
+    const id = db.state.user[0].id;
+    const doi = 'https://lh3.googleusercontent.com/a/photo-2';
+    expect(await svc.linkOrCreateFromGoogle({ ...GOOGLE_WITH_PHOTO, avatarUrl: doi }, id))
+      .toEqual({ kind: 'ok', userId: id });
+    expect(db.state.user[0].avatarUrl).toBe(doi);
+  });
+
+  it('Google không trả picture thì không ghi đè avatar sẵn có bằng null', async () => {
+    // `undefined` (thiếu hẳn) là "không biết", khác `null` ("biết là không có").
+    // Ghi đè bằng `null` là xoá ảnh người dùng chỉ vì một lần Google im tiếng.
+    const { db, svc } = await seedVerified();
+    const id = db.state.user[0].id;
+    await db.user.update({ where: { id }, data: { avatarUrl: GOOGLE_CO } });
+    await svc.linkOrCreateFromGoogle(GOOGLE_WITH_PHOTO, id);
+    await svc.linkOrCreateFromGoogle({ ...GOOGLE_WITH_PHOTO, avatarUrl: null }, id);
+    expect(db.state.user[0].avatarUrl).toBe(GOOGLE_CO);
+  });
+
+  it('Google trả picture sai kiểu thì coi như không có, không ném 500', async () => {
+    // `picture` là dữ liệu từ JSON bên ngoài, không hứa kiểu: số hay object
+    // đều không được làm hỏng luồng đăng nhập.
+    const { db, svc } = makeEmptySvc();
+    const p = { ...GOOGLE_OK, avatarUrl: { khong: 'phai chuoi' } } as unknown as GoogleProfile;
+    expect(await svc.linkOrCreateFromGoogle(p, null)).toEqual({ kind: 'ok', userId: 1 });
+    expect(db.state.user[0].avatarUrl ?? null).toBeNull();
+  });
+
+  it('toPublic trả avatarUrl để FE dùng', async () => {
+    // Không có trường này trong `PublicUser` thì FE không lấy đâu ra ảnh, dù DB
+    // có cột.
+    const { db, svc } = makeEmptySvc();
+    await svc.linkOrCreateFromGoogle(GOOGLE_WITH_PHOTO, null);
+    expect(await svc.me(db.state.user[0].id)).toMatchObject({ avatarUrl: GOOGLE_CO });
+  });
+
+  it('me() của tài khoản không có ảnh trả null, không phải undefined', async () => {
+    const { db, svc } = await seedVerified();
+    expect(await svc.me(db.state.user[0].id)).toMatchObject({ avatarUrl: null });
+  });
+});
 
 /**
  * db giả **trống** + service. Nhánh "email mới" cần đúng trạng thái này, nên
@@ -1770,14 +1869,16 @@ describe('googleProfile', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('lấy được profile thì trả đúng 4 trường, và có mang code_verifier', async () => {
+  it('lấy được profile thì trả đủ 5 trường, và có mang code_verifier', async () => {
     const calls = stubFetch(
       res({ access_token: 'tok' }),
       res({ sub: 'g-1', email: 'a@b.co', email_verified: true, name: 'A B' }),
     );
     const { svc } = makeEmptySvc();
+    // `avatarUrl: null` khi Google không trả `picture` — dùng `toEqual` nên
+    // trả `undefined` sẽ đỏ: kiểu `GoogleProfile` hứa `string | null`.
     await expect(svc.googleProfile('code-1', 'verifier-1')).resolves.toEqual({
-      sub: 'g-1', email: 'a@b.co', emailVerified: true, name: 'A B',
+      sub: 'g-1', email: 'a@b.co', emailVerified: true, name: 'A B', avatarUrl: null,
     });
     expect(calls.map((c) => c.url)).toEqual([
       'https://oauth2.googleapis.com/token',
@@ -1816,6 +1917,39 @@ describe('googleProfile', () => {
     const { svc } = makeEmptySvc();
     await expect(svc.googleProfile('code', 'verifier')).resolves.toBeNull();
     expect(calls).toHaveLength(2);
+  });
+
+  it('đọc picture thành avatarUrl', async () => {
+    // Bỏ `picture` khỏi kết quả là test này đỏ: cột `avatarUrl` sẽ luôn null
+    // dù Google có gửi ảnh.
+    stubFetch(
+      res({ access_token: 'tok' }),
+      res({ sub: 'g-1', email: 'a@b.co', email_verified: true, name: 'A B', picture: GOOGLE_CO }),
+    );
+    const { svc } = makeEmptySvc();
+    await expect(svc.googleProfile('code', 'verifier')).resolves.toMatchObject({
+      avatarUrl: GOOGLE_CO,
+    });
+  });
+
+  it('thiếu picture thì avatarUrl là null, không phải undefined', async () => {
+    // `GoogleProfile.avatarUrl` kiểu `string | null` nên thiếu hẳn phải hoá
+    // `null`; nếu để `undefined` thì mọi nơi so sánh với `null` đều trượt.
+    stubFetch(
+      res({ access_token: 'tok' }),
+      res({ sub: 'g-1', email: 'a@b.co', email_verified: true, name: 'A B' }),
+    );
+    const { svc } = makeEmptySvc();
+    expect((await svc.googleProfile('code', 'verifier'))?.avatarUrl).toBeNull();
+  });
+
+  it('picture rỗng hoặc sai kiểu thì coi như không có ảnh', async () => {
+    stubFetch(res({ access_token: 'tok' }), res({ sub: 'g-1', email: 'a@b.co', email_verified: true, picture: '' }));
+    const { svc } = makeEmptySvc();
+    expect((await svc.googleProfile('code', 'verifier'))?.avatarUrl).toBeNull();
+
+    stubFetch(res({ access_token: 'tok' }), res({ sub: 'g-1', email: 'a@b.co', email_verified: true, picture: 42 }));
+    expect((await svc.googleProfile('code', 'verifier'))?.avatarUrl).toBeNull();
   });
 });
 
@@ -1922,5 +2056,178 @@ describe('state OAuth qua AuthService', () => {
     const { svc } = makeEmptySvc();
     expect(await svc.takeGoogleState('')).toBeNull();
     expect(await svc.takeGoogleState('khong-ton-tai')).toBeNull();
+  });
+});
+
+/**
+ * `userIdForRefresh` phục vụ cho `signedInUserId` ở callback OAuth: hỏi "phiên này
+ * của ai" mà **không** làm mới phiên. Nó phải tôn trọng đúng những điều kiện mà
+ * `refresh()` đặt, nếu không thì một token mà `refresh` từ chối lại được dùng
+ * để gắn Google vào một tài khoản.
+ */
+describe('userIdForRefresh', () => {
+  it('refresh token còn hạn thì trả userId của dòng phiên đó', async () => {
+    const { db, svc } = makeEmptySvc();
+    const user = await db.user.create({ data: { email: 'a@b.co' } });
+    const phien = await svc.issueSessionForUserId(user.id, 'UA');
+    expect(await svc.userIdForRefresh(phien!.refreshToken)).toBe(user.id);
+  });
+
+  it('chỉ ĐỌC: không phát token mới, không xoá dòng phiên', async () => {
+    // Xoá dòng phiên ở đây là đăng xuất người dùng. Callback OAuth chỉ cần biết
+    // id để ghép Google vào đúng tài khoản — làm thêm thao tác này là mất phiên
+    // người dùng chỉ vì họ bấm nút Google.
+    const { db, svc } = makeEmptySvc();
+    const user = await db.user.create({ data: { email: 'a@b.co' } });
+    const phien = await svc.issueSessionForUserId(user.id, 'UA');
+    const soDong = db.state.userToken.length;
+    await svc.userIdForRefresh(phien!.refreshToken);
+    expect(db.state.userToken).toHaveLength(soDong);
+    expect(db.userToken.update).not.toHaveBeenCalled();
+    // Và token vẫn dùng được sau đó — chứng minh không có xoay vòng nào xảy ra.
+    expect(await svc.refresh(phien!.refreshToken)).not.toBeNull();
+  });
+
+  it('token sai, rỗng, hết hạn, hoặc không phải phiên refresh thì trả null', async () => {
+    const { db, svc } = makeEmptySvc();
+    const user = await db.user.create({ data: { email: 'a@b.co' } });
+    expect(await svc.userIdForRefresh('')).toBeNull();
+    expect(await svc.userIdForRefresh('khong-ton-tai')).toBeNull();
+
+    // Hết hạn: `findRotatable` từ chối, và `userIdForRefresh` phải từ chối y hệt.
+    await db.userToken.create({
+      data: {
+        userId: user.id, type: 'refresh', tokenHash: tokens.hashToken('het-han'),
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    });
+    expect(await svc.userIdForRefresh('het-han')).toBeNull();
+
+    // Mã xác minh email cũng là dòng trong `UserToken` — không phải phiên.
+    await db.userToken.create({
+      data: {
+        userId: user.id, type: 'verify_email', tokenHash: tokens.hashToken('ma-xac-nhan'),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+    expect(await svc.userIdForRefresh('ma-xac-nhan')).toBeNull();
+  });
+});
+
+/**
+ * Bảng `UserOAuthState` phình theo **số lần bấm nút** chứ không theo số người, nên
+ * ngoài `consumeState` (xoá dòng đã dùng) phải còn một lịch quét dòng hết hạn —
+ * state người dùng bỏ dở (đóng tab, Google trả `error`) không ai ăn nên không ai
+ * xoá.
+ */
+describe('quét state OAuth hết hạn', () => {
+  const KHOA = ['DISABLE_OAUTH_STATE_SWEEP', 'OAUTH_STATE_SWEEP_INTERVAL_MS'] as const;
+  let truoc: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    truoc = Object.fromEntries(KHOA.map((k) => [k, process.env[k]]));
+    // `onModuleInit` gọi `Logger.log`; giữ output test sạch.
+    vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    for (const k of KHOA) {
+      if (truoc[k] === undefined) delete process.env[k];
+      else process.env[k] = truoc[k];
+    }
+  });
+
+  /**
+   * Dựng service với hai dòng state: một còn hạn, một đã hết hạn.
+   *
+   * `beginGoogleOAuth` luôn đặt hạn 10 phút kể từ `now` nên dòng hết hạn phải
+   * chỉnh tay trong db giả — không có cách nào làm nó hết hạn tự nhiên mà không
+   * chờ 10 phút thật.
+   */
+  async function seedStates() {
+    const { db, svc } = makeEmptySvc();
+    const conHan = (await svc.beginGoogleOAuth('/')).state;
+    const hetHan = (await svc.beginGoogleOAuth('/')).state;
+    // Chỉ dòng thứ hai hết hạn: dòng đầu phải còn hạn để test chứng minh lịch quét
+    // không xoá nhầm dòng đang dùng được.
+    db.state.userOAuthState[1] = { ...db.state.userOAuthState[1], expiresAt: new Date(Date.now() - 1000) };
+    expect(db.state.userOAuthState[0].expiresAt.getTime()).toBeGreaterThan(Date.now());
+    return { db, svc, conHan, hetHan };
+  }
+
+  it('xoá dòng hết hạn, giữ dòng còn hạn', async () => {
+    // Bỏ lịch quét là test này đỏ: dòng hết hạn nằm lại vĩnh viễn, và mỗi dòng
+    // mang `codeVerifier` dạng rõ.
+    const { db, svc, conHan } = await seedStates();
+    process.env.OAUTH_STATE_SWEEP_INTERVAL_MS = '60000';
+    vi.useFakeTimers();
+    svc.onModuleInit();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(db.state.userOAuthState.map((r: any) => r.stateHash)).toHaveLength(1);
+    expect(db.state.userOAuthState[0].codeVerifier).toBeTruthy();
+    // Dòng còn hạn phải **dùng được**, không phải chỉ còn trong bảng.
+    expect(await svc.takeGoogleState(conHan)).not.toBeNull();
+  });
+
+  it('xoá theo điều kiện expiresAt để ăn đúng index', async () => {
+    const { db, svc } = await seedStates();
+    process.env.OAUTH_STATE_SWEEP_INTERVAL_MS = '60000';
+    vi.useFakeTimers();
+    svc.onModuleInit();
+    await vi.advanceTimersByTimeAsync(30_000);
+    const lanSweep = db.userOAuthState.deleteMany.mock.calls.filter(
+      (c: any[]) => c[0]?.where?.expiresAt?.lte !== undefined,
+    );
+    expect(lanSweep.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('xoá cả dòng đã đánh dấu usedAt từ bản deploy cũ', async () => {
+    // Dòng cũ không đi qua `consumeState` nữa nên không ai xoá nó; thêm
+    // `usedAt: null` vào điều kiện lịch quét là dòng đó nằm lại vĩnh viễn.
+    const { db, svc } = await seedStates();
+    // Dòng thứ hai vốn đã hết hạn (xem `seedStates`); đánh dấu `usedAt` lên nó
+    // để mô phỏng dữ liệu do bản cũ để lại.
+    db.state.userOAuthState[1] = {
+      ...db.state.userOAuthState[1], usedAt: new Date(Date.now() - 60_000),
+    };
+    process.env.OAUTH_STATE_SWEEP_INTERVAL_MS = '60000';
+    vi.useFakeTimers();
+    svc.onModuleInit();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(db.state.userOAuthState).toHaveLength(1);
+    expect(db.state.userOAuthState[0].usedAt).toBeNull();
+  });
+
+  it('DISABLE_OAUTH_STATE_SWEEP=1 thì không bật lịch, không đụng DB', async () => {
+    // Cần khuôn này cho môi trường test và cho người chạy local muốn dọn tay.
+    const { db, svc } = await seedStates();
+    const soDong = db.state.userOAuthState.length;
+    process.env.DISABLE_OAUTH_STATE_SWEEP = '1';
+    vi.useFakeTimers();
+    svc.onModuleInit();
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    expect(db.userOAuthState.deleteMany).not.toHaveBeenCalled();
+    expect(db.state.userOAuthState).toHaveLength(soDong);
+  });
+
+  it('chu kỳ không hợp lệ thì không bật lịch, không ném', async () => {
+    // `setInterval` với NaN/<=0 là lỗi của người vận hành, không được làm app
+    // chết lúc boot.
+    const { svc } = makeEmptySvc();
+    for (const gia of ['abc', '0', '-1']) {
+      process.env.OAUTH_STATE_SWEEP_INTERVAL_MS = gia;
+      expect(() => svc.onModuleInit()).not.toThrow();
+    }
+  });
+
+  it('lỗi DB lúc quét không làm chết tiến trình', async () => {
+    const { db, svc } = await seedStates();
+    db.userOAuthState.deleteMany.mockRejectedValueOnce(new Error('connection terminated'));
+    process.env.OAUTH_STATE_SWEEP_INTERVAL_MS = '60000';
+    vi.useFakeTimers();
+    svc.onModuleInit();
+    await expect(vi.advanceTimersByTimeAsync(30_000)).resolves.not.toThrow();
+    expect(Logger.prototype.error).toHaveBeenCalled();
   });
 });

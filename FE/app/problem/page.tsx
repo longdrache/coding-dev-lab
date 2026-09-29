@@ -8,6 +8,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 // nội dung ngay lần paint đầu, không chớp skeleton, client không cần
 // fetch lại (SWR dùng initial làm fallback, revalidateIfStale: false).
 // BE down thì trả null sau tối đa 4s, client tự dùng SWR cache cũ.
+//
+// Cố ý **không** chuyển cookie phiên của request này. Danh sách phụ thuộc
+// người xem: người có VIP nhận mô tả đầy đủ của bài VIP, người khác không.
+// Chuyển cookie nghĩa là HTML sinh ra phụ thuộc người xem, và bất kỳ tầng cache
+// nào của Next/CDN phía trước từ chốa phân biệt hai người đó là HTML của
+// người VIP lọt sang người thường. Nên HTML server-render **luôn** là dạng an
+// toàn (tiêu đề + cờ khoá), rồi `useProblems` revalidate bằng `authedFetcher`
+// (có cookie) ngay sau khi hydrate để người có VIP thấy mô tả đầy đủ.
 async function getInitialProblems(): Promise<Problem[] | null> {
   try {
     const res = await fetch(`${API_URL}/api/problems`, {

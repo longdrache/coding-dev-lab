@@ -434,8 +434,10 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
                     <span className="line-clamp-1">{p.title}</span>
                     {khoa && <VipLockBadge />}
                   </h3>
-                  {/* Bài VIP không có `description` trong payload danh sách — đây là
-                      cố ý, không phải dữ liệu thiếu. */}
+                  {/* Mô tả hiện khi payload có `description`. Bài VIP chỉ có nó ở
+                      nhánh người xem có quyền; người khác nhận đúng allowlist nên
+                      `p.description` rỗng và dòng này không vẽ ra gì — không có
+                      chỗ lọc nào ở giữa. */}
                   {p.description ? (
                     <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">{p.description}</p>
                   ) : null}

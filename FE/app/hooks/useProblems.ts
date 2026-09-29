@@ -2,15 +2,22 @@
 
 import useSWR from "swr";
 import type { Problem } from "@/app/data/problems";
-import { API_URL, ApiError, authedFetcher, swrFetcher } from "@/lib/swr";
+import { API_URL, ApiError, authedFetcher } from "@/lib/swr";
 import { isVipLockedError } from "@/app/problem/vip-gate";
 
 export function useProblems(fallbackData?: Problem[]) {
   // stale-while-revalidate: hiện cache/SSR ngay, đồng thời fetch nền
-  // để tự lành khi data cũ (xóa cache trình duyệt không xóa localStorage).
+  // để tự lành khi data cũ.
+  //
+  // `authedFetcher` chứ không phải `swrFetcher`: danh sách **có** phụ thuộc người
+  // xem — người có VIP nhận mô tả đầy đủ của bài VIP, người khác chỉ nhận
+  // tiêu đề. Dùng fetcher công khai thì BE không biết ai đang hỏi, mọi người bị
+  // coi là khách, và đúng cái lỗi người dùng báo ("vip thay chi thay tieu de
+  // thoi") là quay lại. BE tự đổi header cache theo nhánh này
+  // (`private, no-store` khi có mô tả) — xem `be/src/problems/problems.controller.ts`.
   const { data, error, isLoading } = useSWR<Problem[]>(
     `${API_URL}/api/problems`,
-    swrFetcher,
+    authedFetcher,
     fallbackData === undefined
       ? { revalidateIfStale: true }
       : { fallbackData, revalidateIfStale: true },

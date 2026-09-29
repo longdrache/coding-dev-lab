@@ -21,11 +21,48 @@ function req(role?: UserRole) {
   return { headers: {}, user: role ? { userId: '7', role, roles: [role] } : undefined } as any;
 }
 
-describe('GET /api/problems — danh sách không phụ thuộc người gọi', () => {
-  it('không nhận req, không đọc token: một payload cho mọi role', async () => {
-    const { ctrl, service } = makeController();
-    await ctrl.list();
-    expect(service.findAll).toHaveBeenCalledOnce();
+describe('GET /api/problems — danh sách theo role, cache tách hai nhánh', () => {
+  /**
+   * Chuỗi header viết thẳng ở đây, **không** import từ controller: đổi hằng ở
+   * controller thì test này phải đỏ, thì mới chứng minh được header thật sự là
+   * `private, no-store` chứ không phải "bằng chính hằng của test".
+   */
+  const NGUOI_THUONG = 'public, max-age=0, s-maxage=60, stale-while-revalidate=300';
+  const NGUOI_CO_VIP = 'private, no-store';
+
+  const cases = [
+    { label: 'khách (không token)', role: undefined, cache: NGUOI_THUONG },
+    { label: 'role user', role: 'user' as const, cache: NGUOI_THUONG },
+    { label: 'role vip', role: 'vip' as const, cache: NGUOI_CO_VIP },
+    { label: 'role admin', role: 'admin' as const, cache: NGUOI_CO_VIP },
+  ];
+
+  for (const c of cases) {
+    it(`${c.label}: Cache-Control = "${c.cache}", role chuyển xuống service`, async () => {
+      const { ctrl, service, res } = makeController();
+      await ctrl.list(req(c.role), res);
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', c.cache);
+      expect(service.findAll).toHaveBeenCalledWith(c.role);
+    });
+  }
+
+  it('nhánh có mô tả (vip/admin) không bao giờ mang `public` hay `s-maxage`', async () => {
+    for (const role of ['vip', 'admin'] as const) {
+      const { ctrl, res } = makeController();
+      await ctrl.list(req(role), res);
+      const value = String(res.setHeader.mock.calls.at(-1)![1]);
+      expect(value).not.toContain('public');
+      expect(value).not.toContain('s-maxage');
+    }
+  });
+
+  it('không role nào ở controller tự quyết cắt — việc đó là của service', async () => {
+    const { ctrl, service, res } = makeController();
+    service.findAll.mockResolvedValue([
+      { slug: 'two-sum', title: 'Hai số', isVip: false, description: 'NOI_DUNG' },
+    ]);
+    const rows = await ctrl.list(req(), res);
+    expect(rows[0]).toHaveProperty('description', 'NOI_DUNG');
   });
 });
 

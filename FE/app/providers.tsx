@@ -4,84 +4,40 @@ import { SWRConfig, type Cache } from "swr";
 import ViewTracker from "./ui/ViewTracker";
 import { AuthProvider } from "./ui/AuthProvider";
 
-const CACHE_KEY = "gocode-swr-cache-v2";
-const TTL_MS = 24 * 60 * 60 * 1000; // cache dùng trong 1 ngày
-
-type StoredEntry = { data: unknown; ts: number };
-
-// Chỉ persist API public (danh sách bài) — data theo tài khoản
-// (dashboard, history, solved...) không lưu để tránh lệch user và cũ.
-//
-// **Riêng chi tiết bài thì không persist dù nó cũng là API public.** Đề của bài
-// VIP được BE trả cho người có VIP; ghi nó vào `localStorage` (key
-// `gocode-swr-cache-v2`, sống 24h) là đặt nội dung Premium ra ngoài phạm vi
-// phiên. Lúc phiên còn sống thì `commitSession` xoá cache khi đổi tài khoản, nhưng
-// đó là lúc **tài khoản** đổi, không phải lúc **quyền** đổi — hạ VIP giữa chừng
-// thì key vẫn còn và `revalidateIfStale` chỉ refetch ở lần mount sau, tức đề đã
-// hiện lên trước đó. Danh sách thì vô hại: BE cắt sẵn còn slug/tiêu đề/cờ khoá
-// cho **mọi** role nên payload không phụ thuộc người xem.
-function persistable(key: string): boolean {
-  if (!key.includes("/api/problems")) return false;
-  return !/\/api\/problems\/[^/?]+/.test(key);
-}
-
-function loadCache(): Map<string, unknown> {
-  const map = new Map<string, unknown>();
-  try {
-    if (typeof window === "undefined") return map;
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return map;
-    const now = Date.now();
-    const entries = JSON.parse(raw) as Array<[string, StoredEntry]>;
-    for (const [k, v] of entries) {
-      if (typeof k !== "string" || !persistable(k)) continue;
-      if (v && typeof v.ts === "number" && now - v.ts < TTL_MS) {
-        map.set(k, { data: v.data, error: undefined, isValidating: false });
-      }
-    }
-  } catch {
-    // storage đầy/bị chặn thì chạy memory cache thường
-  }
-  return map;
-}
-
-function persistCache(map: Map<string, unknown>) {
-  try {
-    const now = Date.now();
-    const entries: Array<[string, StoredEntry]> = [];
-    for (const [k, v] of map.entries()) {
-      // SWR v2 lưu key là URL trần (không prefix) — chỉ giữ string key
-      if (typeof k !== "string" || !persistable(k)) continue;
-      const state = v as { data?: unknown };
-      if (state?.data === undefined) continue;
-      entries.push([k, { data: state.data, ts: now }]);
-    }
-    localStorage.setItem(CACHE_KEY, JSON.stringify(entries));
-  } catch {
-    // quota đầy thì bỏ qua
-  }
-}
-
-// Singleton: StrictMode/HMR có thể gọi provider() nhiều lần —
-// phải dùng chung 1 Map, nếu không listener của Map rỗng sẽ ghi đè
-// localStorage bằng "[]" lúc thoát trang.
-let sharedMap: Map<string, unknown> | null = null;
+/**
+ * Cache SWR chỉ sống trong RAM: **không** persist xuống `localStorage` nữa.
+ *
+ * Trước đây danh sách bài được persist (`gocode-swr-cache-v2`, 24h) với lý do
+ * đúng: BE cắt bài VIP còn slug/tiêu đề/độ khó/chủ đề/cờ khoá cho **mọi** role,
+ * nên payload không phụ thuộc người xem và ghi ra đĩa là vô hại. Danh sách nay
+ * **có** phụ thuộc người xem — người có VIP nhận mô tả đầy đủ của bài VIP — nên
+ * bản ghi lại từ tài khoản VIP sẽ hiện lại cho người kế tiếp mở app trên cùng
+ * trình duyệt: đăng xuất chỉ xoá cache trong RAM qua `mutate` chứ không xoá
+ * `localStorage`, còn hạ VIP giữa chừng không phải đổi tài khoản nên
+ * `commitSession` không kịp xoá. Chi tiết bài vốn đã không persist vì đúng lý
+ * do này; giờ danh sách rơi vào cùng nhóm đó.
+ *
+ * Xoá hẳn cơ chế persist thay vì để một nhánh chết: đoạn code ghi `localStorage`
+ * mà không bao giờ ghi được gì là chỗ dễ bị "sửa cho chạy" lại về sau, và lần
+ * sửa đó sẽ mở đúng lỗ rò này.
+ *
+ * Hệ quả được chấp nhận: refresh trang thì SWR refetch thay vì hiện ngay từ đĩa.
+ * `/problem` vẫn server-render sẵn danh sách và truyền làm `fallbackData` nên
+ * lần paint đầu vẫn có dữ liệu, không chớp skeleton.
+ */
+// Singleton: StrictMode/HMR có thể gọi provider() nhiều lần — phải dùng chung
+// một Map thì các lần mount sau gặp đúng cache, không tự dựng Map rỗng mới.
+let sharedMap: Cache | null = null;
 
 function cacheProvider(): Cache {
   if (typeof window === "undefined") return new Map() as Cache;
   if (sharedMap) return sharedMap as Cache;
-  const map = loadCache();
-  const persist = () => persistCache(map);
-  window.addEventListener("beforeunload", persist);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") persist();
-  });
-  sharedMap = map;
-  return map as Cache;
+  sharedMap = new Map() as Cache;
+  return sharedMap as Cache;
 }
 
 // Cache chung: có cache thì dùng luôn, không fetch lại khi mount lại
-// (rời trang quay về hiện ngay, refresh trong 1 ngày cũng hiện ngay).
+// (rời trang quay về hiện ngay).
 // Data mới vẫn về qua mutate() sau run/submit/toggle.
 //
 // `AuthProvider` nằm trong `<SWRConfig>` (và bao cả `ViewTracker`) vì hai lý do,

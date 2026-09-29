@@ -3,7 +3,12 @@ import { DatabaseService } from '../database/database.service.ts';
 import { Judge0Service } from '../judge0/judge0.service.ts';
 import { TtlCache } from '../common/ttl-cache.ts';
 import type { UserRole } from '../auth/auth.types.ts';
-import { assertVipProblemAllowed, readIsVipFlag, redactVipListRow } from './vip-problem.policy.ts';
+import {
+  assertVipProblemAllowed,
+  canAccessVipProblems,
+  readIsVipFlag,
+  redactVipListRow,
+} from './vip-problem.policy.ts';
 
 type PublicProblem = Record<string, unknown>;
 
@@ -45,27 +50,42 @@ export class ProblemsService {
     private readonly judge0: Judge0Service,
   ) {}
 
+  /**
+   * Danh sách bài đã publish.
+   *
+   * Payload **phụ thuộc người gọi**: `role` trong access token quyết định bài VIP
+   * có bị cắt còn catalogue không. Người có VIP nhận mô tả đầy đủ — cùng hình
+   * dạng với `findBySlug`, chỉ khác ở chỗ danh sách không bao giờ có
+   * `hiddenTests`, kể cả với VIP. Người không có VIP chỉ nhận allowlist.
+   *
+   * Cột quyết định vẫn là claim đã ký trong token, không đọc `vipExpiresAt` ở
+   * đây — xem `vip-problem.policy.ts`.
+   */
   // Public: chỉ bài đã xuất bản mới hiện cho user
-  async findAll(): Promise<PublicProblem[]> {
-    const hit = this.listCache.get(LIST_KEY);
-    if (hit) return hit;
-    const rows = await this.db.problem.findMany({
-      where: { status: 'published' },
-      orderBy: { createdAt: 'asc' },
-    });
-    // ẩn hiddenTests với client
-    const out = rows.map((row) => {
-      const record = row as Record<string, unknown>;
-      const { hiddenTests: _hiddenTests, ...rest } = record;
-      // Danh sách là **catalogue**: bài VIP ở đây chỉ còn slug/tiêu đề/độ khó/
-      // chủ đề/cờ khoá. Cắt cho **mọi** role chứ không chỉ người thường — nhờ vậy
-      // payload không phụ thuộc người gọi nên `Cache-Control: public` + CDN vẫn
-      // đúng, và không có đường nào để response của người nào lọt sang người
-      // khác. Người có VIP mở nội dung qua `GET /api/problems/:slug` như mọi bài.
-      return (readIsVipFlag(record['isVip']) ? redactVipListRow(rest) : rest) as PublicProblem;
-    });
-    this.listCache.set(LIST_KEY, out);
-    return out;
+  async findAll(role?: UserRole | null): Promise<PublicProblem[]> {
+    // Cache giữ dòng đã bỏ `hiddenTests` nhưng **chưa** cắt theo role.
+    let rows = this.listCache.get(LIST_KEY);
+    if (!rows) {
+      const raw = await this.db.problem.findMany({
+        where: { status: 'published' },
+        orderBy: { createdAt: 'asc' },
+      });
+      // ẩn hiddenTests với client
+      rows = raw.map((row) => {
+        const { hiddenTests: _hiddenTests, ...rest } = row as Record<string, unknown>;
+        return rest as PublicProblem;
+      });
+      this.listCache.set(LIST_KEY, rows);
+    }
+    // Cắt **theo lần gọi**, không theo lúc nạp cache. Nếu cache lưu kết quả
+    // đã cắt thì một người VIP gọi trước sẽ làm khách gọi sau nhận bản đầy;
+    // nếu cache lưu bản đầu thì ngược lại, khách gọi trước làm VIP mất mô tả
+    // giữa chừng. Cắt ở đây thì cache chỉ chứa dữ liệu trung tính và mỗi lần
+    // gọi tự quyết theo role của chính nó.
+    const docVip = canAccessVipProblems(role);
+    return rows.map((row) =>
+      readIsVipFlag(row['isVip']) && !docVip ? redactVipListRow(row) : row,
+    );
   }
 
   /**

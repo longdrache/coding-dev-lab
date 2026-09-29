@@ -809,7 +809,7 @@ describe('API (e2e)', () => {
       expect(row).not.toHaveProperty('hiddenTests');
     });
 
-    it('payload là **một** cho mọi role — không phụ thuộc cookie nên cache chung an toàn', async () => {
+    it('payload phụ thuộc role — và mỗi nhánh mang đúng loại cache của nó', async () => {
       const [khach, vip, admin] = await Promise.all([
         request(app.getHttpServer()).get('/api/problems'),
         request(app.getHttpServer()).get('/api/problems').set('Cookie', await authCookie(1, 'vip')),
@@ -819,10 +819,33 @@ describe('API (e2e)', () => {
         expect(res.status).toBe(200);
         return JSON.stringify(res.body.find((p) => p.slug === slugVip));
       };
-      // Người có VIP cũng **không** nhận thêm nội dung ở danh sách: đó là chủ ý,
-      // nhờ vậy một response duy nhất phục vụ mọi role nên CDN dùng được an toàn.
-      expect(dong(vip)).toBe(dong(khach));
-      expect(dong(admin)).toBe(dong(khach));
+      // Người có VIP nhận mô tả đầy đủ — đúng lỗi "vip chỉ thấy tiêu đề" đã sửa.
+      expect(dong(vip)).not.toBe(dong(khach));
+      expect(dong(admin)).toBe(dong(vip));
+      const goc = await db.problem.findUnique({ where: { slug: slugVip } });
+      expect(dong(vip)).toContain(goc!.description.slice(0, 30));
+      // Nhưng bản đầy đủ tuyệt đối không lọt sang response của khách.
+      expect(JSON.stringify(khach.body)).not.toContain(goc!.description.slice(0, 30));
+
+      /**
+       * Điều kiện nghiệm thu: nhánh **có mô tả** thì rời cache chung, nhánh
+       * **không mô tả** thì giữ. Đảo chiều là rò nội dung VIP qua CDN — lỗi
+       * nghiêm trọng hơn nhiều so với ngược lại.
+       */
+      for (const res of [vip, admin]) {
+        expect(res.headers['cache-control']).toBe('private, no-store');
+      }
+      expect(khach.headers['cache-control']).toBe(
+        'public, max-age=0, s-maxage=60, stale-while-revalidate=300',
+      );
+    });
+
+    it('người có VIP vẫn không bao giờ nhận hiddenTests ở danh sách', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/problems')
+        .set('Cookie', await authCookie(1, 'vip'))
+        .expect(200);
+      expect(JSON.stringify(res.body)).not.toContain('hiddenTests');
     });
   });
 

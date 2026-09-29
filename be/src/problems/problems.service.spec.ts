@@ -120,6 +120,79 @@ describe('ProblemsService.findAll', () => {
   });
 });
 
+describe('ProblemsService.findAll theo role — mô tả đầy đủ cho người có VIP', () => {
+  it('vip/admin nhận mô tả đầy đủ của bài VIP, vẫn không bao giờ có hiddenTests', async () => {
+    for (const role of ['vip', 'admin'] as const) {
+      const { svc } = makeService({ problems: [vipRow, normalRow] });
+      const rows = await svc.findAll(role);
+      const vip = rows.find((r) => r['slug'] === 'trapping-rain-water')!;
+      expect(vip).toHaveProperty('description', 'NOI_DUNG_DE_BAI_VIP');
+      // Cùng hình dạng với `findBySlug`: mở được bài VIP thì đọc được đề, nhưng
+      // danh sách không bao giờ mang test ẩn.
+      expect(vip).not.toHaveProperty('hiddenTests');
+      // Bài thường trong cùng danh sách không đổi so với trước.
+      const thuong = rows.find((r) => r['slug'] === 'two-sum')!;
+      expect(thuong).toHaveProperty('description', 'NOI_DUNG_DE_BAI_THUONG');
+      expect(thuong).not.toHaveProperty('hiddenTests');
+    }
+  });
+
+  it('khách/user: bài VIP cắt còn đúng 5 trường, tuyệt đối không có mô tả', async () => {
+    for (const role of ['user', undefined] as const) {
+      const { svc } = makeService({ problems: [vipRow, normalRow] });
+      const rows = await svc.findAll(role);
+      const vip = rows.find((r) => r['slug'] === 'trapping-rain-water')!;
+      expect(Object.keys(vip).sort()).toEqual([
+        'difficulty',
+        'isVip',
+        'slug',
+        'title',
+        'topic',
+      ]);
+      const chuoiVip = JSON.stringify(vip);
+      expect(chuoiVip).not.toContain('NOI_DUNG_DE_BAI_VIP');
+      expect(chuoiVip).not.toContain('STARTER_CODE_VIP');
+      for (const field of ['description', 'examples', 'constraints', 'tests']) {
+        expect(chuoiVip, `còn sót ${field}`).not.toContain(field);
+      }
+      // Bài thường thì vẫn có mô tả như cũ — không phải endpoint nào cũng bị cắt.
+      expect(JSON.stringify(rows)).toContain('NOI_DUNG_DE_BAI_THUONG');
+    }
+  });
+
+  /**
+   * Cache `findAll` dùng chung cho mọi người trong tiến trình, nên thứ tự gọi
+   * không được đổi được câu trả lời. Trước khi sửa, cache lưu kết quả đã cắt
+   * nên gọi VIP trước là nguy cơ rò; nếu đổi sang lưu bản đầu thì ngược lại là
+   * khách gọi trước làm VIP mất mô tả giữa chừng. Hai chiều đều phải đúng.
+   */
+  it('gọi VIP trước không làm khách sau lấy được bản đầy (và ngược lại)', async () => {
+    const vipFirst = makeService({ problems: [vipRow, normalRow] });
+    expect((await vipFirst.svc.findAll('vip'))[0]).toHaveProperty(
+      'description',
+      'NOI_DUNG_DE_BAI_VIP',
+    );
+    const sau = await vipFirst.svc.findAll();
+    expect(JSON.stringify(sau)).not.toContain('NOI_DUNG_DE_BAI_VIP');
+    expect(sau.find((r) => r['slug'] === 'trapping-rain-water')).toMatchObject({ isVip: true });
+
+    const khachFirst = makeService({ problems: [vipRow, normalRow] });
+    expect(JSON.stringify(await khachFirst.svc.findAll())).not.toContain('NOI_DUNG_DE_BAI_VIP');
+    expect((await khachFirst.svc.findAll('vip'))[0]).toHaveProperty(
+      'description',
+      'NOI_DUNG_DE_BAI_VIP',
+    );
+  });
+
+  it('findAll chỉ query DB một lần dù lần này VIP và lần sau khách', async () => {
+    const { svc, db } = makeService({ problems: [vipRow, normalRow] });
+    await svc.findAll('vip');
+    await svc.findAll();
+    await svc.findAll('admin');
+    expect(db.problem.findMany).toHaveBeenCalledOnce();
+  });
+});
+
 describe('ProblemsService.findBySlug chặn bài VIP', () => {
   it('bài VIP + role user/khách → 403 problem_vip_only, không rò nội dung', async () => {
     for (const role of ['user', undefined] as const) {

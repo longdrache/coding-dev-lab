@@ -50,7 +50,8 @@ pnpm --dir be install && pnpm --dir FE install && pnpm --dir admin install
 # 2. Env: copy be/.env.example, FE/.env.example, admin/.env.example thành .env
 #    Điền: DATABASE_URL, DATABASE_URL_UNPOOLED, STRIPE_*, JUDGE0_URL, JUDGE0_API_TOKEN,
 #    ADMIN_EMAIL, ADMIN_PASSWORD_HASH, ADMIN_JWT_PRIVATE_KEY / PUBLIC_KEY,
-#    EMAIL_HOST, EMAIL_USERNAME, EMAIL_PASSWORD, FRONTEND_URL
+#    EMAIL_HOST, EMAIL_USERNAME, EMAIL_PASSWORD, FRONTEND_URL,
+#    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI (xem mục dưới)
 
 # 3. Đẩy schema (1 migration nền tạo đủ 13 bảng) + seed 56 đề
 pnpm --dir be prisma migrate deploy
@@ -63,12 +64,61 @@ pnpm dev-admin      # + Admin :3001 (kèm BE, FE)
 
 Tài khoản admin mặc định dev: `admin` / `admin` (đặt `ADMIN_PASSWORD_HASH` khi deploy).
 
+## Đăng nhập bằng Google (OAuth 2.0)
+
+Nút "Tiếp tục với Google" ở cả `/sign-in` và `/sign-up` chạy OAuth 2.0 với
+**PKCE S256** và `state` lưu trong DB (`UserOAuthState`). Không có "client secret
+nào trong mã FE" — toàn bộ thỏa thuận nằm ở BE.
+
+### Biến môi trường (BE)
+
+| Biến | Lấy ở đâu | Ghi chú |
+| --- | --- | --- |
+| `GOOGLE_CLIENT_ID` | Google Cloud Console → Credentials → OAuth client ID (loại **Web application**) | |
+| `GOOGLE_CLIENT_SECRET` | Cùng chỗ, cùng một client | Chỉ dùng ở bước đổi code lấy access token |
+| `GOOGLE_REDIRECT_URI` | Khai trong "Authorized redirect URIs" | Phải là URL **của BE**, tuyệt đối khớp |
+
+Thiếu **bất kỳ** biến nào trong ba thì `GET /api/auth/oauth/google/start` chuyển
+thẳng về `/sign-in?oauth=failed` — cố ý kiểm sớm cả ba, vì thiếu riêng secret thì
+người dùng phải đi trọn màn hình đồng ý bên Google rồi mới nhận lỗi.
+
+Local: `GOOGLE_REDIRECT_URI=http://localhost:4000/api/auth/oauth/google/callback`.
+
+### Luồng
+
+1. `GET /api/auth/oauth/google/start?redirect_to=…` — sinh `state` + code
+   verifier, ghi vào `UserOAuthState`, đặt cookie `httpOnly` ràng buộc `state`,
+   rồi `302` sang `accounts.google.com`.
+2. Google trả về `GET /api/auth/oauth/google/callback?code&state`.
+3. BE so khớp `?state=` với cookie bằng `timingSafeEqual` **trước khi** ăn
+   `state` (chống login CSRF), ăn `state` một lần rồi xoá, đổi code lấy token,
+   đọc `userinfo`.
+4. `linkOrCreateFromGoogle` quyết định xem làm gì với profile đó — xem bảng dưới.
+5. Cấp cookie phiên rồi `302` về **trang chủ** (`/`).
+
+### Bốn nhánh sau khi có profile Google
+
+| Điều kiện | Kết cục | Người dùng thấy |
+| --- | --- | --- |
+| `sub` đã gắn với đúng user đang đăng nhập, hoặc không có ai đăng nhập | `ok` | Vào thẳng app |
+| `sub` đã gắn với **user khác** | `conflict` | `?oauth=conflict` — phải đăng xuất rồi thử lại |
+| Email đã có tài khoản, người dùng **chưa** đăng nhập | `needs-password` | `?oauth=exists` — đăng nhập bằng mật khẩu |
+| Google chưa xác minh email | `unverified` | `?oauth=unverified` |
+
+Nhánh `needs-password` là **ranh giới bảo mật**: không tự ghép tài khoản theo
+email, vì kẻ nào đăng ký Google với email của bạn cũng vào được tài khoản bạn.
+Ghép **tự động** vẫn xảy ra, nhưng chỉ khi người dùng đã đăng nhập bằng mật
+khẩu và bấm Google — khi đó `byEmail.id === signedInUserId` nên BE tự nối
+`UserAccount` và trả `ok`, tức lần sau vào thẳng bằng Google.
+
 ## Deploy (Vercel)
 
 - FE, Admin, BE là 3 project Vercel riêng (BE chạy qua `be/api/index.ts`).
 - Env bắt buộc trên BE: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `JUDGE0_URL`, `JUDGE0_API_TOKEN`,
-  `ADMIN_*`, `FRONTEND_URL`, `FRONTEND_ADMIN_URL`, `EMAIL_*` (hoặc `MAIL_API_TOKEN`).
+  `ADMIN_*`, `FRONTEND_URL`, `FRONTEND_ADMIN_URL`, `EMAIL_*` (hoặc `MAIL_API_TOKEN`),
+  và `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` (bỏ trống
+  thì nút Google báo lỗi cấu hình; xem mục OAuth ở trên).
 - Stripe webhook trỏ tới `https://<be>/api/premium/webhook`.
 
 ## Bảo mật Judge0 (VM riêng)

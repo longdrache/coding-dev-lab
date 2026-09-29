@@ -261,27 +261,6 @@ export function googleStartUrl(redirectTo: string): string {
 }
 
 /**
- * Nút "Gộp tài khoản Google" trên thẻ "Đã đăng nhập", hoặc `null` khi không nên
- * hiện. Người dùng **đã vào rồi** nên nút này không phải để đăng nhập, mà để
- * liên kết tài khoản Google với tài khoản vừa mở bằng mật khẩu.
- *
- * Không có nó thì nhánh `needs-password` của BE là ngõ cụt: người dùng đăng
- * nhập mật khẩu xong, `AuthForm` chuyển sang thẻ "Đã đăng nhập" và **không còn
- * nút Google** — muốn gộp thì phải tự tải lại trang mà không chỗ nào nói điều
- * đó. Bấm nút ở đây thì BE đọc cookie phiên vừa cấp, ghép `UserAccount`, và
- * lần sau vào thẳng bằng Google.
- *
- * **Không có điều kiện "đã tới từ `?redirect_url=`"** — cố ý. Nhánh `exists` mà
- * BE trả về (`auth.controller.ts`, `?oauth=exists&email=…`) **không mang theo**
- * `redirect_url`, nên đúng những người dùng duy nhất cần nút này lại luôn không
- * có `redirect_url`. Thêm điều kiện đó là dựng lại đúng cái ngõ cụt cần sửa.
- */
-export function googleLinkOffer(mode: AuthMode, redirectTo: string): { href: string } | null {
-  if (mode === "signup") return null;
-  return { href: googleStartUrl(redirectTo) };
-}
-
-/**
  * Câu nói cho từng mã mà BE trả về qua `?oauth=` khi vòng OAuth Google hỏng.
  *
  * Khoá là **mã** BE ghi thẳng lên URL (`auth.controller.ts:338,386,390,397,401,404,409,413,423`),
@@ -294,11 +273,20 @@ export function googleLinkOffer(mode: AuthMode, redirectTo: string): { href: str
  * người dùng hay gặp nhất sau `exists`. Bỏ nó thì họ quay lại `/sign-in` và
  * thấy… không có gì: form im lặng y như mình chưa từng bấm Google.
  *
+ * Không câu nào trong đây mời **ghép tài khoản** nữa. Ghép vẫn xảy ra ở
+ * backend, nhưng chỉ khi người dùng **đã đăng nhập bằng mật khẩu** và bấm Google
+ * (`auth.service.ts:679-694`: `byEmail` + `signedInUserId` khớp thì tự nối
+ * `UserAccount` rồi trả `ok`). Việc gỡ màn hình "Gộp tài khoản Google" khỏi FE
+ * không đụng tới nhánh đó, nên người đã đăng nhập bằng mật khẩu vẫn vào được
+ * bằng Google như cũ — chỉ là không còn lối tắt trên màn hình nữa.
+ *
  * Ba câu phải đọc là câu dành riêng cho người dùng, không phải câu dịch:
  *
- * - `exists` — nói rõ **phải đăng nhập bằng mật khẩu trước**, không thì
- *   người dùng bấm Google lại mãi. Bấm lại mà chưa đăng nhập thì BE trả lại
- *   đúng mã này (`auth.service.ts:693`).
+ * - `exists` — nhánh `needs-password`: email đã có tài khoản, mà người dùng
+ *   thì **chưa** đăng nhập. Không nói rõ "phải đăng nhập bằng mật khẩu" thì họ
+ *   bấm Google lại mãi, vì BE trả đúng mã này mỗi lần
+ *   (`auth.service.ts:693`). Câu này **không** hứa sẽ gộp được, vì sau khi
+ *   đăng nhập xong người dùng không còn thấy nút Google ở đâu nữa.
  * - `conflict` — chỉ xảy ra khi người dùng **đang đăng nhập** mà tài khoản
  *   Google thuộc về user khác (`auth.service.ts:679,694`). Nên câu tuyệt đối
  *   không bảo họ "thử lại": bấm lại mà giữ nguyên phiên là lặp vô hạn. Việc
@@ -316,7 +304,7 @@ export const OAUTH_MESSAGES: Record<string, string> = {
   expired:
     "Phiên đăng nhập bằng Google đã hết hạn — thường do bạn để mở lâu rồi mới bấm. Bấm nút Google lần nữa là vào được ngay.",
   exists:
-    "Email này đã có tài khoản. Đăng nhập bằng mật khẩu trước, rồi bấm Google là sẽ gộp vào tài khoản cũ.",
+    "Email này đã có tài khoản trên GoCode. Đăng nhập bằng mật khẩu của tài khoản đó; quên mật khẩu thì dùng ô “Quên mật khẩu?” bên dưới.",
   failed:
     "Không lấy được thông tin từ Google, và đây không phải lỗi của bạn. Chờ một lát rồi bấm lại; nếu vẫn bị thì vào bằng email và mật khẩu như cũ.",
   unverified:

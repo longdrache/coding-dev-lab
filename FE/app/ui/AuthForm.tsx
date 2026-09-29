@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CircleAlert, LoaderCircle, MailCheck, Send } from "lucide-react";
 import {
   MIN_PASSWORD_LENGTH,
   VERIFY_LINK_HOURS,
-  googleLinkOffer,
   googleStartUrl,
   normalizeEmail,
   resendVerification,
@@ -43,8 +43,14 @@ export default function AuthForm({
 }: {
   mode: AuthMode;
   /**
-   * Đích đến sau khi đăng nhập, lấy từ `?redirect_url=` qua `safeRedirect`.
-   * Mặc định `/` (trang chủ) khi người dùng vào thẳng `/sign-in`.
+   * Đường dẫn người dùng định tới trước khi bị đá sang đây, lấy từ
+   * `?redirect_url=` qua `safeRedirect`. Mặc định `/`.
+   *
+   * **Không còn quyết định đích đến sau khi đăng nhập** — sau khi vào được thì
+   * đi thẳng về trang chủ. Prop này còn lại vì nút Google vẫn gửi nó lên BE
+   * (`googleStartUrl`), và BE vẫn lưu nó vào dòng `UserOAuthState`; bỏ hẳn sẽ
+   * là xoá luôn lớp kiểm `safeInternalPath` ở hai đầu, mà lớp đó phải còn ngay
+   * cả khi đích cuối đang là trang chủ.
    */
   redirectTo?: string;
   /**
@@ -54,6 +60,7 @@ export default function AuthForm({
   oauthNotice?: string | null;
 }) {
   const { refresh } = useSession();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -68,6 +75,24 @@ export default function AuthForm({
   const toggleHref = isSignup ? "/sign-in" : "/sign-up";
   const toggleLabel = isSignup ? "Đã có tài khoản?" : "Chưa có tài khoản?";
   const toggleAction = isSignup ? "Đăng nhập" : "Đăng ký";
+
+  /**
+   * Đã có phiên thì đi thẳng về trang chủ.
+   *
+   * Chạy ở `useEffect` chứ không phải ngay trong `run()` vì `run()` gọi
+   * `await refresh()` trước: `AuthProvider` phải kịp đọc lại `/me` và giữ
+   * token trong bộ nhớ trước khi rời trang, nếu không thì trang chủ dựng lên
+   * với `user = null` rồi nhảy về `/sign-in` — tức đăng nhập xong thì bị đuổi.
+   *
+   * `router.replace` (chuyển trang mềm) chứ không phải `location.href`: nó giữ
+   * nguyên `AuthProvider` và không reload lại tài nguyên. Không có `setTimeout`
+   * cố ý — chờ bao lâu cũng là đoán, còn bên dưới đã còn nút "Vào trang chủ" làm
+   * đường thoát khi `replace` ném.
+   */
+  useEffect(() => {
+    if (done !== "signedin") return;
+    router.replace("/");
+  }, [done, router]);
 
   /**
    * Một đường duy nhất cho cả lần bấm đầu và lần bấm "gửi lại", nên hai màn
@@ -170,40 +195,17 @@ export default function AuthForm({
   }
 
   if (done === "signedin") {
-    // Người dùng mở `/problem/two-sum` rồi bị đá sang đây sẽ phải quay lại đúng
-    // bài đó; nếu vào thẳng `/sign-in` thì về trang chủ như trước.
-    const wentToProblem = redirectTo !== "/";
-    // Không có `googleLink` thì nhánh `needs-password` của BE là ngõ cụt: đăng
-    // nhập mật khẩu xong là mất nút Google, phải tự tải lại trang mới bấm lại
-    // được. Quyết định có hiện hay không nằm ở `googleLinkOffer` (file .ts thuần)
-    // chứ không ở đây, để nó test được — xem `lib/auth-form.ts`.
-    const googleLink = googleLinkOffer(mode, redirectTo);
+    // Sau khi đăng nhập xong thì đi thẳng về trang chủ — kể cả khi vào từ
+    // `?redirect_url=`. Nút bên dưới **không phải** đường thoát dự phòng cho
+    // người bấm nhầm: `router.replace` là chuyển trang mềm, nên nếu nó ném (mạng
+    // chặn, middleware lỗi) thì người dùng vẫn còn một cách vào bằng tay.
     return (
       <div className={CARD}>
         <h2 className={TITLE}>Đã đăng nhập</h2>
-        <p className={BODY}>
-          {wentToProblem
-            ? "Tài khoản đã mở. Quay lại bài bạn đang làm."
-            : "Tài khoản đã mở. Vào trang chủ để luyện tiếp bài đang dở."}
-        </p>
-        <Link href={redirectTo} className={`${PRIMARY} mt-5`}>
-          {wentToProblem ? "Quay lại bài đang làm" : "Vào trang chủ"}
+        <p className={BODY}>Tài khoản đã mở. Đang đưa bạn về trang chủ…</p>
+        <Link href="/" className={`${PRIMARY} mt-5`}>
+          Vào trang chủ
         </Link>
-        {googleLink && (
-          // Nằm SAU nút chính và sau đường kẻ: đây là việc tuỳ chọn, không phải
-          // chuyện phải làm để dùng được. Câu giải thích nằm ngay trên nút —
-          // không có nó thì người dùng không hiểu vì sao sau khi đã đăng nhập lại
-          // còn một nút "Google" ở đây.
-          <div className="mt-6 border-t border-zinc-200 pt-5">
-            <p className={BODY}>
-              Muốn lần sau mở GoCode bằng Google mà không phải nhớ mật khẩu thì gộp tài khoản ở đây.
-            </p>
-            <a href={googleLink.href} className={`${SECONDARY} mt-3`} data-testid="google-link">
-              <GoogleMark aria-hidden className="size-4" />
-              Gộp tài khoản Google
-            </a>
-          </div>
-        )}
       </div>
     );
   }

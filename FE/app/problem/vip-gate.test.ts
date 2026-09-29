@@ -5,6 +5,7 @@ import {
   isVipLockedError,
   isVipProblem,
   shouldShowVipLock,
+  vipBadge,
   vipLockHref,
   type ViewerRole,
 } from './vip-gate';
@@ -60,6 +61,40 @@ describe('shouldShowVipLock', () => {
     expect(shouldShowVipLock(true, 'vip')).toBe(false);
     expect(shouldShowVipLock(true, 'admin')).toBe(false);
     expect(shouldShowVipLock(false, 'user')).toBe(false);
+  });
+});
+
+describe('vipBadge - dấu hiệu VIP trên card bài và trên trang bài', () => {
+  it('bài thường thì không hiện gì, với mọi role', () => {
+    for (const role of ROLES) expect(vipBadge(false, role)).toBe('none');
+  });
+
+  it('người không mở được thì thấy dấu KHOÁ', () => {
+    expect(vipBadge(true, 'user')).toBe('locked');
+    expect(vipBadge(true, null)).toBe('locked');
+    expect(vipBadge(true, undefined)).toBe('locked');
+  });
+
+  it('người có VIP thì thấy dấu hiệu tương ứng, KHÔNG phải dấu khoá', () => {
+    // Đây là phần bổ sung so với hành vi cũ: trước đây người có VIP thấy danh
+    // sách sạch bóng, nên lướt xong không phân biệt được bài Premium với bài
+    // thường. Giấu luôn thì thông tin mất, hiện khoá thì nói dối.
+    expect(vipBadge(true, 'vip')).toBe('owned');
+    expect(vipBadge(true, 'admin')).toBe('owned');
+  });
+
+  it('role lạ (chuỗi rác từ API) thì coi như người thường, tức là thấy khoá', () => {
+    expect(vipBadge(true, 'root' as ViewerRole)).toBe('locked');
+  });
+
+  it('shouldShowVipLock chỉ là trường hợp riêng của vipBadge — không lệch với nó', () => {
+    // Một luật, hai chỗ dùng: `ProblemList` dùng `vipBadge`, còn nếu ai đó viện
+    // lý do chỉ cần biết "có khoá không" thì phải ra **cùng** câu trả lời.
+    for (const isVip of [true, false]) {
+      for (const role of ROLES) {
+        expect(shouldShowVipLock(isVip, role)).toBe(vipBadge(isVip, role) === 'locked');
+      }
+    }
   });
 });
 

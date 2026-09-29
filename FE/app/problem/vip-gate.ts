@@ -26,9 +26,30 @@ export function isVipProblem(isVip: boolean, role: ViewerRole): boolean {
   return isVip && !canOpenVipProblem(role);
 }
 
+/**
+ * Dấu hiệu VIP nào hiển thị trên card bài và trên trang bài.
+ *
+ * Một hàm duy nhất cho cả hai chỗ, vì trước đây danh sách gọi
+ * `shouldShowVipLock` còn trang bài thì không hiện gì cả — hai nơi một luật là hai
+ * nơi sẽ lệch nhau, và người VIP thấy danh sách sạch bóng rồi bước vào bài mới
+ * biết nó là bài Premium.
+ *
+ * - `none` — bài thường, không hiện gì.
+ * - `locked` — bài VIP mà người đang xem **không** mở được: hiện dấu khoá, kèm
+ *   lối nâng cấp. Chỉ ở danh sách và ở trang bài; BE vẫn là nơi chặn thật.
+ * - `owned` — bài VIP mà người đang xem **mở được**: hiện dấu hiệu tương ứng
+ *   (vàng, không có khoá) để phân biệt với bài thường mà không giả vờ chặn ai.
+ */
+export type VipBadge = "none" | "locked" | "owned";
+
+export function vipBadge(isVip: boolean, role: ViewerRole): VipBadge {
+  if (!isVip) return "none";
+  return canOpenVipProblem(role) ? "owned" : "locked";
+}
+
 /** Danh sách có hiện dấu khoá cạnh tiêu đề bài VIP không. */
 export function shouldShowVipLock(isVip: boolean, role: ViewerRole): boolean {
-  return isVipProblem(isVip, role);
+  return vipBadge(isVip, role) === "locked";
 }
 
 /**

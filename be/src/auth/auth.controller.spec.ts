@@ -634,7 +634,9 @@ describe('đăng nhập bằng Google — callback', () => {
     expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
   });
 
-  it('thành công thì đặt cả hai cookie rồi 302 về đúng redirectTo đã lưu', async () => {
+  it('thành công thì đặt cả hai cookie rồi 302 về trang chủ', async () => {
+    // Đích sau khi đăng nhập Google là trang chủ, **không** phải
+    // `consumed.redirectTo` — xem `auth.controller.ts` ở nhánh này.
     const { c, auth, res } = ctl();
     auth.takeGoogleState.mockResolvedValue({ codeVerifier: VERIFIER, redirectTo: '/premium' });
     await c.googleCallback(req({ 'user-agent': 'UA/1.0' }), 'code', 'state', undefined, res,
@@ -643,13 +645,14 @@ describe('đăng nhập bằng Google — callback', () => {
     expect(auth.linkOrCreateFromGoogle).toHaveBeenCalledWith(PROFILE, null);
     expect(auth.issueSessionForUserId).toHaveBeenCalledWith(7, 'UA/1.0');
     expect(res.cookie.mock.calls.map((x) => x[0])).toEqual([SESSION_COOKIE, REFRESH_COOKIE]);
-    expect(viDenFe(res).origin + viDenFe(res).pathname).toBe(FE + '/premium');
+    // `redirectTo` vẫn còn trong state, nhưng KHÔNG được dùng làm đích.
+    expect(viDenFe(res).origin + viDenFe(res).pathname).toBe(FE + '/');
   });
 
   it('redirectTo lưu trong DB mà ra ngoài nội bộ thì vẫn về "/" — lần thứ hai', async () => {
     // Lần đầu đã chặn ở `start`, nhưng cột trong DB là **dữ liệu**, không phải
     // lời gọi của trình duyệt: nếu bảng bị sửa tay hoặc một bản cũ ghi vào thì
-    // đây là chốt chặn cuối trước khi phát ra `Location`.
+    // `consumeState` vẫn phải chặn trước khi trả về cho bất kỳ ai.
     for (const raw of ['https://evil.com', '//evil.com']) {
       const { c, auth, res } = ctl();
       auth.takeGoogleState.mockResolvedValue({ codeVerifier: VERIFIER, redirectTo: raw });

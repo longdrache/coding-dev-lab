@@ -11,6 +11,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Crown,
   FileText,
   History,
   ListChecks,
@@ -34,8 +35,30 @@ import { recordActivity } from "../activity";
 import { topics } from "@/app/data/topics";
 import { useProblem, useProblems } from "@/app/hooks/useProblems";
 import { VipLockedNotice } from "@/app/premium/PremiumGuard";
+import { vipBadge } from "../vip-gate";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+/**
+ * Dấu hiệu VIP trên trang bài.
+ *
+ * Người **không** mở được bài này không bao giờ tới được đây: BE trả 403
+ * `problem_vip_only` và `ProblemWorkspace` rơi vào `VipLockedNotice` (màn khoá đã
+ * có khoá của riêng nó). Nên dấu này gần như luôn là nhánh "đã có quyền" — hiện
+ * vẫn cả hai nhánh để đúng một luật với danh sách: bài nào là Premium thì phải
+ * thấy là Premium, chứ không lúc có lúc không.
+ */
+function VipPageBadge() {
+  return (
+    <span
+      title="Bài GoCode Premium"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-bold text-amber-800"
+    >
+      <Crown className="size-4" />
+      Premium
+    </span>
+  );
+}
 
 // Giới hạn CPU mỗi submission (giây) — code vòng lặp vô hạn sẽ bị
 // Judge0 ngắt sau ngần này. BE kẹp cứng tối đa 5s nên gửi bao nhiêu
@@ -818,8 +841,9 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
           </div>
         </header>
 
-        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-zinc-950">
+        <h1 className="flex flex-wrap items-center gap-3 font-display text-2xl sm:text-3xl font-bold tracking-tight text-zinc-950">
           {problem.title}
+          {vipBadge(problem.isVip === true, user?.role) !== "none" && <VipPageBadge />}
         </h1>
         {solved && (
           <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700">

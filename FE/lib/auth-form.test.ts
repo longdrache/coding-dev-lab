@@ -5,7 +5,6 @@ import {
   VERIFY_LINK_HOURS,
   authEndpoint,
   authErrorMessage,
-  googleLinkOffer,
   googleStartUrl,
   normalizeEmail,
   oauthMessage,
@@ -420,33 +419,6 @@ describe('googleStartUrl', () => {
   });
 });
 
-describe('googleLinkOffer - nút gộp tài khoản trên thẻ "Đã đăng nhập"', () => {
-  it('chế độ đăng nhập thì có nút, trỏ đúng route start của BE', () => {
-    // Không có nút này thì nhánh `needs-password` của BE là ngõ cụt: đăng nhập
-    // mật khẩu xong, `AuthForm` chuyển sang thẻ "Đã đăng nhập" và mất nút Google.
-    expect(googleLinkOffer('signin', '/problem/two-sum')).toEqual({
-      href: googleStartUrl('/problem/two-sum'),
-    });
-  });
-
-  it('có nút kể cả khi KHÔNG có redirect_url — vì nhánh exists của BE không mang theo nó', () => {
-    // Đúng những người dùng duy nhất cần nút này là người tới từ
-    // `?oauth=exists`, mà URL đó không có `redirect_url` (`redirectTo` rơi về
-    // "/"). Điều kiện "phải có redirect_url" ở đây là dựng lại đúng ngõ cụt.
-    expect(googleLinkOffer('signin', '/')).toEqual({ href: googleStartUrl('/') });
-  });
-
-  it('chế độ đăng ký thì không có: sau khi đăng ký còn phải mở link xác nhận mới vào được', () => {
-    expect(googleLinkOffer('signup', '/')).toBeNull();
-  });
-
-  it('href đi qua safeRedirect — link tới không bao giờ là open redirect', () => {
-    expect(googleLinkOffer('signin', 'https://evil.com')?.href).toContain(
-      'redirect_to=' + encodeURIComponent('/'),
-    );
-  });
-});
-
 describe('OAUTH_MESSAGES', () => {
   /**
    * Sáu mã, không phải năm. Brief Task 5 chỉ liệt kê năm và bỏ sót
@@ -476,10 +448,24 @@ describe('OAUTH_MESSAGES', () => {
     }
   });
 
-  it('`exists` chỉ đúng việc phải làm: đăng nhập bằng mật khẩu trước', () => {
-    // Câu quan trọng nhất. Không nói "đăng nhập bằng mật khẩu trước" thì
-    // người dùng bấm Google lại mãi và không bao giờ đổi cách.
-    expect(OAUTH_MESSAGES.exists).toContain('Đăng nhập bằng mật khẩu trước');
+  it('`exists` chỉ đúng việc phải làm: đăng nhập bằng mật khẩu, và KHÔNG mời ghép nữa', () => {
+    // Câu quan trọng nhất. Không nói "đăng nhập bằng mật khẩu" thì người dùng
+    // bấm Google lại mãi và không bao giờ đổi cách.
+    expect(OAUTH_MESSAGES.exists).toContain('Đăng nhập bằng mật khẩu');
+    // Màn hình "Gộp tài khoản Google" đã bỏ khỏi FE. Câu này phải chỉ ra một
+    // lối thoát **tồn tại**, nếu không nó hứa một việc không còn chỗ nào làm —
+    // đăng nhập xong thì người dùng không còn thấy nút Google ở đâu.
+    expect(OAUTH_MESSAGES.exists).not.toMatch(/gộp/i);
+    // Quên mật khẩu thì vẫn có đường vào: link "Quên mật khẩu?" nằm ở form.
+    expect(OAUTH_MESSAGES.exists).toContain('Quên mật khẩu');
+  });
+
+  it('không câu nào trong bản đồ còn mời ghép tài khoản', () => {
+    // Xoá màn hình ghép thì phải xoá cả lời mời, ở **mọi** mã chứ không riêng
+    // `exists`: `conflict` và `failed` cũng từng gợi ý đi vào bằng Google.
+    for (const k of ALL_CODES) {
+      expect(OAUTH_MESSAGES[k], k).not.toMatch(/gộp tài khoản/i);
+    }
   });
 
   it('`conflict` nói rõ đây KHÔNG phải lỗi của họ, và chỉ ra việc phải làm', () => {

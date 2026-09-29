@@ -1,5 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BADGE_DEFS, calcStreakFromMap, ProgressService } from './progress.service.ts';
+import { VipProblemService } from '../problems/vip-problem.service.ts';
+import { PROBLEM_VIP_ONLY_CODE } from '../problems/vip-problem.policy.ts';
+
+function makeVipStub(isVip: boolean) {
+  return new VipProblemService({
+    problem: { findUnique: vi.fn().mockResolvedValue({ isVip }) },
+  } as any);
+}
+
+function makeSolveService(isVip: boolean) {
+  const db = {
+    activityDay: { findMany: vi.fn().mockResolvedValue([]) },
+    solvedProblem: { findMany: vi.fn().mockResolvedValue([]), upsert: vi.fn() },
+    userBadge: { findMany: vi.fn().mockResolvedValue([]), upsert: vi.fn() },
+    favoriteProblem: {
+      findMany: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+  };
+  return { svc: new ProgressService(db as any, makeVipStub(isVip)), db };
+}
 
 function vnKey(offsetDays: number): string {
   const d = new Date();
@@ -51,7 +72,7 @@ describe('ProgressService.getDashboard (cache 200ms)', () => {
       solvedProblem: { findMany: vi.fn().mockResolvedValue([]), upsert: vi.fn() },
       userBadge: { findMany: vi.fn().mockResolvedValue([]), upsert: vi.fn() },
     };
-    return { svc: new ProgressService(db as any), db };
+    return { svc: new ProgressService(db as any, makeVipStub(false)), db };
   }
 
   beforeEach(() => {
@@ -101,5 +122,33 @@ describe('ProgressService.getDashboard (cache 200ms)', () => {
     expect(await svc.getDashboard(1)).toBe(first);
     vi.advanceTimersByTime(200);
     expect(await svc.getDashboard(1)).not.toBe(first);
+  });
+});
+
+describe('ProgressService.recordSolved chặn bài VIP', () => {
+  it('VIP + user thường → 403 problem_vip_only, không ghi SolvedProblem', async () => {
+    const { svc, db } = makeSolveService(true);
+    await expect(
+      svc.recordSolved(1, 'trapping-rain-water', 'Khó', 'user'),
+    ).rejects.toMatchObject({ response: { code: PROBLEM_VIP_ONLY_CODE } });
+    expect(db.solvedProblem.upsert).not.toHaveBeenCalled();
+  });
+
+  it('VIP + vip thì ghi được', async () => {
+    const { svc, db } = makeSolveService(true);
+    await svc.recordSolved(1, 'trapping-rain-water', 'Khó', 'vip');
+    expect(db.solvedProblem.upsert).toHaveBeenCalledOnce();
+  });
+
+  it('bài thường + user thường thì không đổi hành vi cũ', async () => {
+    const { svc, db } = makeSolveService(false);
+    await svc.recordSolved(1, 'two-sum', 'Dễ', 'user');
+    expect(db.solvedProblem.upsert).toHaveBeenCalledOnce();
+  });
+
+  it('đánh dấu yêu thích bài VIP thì vẫn được — bookmark tiêu đề đã công khai', async () => {
+    const { svc, db } = makeSolveService(true);
+    await svc.addFavorite(1, 'trapping-rain-water');
+    expect(db.favoriteProblem.upsert).toHaveBeenCalledOnce();
   });
 });

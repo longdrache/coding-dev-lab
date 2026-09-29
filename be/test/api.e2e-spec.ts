@@ -10,6 +10,9 @@ import { AppModule } from './../src/app.module.ts';
 import { signAccessToken, hashToken } from './../src/auth/tokens.ts';
 import { OAUTH_STATE_COOKIE } from './../src/auth/auth.controller.ts';
 import type { UserRole } from './../src/auth/auth.types.ts';
+// Quy tắc chọn 20 bài VIP nằm ở data dùng chung (FE + script seed), không phải
+// ở BE — import thẳng để test e2e kiểm đúng cái danh sách đang nằm trong DB.
+import { VIP_PROBLEM_COUNT, VIP_SLUGS } from '../../FE/app/data/problems.ts';
 
 
 // `tokens.ts` đọc khoá RSA một cách lazy, nên đặt ở đây (sau các import, trước
@@ -698,6 +701,438 @@ describe('API (e2e)', () => {
           AND tc.constraint_schema = 'public'
       `;
       expect(fks.map((row) => row.delete_rule)).toEqual(['CASCADE']);
+    });
+  });
+
+  // ===== Bài VIP =====
+  //
+  // Nhóm test này là **bằng chứng không lọt**: đi qua HTTP thật với cookie thật,
+  // token thật, và soi **payload** chứ không chỉ status — endpoint trả 403 kèm
+  // luôn đề bài thì status đúng mà nội dung vẫn lọt.
+  describe('bài VIP: cột isVip và 20 bài được đánh dấu', () => {
+    it('Problem.isVip tồn tại, NOT NULL, mặc định false', async () => {
+      // `NOT NULL DEFAULT false` chứ không phải nullable: cột nullable thì câu
+      // `where: { isVip: true }` của script seed âm thầm bỏ sót bài có NULL, và
+      // "dựng lại DB cho ra đúng 20 bài VIP" chỉ đúng ở DB mới.
+      const cot = await db.$queryRaw<{
+        column_name: string;
+        is_nullable: string;
+        column_default: string;
+        data_type: string;
+      }[]>`
+        SELECT column_name, is_nullable, column_default, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'Problem'
+          AND column_name = 'isVip'
+      `;
+      expect(cot).toEqual([
+        {
+          column_name: 'isVip',
+          is_nullable: 'NO',
+          column_default: 'false',
+          data_type: 'boolean',
+        },
+      ]);
+    });
+
+    it('đúng 20 bài trong DB khớp từng slug với quy tắc tất định ở problems.ts', async () => {
+      const vip = await db.problem.findMany({
+        where: { isVip: true },
+        select: { slug: true },
+      });
+      expect(vip.map((p) => p.slug).sort()).toEqual([...VIP_SLUGS].sort());
+    });
+
+    it('không bài nào ngoài 20 slug đó mang isVip', async () => {
+      const ngoai = await db.problem.count({
+        where: { isVip: true, slug: { notIn: [...VIP_SLUGS] } },
+      });
+      expect(ngoai).toBe(0);
+    });
+
+    it('20 bài đó đều đã publish — bài draft không lọt vào danh sách VIP', async () => {
+      const vip = await db.problem.findMany({
+        where: { isVip: true, slug: { in: [...VIP_SLUGS] } },
+        select: { status: true },
+      });
+      expect(vip).toHaveLength(VIP_PROBLEM_COUNT);
+      for (const p of vip) expect(p.status).toBe('published');
+    });
+  });
+
+  describe('bài VIP: danh sách không rò nội dung', () => {
+    let slugVip: string;
+    let slugThuong: string;
+
+    beforeAll(async () => {
+      // `orderBy` chứ không dựa vào `findFirst` trần: lần chạy nào cũng phải bắt
+      // **cùng một** bài đại diện, nếu không thì một bài VIP khác có hành vi khác
+      // làm test đỏ vì lý do không liên quan.
+      const vip = await db.problem.findFirst({
+        where: { isVip: true, status: 'published' },
+        select: { slug: true },
+        orderBy: { slug: 'asc' },
+      });
+      const thuong = await db.problem.findFirst({
+        where: { isVip: false, status: 'published' },
+        select: { slug: true },
+        orderBy: { slug: 'asc' },
+      });
+      slugVip = vip!.slug;
+      slugThuong = thuong!.slug;
+    });
+
+    it('tiêu đề vẫn hiện, payload chỉ còn 5 trường, không có test nào lọt ra', async () => {
+      const res = await request(app.getHttpServer()).get('/api/problems').expect(200);
+      const row = res.body.find((p: { slug: string }) => p.slug === slugVip);
+      expect(row).toBeTruthy();
+      expect(row.title).toBeTruthy();
+      expect(row.isVip).toBe(true);
+      // Allowlist: đủ để vẽ hàng, lọc theo chủ đề; không đủ để làm bài.
+      expect(Object.keys(row).sort()).toEqual(['difficulty', 'isVip', 'slug', 'title', 'topic']);
+      const chuoi = JSON.stringify(row);
+      for (const field of ['hiddenTests', 'description', 'examples', 'constraints', 'tests', 'starterCodes']) {
+        expect(chuoi, `còn sót ${field}`).not.toContain(field);
+      }
+      // Nội dung thật của bài đó không nằm trong payload, kể cả đoạn đầu.
+      const goc = await db.problem.findUnique({ where: { slug: slugVip } });
+      expect(chuoi).not.toContain(goc!.description.slice(0, 30));
+    });
+
+    it('bài thường trong cùng danh sách vẫn có nội dung như cũ', async () => {
+      const res = await request(app.getHttpServer()).get('/api/problems').expect(200);
+      const row = res.body.find((p: { slug: string }) => p.slug === slugThuong);
+      expect(row).toBeTruthy();
+      expect(row.isVip).toBe(false);
+      expect(row.description).toBeTruthy();
+      expect(row).not.toHaveProperty('hiddenTests');
+    });
+
+    it('payload là **một** cho mọi role — không phụ thuộc cookie nên cache chung an toàn', async () => {
+      const [khach, vip, admin] = await Promise.all([
+        request(app.getHttpServer()).get('/api/problems'),
+        request(app.getHttpServer()).get('/api/problems').set('Cookie', await authCookie(1, 'vip')),
+        request(app.getHttpServer()).get('/api/problems').set('Cookie', await authCookie(1, 'admin')),
+      ]);
+      const dong = (res: { status: number; body: Array<{ slug: string }> }) => {
+        expect(res.status).toBe(200);
+        return JSON.stringify(res.body.find((p) => p.slug === slugVip));
+      };
+      // Người có VIP cũng **không** nhận thêm nội dung ở danh sách: đó là chủ ý,
+      // nhờ vậy một response duy nhất phục vụ mọi role nên CDN dùng được an toàn.
+      expect(dong(vip)).toBe(dong(khach));
+      expect(dong(admin)).toBe(dong(khach));
+    });
+  });
+
+  describe('bài VIP: chi tiết chặn đúng ba trạng thái, không rò gì', () => {
+    let slugVip: string;
+
+    beforeAll(async () => {
+      const vip = await db.problem.findFirst({
+        where: { isVip: true, status: 'published' },
+        select: { slug: true },
+        orderBy: { slug: 'asc' },
+      });
+      slugVip = vip!.slug;
+    });
+
+    it('khách không cookie → 403 problem_vip_only, body rỗng nội dung, không vào cache chung', async () => {
+      const res = await request(app.getHttpServer()).get(`/api/problems/${slugVip}`).expect(403);
+      expect(res.body.code).toBe('problem_vip_only');
+      const goc = await db.problem.findUnique({ where: { slug: slugVip } });
+      const chuoi = JSON.stringify(res.body);
+      expect(chuoi).not.toContain(goc!.description.slice(0, 30));
+      for (const field of ['hiddenTests', 'examples', 'constraints', 'tests', 'starterCodes']) {
+        expect(chuoi, `lọt ${field}`).not.toContain(field);
+      }
+      // 403 mà mang `s-maxage` thì CDN giữ lại rồi phục vụ cho mọi người.
+      expect(res.headers['cache-control'] ?? '').not.toContain('s-maxage');
+      expect(res.headers['cache-control'] ?? '').not.toContain('public');
+    });
+
+    it('cookie rác → 403 problem_vip_only chứ không 401 và không 500', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/problems/${slugVip}`)
+        .set('Cookie', 'session=khong-phai-jwt')
+        .expect(403);
+      expect(res.body.code).toBe('problem_vip_only');
+    });
+
+    it('role user → 403 problem_vip_only, body không chứa nội dung bài', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/problems/${slugVip}`)
+        .set('Cookie', await authCookie(1, 'user'))
+        .expect(403);
+      expect(res.body.code).toBe('problem_vip_only');
+      const goc = await db.problem.findUnique({ where: { slug: slugVip } });
+      expect(JSON.stringify(res.body)).not.toContain(goc!.description.slice(0, 30));
+    });
+
+    it('role vip → 200, có đề bài, không hiddenTests, và rời cache chung', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/problems/${slugVip}`)
+        .set('Cookie', await authCookie(1, 'vip'))
+        .expect(200);
+      expect(res.body.description).toBeTruthy();
+      expect(res.body.examples.length).toBeGreaterThan(0);
+      expect(res.body).not.toHaveProperty('hiddenTests');
+      // `private, no-store`: nội dung bài VIP phụ thuộc người xem nên tuyệt đối
+      // không được nằm trong CDN.
+      expect(res.headers['cache-control']).toBe('private, no-store');
+    });
+
+    it('role admin → 200, có đề bài — admin là người duyệt nội dung', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/problems/${slugVip}`)
+        .set('Cookie', await authCookie(1, 'admin'))
+        .expect(200);
+      expect(res.body.description).toBeTruthy();
+    });
+
+    it('bài thường vẫn mở được với khách, header cache chung giữ nguyên', async () => {
+      const res = await request(app.getHttpServer()).get('/api/problems/two-sum').expect(200);
+      expect(res.body.description).toBeTruthy();
+      expect(res.headers['cache-control']).toBe(
+        'public, max-age=0, s-maxage=300, stale-while-revalidate=600',
+      );
+    });
+  });
+
+  describe('bài VIP: mọi endpoint chạm tới bài đều bị chặn, không riêng GET chi tiết', () => {
+    let slugVip: string;
+    let slugThuong: string;
+    /** User thật trong DB — `Submission`/`SolvedProblem` có khoá ngoại tới `User`. */
+    let userId: number;
+    const userEmail = 'e2e-vip-probe@test.local';
+
+    beforeAll(async () => {
+      const vip = await db.problem.findFirst({
+        where: { isVip: true, status: 'published' },
+        select: { slug: true },
+        orderBy: { slug: 'asc' },
+      });
+      slugVip = vip!.slug;
+      const thuong = await db.problem.findFirst({
+        where: { isVip: false, status: 'published' },
+        select: { slug: true },
+        orderBy: { slug: 'asc' },
+      });
+      slugThuong = thuong!.slug;
+      const existing = await db.user.findFirst({ where: { email: userEmail }, select: { id: true } });
+      const user = existing ?? (await db.user.create({ data: { email: userEmail } }));
+      userId = user.id;
+    });
+
+    afterAll(async () => {
+      await db.submission.deleteMany({ where: { userId } });
+      await db.solvedProblem.deleteMany({ where: { userId } });
+      await db.user.deleteMany({ where: { id: userId } });
+    });
+
+    /**
+     * Mỗi dòng là **một endpoint** đã khoá.
+     *
+     * `guest` là status mong đợi cho khách **không cookie**: phần lớn route có
+     * `AuthGuard` nên trả 401 trước khi tới chính sách VIP — đó còn mạnh hơn, và
+     * ghi rõ ra thay vì để test tự hiểu. Riêng `GET /api/problems/:slug` dùng
+     * `OptionalAuthGuard` nên khách tới được và bị chính sách chặn bằng 403.
+     *
+     * Comment ở từng dòng nói vì sao endpoint đó phải khoá — endpoint mới chạm
+     * tới bài mà không thêm dòng thì bảng này không còn là hợp đồng.
+     */
+    const ENDPOINTS_CHUA_KHOA: Array<{
+      label: string;
+      guest: 401 | 403;
+      call: (cookie: string, slug: string) => request.Test;
+    }> = [
+      {
+        // Chi tiết: đường rò nội dung trực tiếp.
+        label: 'GET /api/problems/:slug',
+        guest: 403,
+        call: (c, s) => request(app.getHttpServer()).get(`/api/problems/${s}`).set('Cookie', c),
+      },
+      {
+        // Nộp bài: chạy Judge0 trên test ẩn. Không khoá thì vừa đốt tài nguyên
+        // máy chấm, vừa lộ `Bài toán chưa có test ẩn` / `Quá nhiều test ẩn` —
+        // hai câu đó tự nó đã nói bài có bao nhiêu test ẩn.
+        label: 'POST /api/problems/:slug/submit',
+        guest: 401,
+        call: (c, s) =>
+          request(app.getHttpServer())
+            .post(`/api/problems/${s}/submit`)
+            .set('Cookie', c)
+            .send({ languageId: 71, sourceCode: 'print(1)' }),
+      },
+      {
+        // Ghi lịch sử thủ công: tự khai "đã giải" một bài không đọc được đề.
+        label: 'POST /api/history',
+        guest: 401,
+        call: (c, s) =>
+          request(app.getHttpServer())
+            .post('/api/history')
+            .set('Cookie', c)
+            .send({ problemSlug: s, languageId: 71, sourceCode: 'print(1)' }),
+      },
+      {
+        // Lịch sử theo slug: trả 403 chứ không phải `[]` — `[]` vẫn là câu trả
+        // lời **hợp lệ** cho một slug có thật, tức là công cụ dò bài VIP.
+        label: 'GET /api/history?slug=',
+        guest: 401,
+        call: (c, s) =>
+          request(app.getHttpServer())
+            .get(`/api/history?slug=${encodeURIComponent(s)}`)
+            .set('Cookie', c),
+      },
+      {
+        label: 'GET /api/history/me?slug=',
+        guest: 401,
+        call: (c, s) =>
+          request(app.getHttpServer())
+            .get(`/api/history/me?slug=${encodeURIComponent(s)}`)
+            .set('Cookie', c),
+      },
+      {
+        // Đánh dấu đã giải: nếu lọt thì lên được huy hiệu `solve_50`/`dsa_pro`
+        // mà không cần đọc một chữ nào của đề.
+        label: 'POST /api/progress/solve',
+        guest: 401,
+        call: (c, s) =>
+          request(app.getHttpServer())
+            .post('/api/progress/solve')
+            .set('Cookie', c)
+            .send({ slug: s, difficulty: 'Khó' }),
+      },
+    ];
+
+    for (const ep of ENDPOINTS_CHUA_KHOA) {
+      it(`${ep.label} — role user: 403 problem_vip_only, body không lọt nội dung bài`, async () => {
+        const res = await ep.call(await authCookie(userId, 'user'), slugVip);
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('problem_vip_only');
+        const goc = await db.problem.findUnique({ where: { slug: slugVip } });
+        expect(JSON.stringify(res.body)).not.toContain(goc!.description.slice(0, 30));
+      });
+
+      it(`${ep.label} — khách không cookie: ${ep.guest}`, async () => {
+        const res = await ep.call('', slugVip);
+        expect(res.status).toBe(ep.guest);
+        if (ep.guest === 403) expect(res.body.code).toBe('problem_vip_only');
+      });
+    }
+
+    it('không endpoint nào ghi được Submission/SolvedProblem cho bài VIP', async () => {
+      const cookie = await authCookie(userId, 'user');
+      const truoc = {
+        sub: await db.submission.count({ where: { userId, problemSlug: slugVip } }),
+        solved: await db.solvedProblem.count({ where: { userId, slug: slugVip } }),
+      };
+      await request(app.getHttpServer())
+        .post('/api/history')
+        .set('Cookie', cookie)
+        .send({ problemSlug: slugVip, languageId: 71, sourceCode: 'print(1)' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post('/api/progress/solve')
+        .set('Cookie', cookie)
+        .send({ slug: slugVip, difficulty: 'Khó' })
+        .expect(403);
+      const sau = {
+        sub: await db.submission.count({ where: { userId, problemSlug: slugVip } }),
+        solved: await db.solvedProblem.count({ where: { userId, slug: slugVip } }),
+      };
+      expect(sau).toEqual(truoc);
+    });
+
+    // Những endpoint này **không** chạy Judge0 nên vẫn kiểm tra được "vip đi
+    // qua" ở tầng HTTP. Riêng `submit` xem test ngay bên dưới.
+    const KHONG_TOAO_JUDGE0 = ENDPOINTS_CHUA_KHOA.filter(
+      (ep) => ep.label !== 'POST /api/problems/:slug/submit',
+    );
+
+    for (const ep of KHONG_TOAO_JUDGE0) {
+      it(`${ep.label} — role vip thì không bị chính sách VIP chặn`, async () => {
+        const res = await ep.call(await authCookie(userId, 'vip'), slugVip);
+        expect(res.status, `${ep.label} trả ${res.status}`).not.toBe(403);
+      });
+    }
+
+    it('bài thường qua được các endpoint trên với role user', async () => {
+      const cookie = await authCookie(userId, 'user');
+      for (const ep of KHONG_TOAO_JUDGE0) {
+        const res = await ep.call(cookie, slugThuong);
+        expect(res.status, `${ep.label} trả ${res.status}`).not.toBe(403);
+      }
+    });
+  });
+
+  describe('bài VIP: thứ tự chặn ở endpoint submit, không chạm Judge0', () => {
+    /**
+     * Bài **draft** có `hiddenTests: []` tạo ra ngay trong test.
+     *
+     * Vì sao phải tự tạo: gọi `submit` thật trên bài VIP đã seed sẽ chạy Judge0
+     * và poll tới 90 giây — chậm, tốn hạn mức, và khiến test phụ thuộc dịch vụ
+     * ngoài. `hiddenTests: []` cho đúng kết quả cần: sau khi qua được cổng VIP
+     * thì service dừng ở `404 Bài toán chưa có test ẩn`, **trước** khi gọi
+     * Judge0 — nhờ đó test vừa chứng minh người VIP đi qua, vừa chứng minh thứ
+     * tự chặn chạy trước mọi việc đọc test ẩn.
+     */
+    const SLUG_VIP = 'e2e-vip-submit-probe';
+    const SLUG_THUONG = 'e2e-normal-submit-probe';
+
+    beforeAll(async () => {
+      for (const [slug, isVip] of [
+        [SLUG_VIP, true],
+        [SLUG_THUONG, false],
+      ] as const) {
+        await db.problem.upsert({
+          where: { slug },
+          create: {
+            slug,
+            title: `probe ${slug}`,
+            difficulty: 'Dễ',
+            topic: 'array',
+            status: 'draft',
+            isVip,
+            description: 'PROBE_NOI_DUNG_DE_BAI',
+            tests: [],
+            hiddenTests: [],
+          },
+          update: { isVip, hiddenTests: [], status: 'draft' },
+        });
+      }
+    });
+
+    afterAll(async () => {
+      await db.problem.deleteMany({
+        where: { slug: { in: [SLUG_VIP, SLUG_THUONG] } },
+      });
+    });
+
+    function submit(slug: string, cookie: string) {
+      return request(app.getHttpServer())
+        .post(`/api/problems/${slug}/submit`)
+        .set('Cookie', cookie)
+        .send({ languageId: 71, sourceCode: 'print(1)' });
+    }
+
+    it('bài VIP: role user bị chặn trước khi đọc test ẩn (404 chưa kịp xảy ra)', async () => {
+      const res = await submit(SLUG_VIP, await authCookie(1, 'user'));
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('problem_vip_only');
+    });
+
+    it('bài VIP: role vip đi qua cổng VIP, dừng ở "chưa có test ẩn" chứ không gọi Judge0', async () => {
+      const res = await submit(SLUG_VIP, await authCookie(1, 'vip'));
+      expect(res.status).toBe(404);
+      expect(res.body.message).toContain('test ẩn');
+    });
+
+    it('bài thường: role user đi thẳng tới bước sau cổng VIP, không bị 403', async () => {
+      const res = await submit(SLUG_THUONG, await authCookie(1, 'user'));
+      expect(res.status).toBe(404);
+      expect(res.body.message).toContain('test ẩn');
     });
   });
 });

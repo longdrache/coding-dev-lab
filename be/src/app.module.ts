@@ -20,7 +20,7 @@ import { PremiumModule } from './premium/premium.module.ts';
 const rateLimiter = rateLimit({
   windowMs: 60_000,
   limit: 100,
-  message: 'Quá nhiều yêu cầu, vui lòng thử lại sau 1 phút',
+  message: 'Quá nhiều yêu cầu, vui lòng thử lại sau',
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -49,6 +49,13 @@ const rateLimiter = rateLimit({
 })
 export class AppModule implements NestModule {
   configure(consumer: any) {
+    // Tắt limiter toàn cục. Chỉ dùng cho test e2e: cả suite bắn hàng trăm
+    // request trong vài giây từ **cùng một IP** (127.0.0.1), nên ngưỡng
+    // 100/phút sẽ chặn chính test của ta và mọi assert về mã lỗi bài VIP sẽ đỏ
+    // vì nhầm là 429 — tức test không còn kiểm tra cái nó tên.
+    // `vitest.config.e2e.ts` bật cờ này; ở mọi nơi khác cờ vắng mặt thì hành vi
+    // y hệt trước đây.
+    if (process.env.DISABLE_RATE_LIMIT === '1') return;
     consumer.apply(rateLimiter).forRoutes('*');
   }
 }

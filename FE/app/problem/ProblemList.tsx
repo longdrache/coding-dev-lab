@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Search, List, LayoutGrid, ArrowUpDown, Eye, Star, CheckCircle2, Circle, Tag } from "lucide-react";
+import { ArrowLeft, Search, List, LayoutGrid, ArrowUpDown, Eye, Star, CheckCircle2, Circle, Crown, Lock, Tag } from "lucide-react";
 import Logo from "@/app/ui/Logo";
 import Breadcrumbs from "@/app/ui/Breadcrumbs";
 import { useSession } from "@/app/ui/AuthProvider";
@@ -11,6 +11,7 @@ import type { Difficulty, Problem } from "@/app/data/problems";
 import { topics } from "@/app/data/topics";
 import { useSolvedSlugs, useServerSolvedSlugs } from "./solved";
 import { useProblems } from "@/app/hooks/useProblems";
+import { shouldShowVipLock } from "./vip-gate";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Pagination,
@@ -30,6 +31,25 @@ const DIFFICULTY_STYLES: Record<Difficulty, string> = {
 };
 
 const PAGE_SIZE = 10;
+
+/**
+ * Dấu khoá cạnh tiêu đề bài VIP.
+ *
+ * Chỉ hiện với người **không** mở được bài đó — người có VIP thấy danh sách bình
+ * thường, không có khoá nào cản đường. Quyết định nằm ở `shouldShowVipLock` để
+ * test được; ở đây chỉ vẽ.
+ */
+function VipLockBadge() {
+  return (
+    <span
+      title="Bài GoCode Premium — cần nâng cấp để mở"
+      className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-700"
+    >
+      <Lock className="size-3" />
+      VIP
+    </span>
+  );
+}
 
 function topicTitle(slug: string): string {
   return topics.find((topic) => topic.slug === slug)?.title ?? slug;
@@ -134,6 +154,7 @@ function useFavorites() {
 export default function ProblemList({ initial }: { initial: Problem[] | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useSession();
   const topic = searchParams.get("topic") ?? "all";
   const [query, setQuery] = useState("");
   const [difficulty, setDifficulty] = useState<"Tất cả" | Difficulty>("Tất cả");
@@ -396,6 +417,7 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
               const globalIndex = (currentPage - 1) * PAGE_SIZE + idx + 1;
               const solved = solvedSlugs.includes(p.slug);
               const fav = favs.includes(p.slug);
+              const khoa = shouldShowVipLock(p.isVip === true, user?.role);
               return (
                 <Link key={p.slug} href={`/problem/${p.slug}`} className="group flex flex-col rounded-xl border border-zinc-200 bg-white p-4 shadow-sm hover:border-zinc-300 hover:shadow-md transition">
                   <div className="flex items-center justify-between">
@@ -408,11 +430,24 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
                       <Star className={`size-4 ${fav ? "fill-amber-400" : ""}`} />
                     </button>
                   </div>
-                  <h3 className="mt-2 line-clamp-1 text-sm font-bold tracking-tight text-zinc-900 group-hover:text-zinc-700">{p.title}</h3>
-                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">{p.description}</p>
+                  <h3 className="mt-2 line-clamp-1 flex items-center gap-1.5 text-sm font-bold tracking-tight text-zinc-900 group-hover:text-zinc-700">
+                    <span className="line-clamp-1">{p.title}</span>
+                    {khoa && <VipLockBadge />}
+                  </h3>
+                  {/* Bài VIP không có `description` trong payload danh sách — đây là
+                      cố ý, không phải dữ liệu thiếu. */}
+                  {p.description ? (
+                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">{p.description}</p>
+                  ) : null}
                   <div className="mt-3 flex items-center gap-2">
                     <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${DIFFICULTY_STYLES[p.difficulty]}`}>{p.difficulty}</span>
                     {solved && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">Đã đạt</span>}
+                    {khoa && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                        <Crown className="size-3" />
+                        Premium
+                      </span>
+                    )}
                   </div>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] font-mono text-zinc-600 border border-zinc-200">{topicTitle(p.topic)}</span>
@@ -441,7 +476,8 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
                     const globalIndex = (currentPage - 1) * PAGE_SIZE + idx + 1;
                     const solved = solvedSlugs.includes(p.slug);
                     const fav = favs.includes(p.slug);
-         
+                    const khoa = shouldShowVipLock(p.isVip === true, user?.role);
+
                     return (
                       <TableRow key={p.slug} className="group border-b border-zinc-100 last:border-0 hover:bg-zinc-50/60">
                         <TableCell className="text-center">
@@ -461,6 +497,7 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
                           <Link href={`/problem/${p.slug}`} className="block group/link">
                             <span className="flex items-center gap-2">
                               <span className="line-clamp-1 text-sm font-semibold tracking-tight text-zinc-900 group-hover/link:text-zinc-700">{p.title}</span>
+                              {khoa && <VipLockBadge />}
                               {solved && <span className="shrink-0 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700">Đã đạt</span>}
                             </span>
                             <span className="mt-1 flex flex-wrap gap-1">

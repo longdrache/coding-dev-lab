@@ -1,5 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenException } from '@nestjs/common';
 import { ProblemsService } from './problems.service.ts';
+import { PROBLEM_VIP_ONLY_CODE } from './vip-problem.policy.ts';
+
+/** Dòng bài VIP đầy đủ nội dung — dùng để chứng minh payload không rò. */
+const vipRow = {
+  slug: 'trapping-rain-water',
+  title: 'Hứng nước mưa',
+  difficulty: 'Khó',
+  topic: 'array',
+  status: 'published',
+  description: 'NOI_DUNG_DE_BAI_VIP',
+  inputFormat: 'DONG_1_LA_CHUOI',
+  outputFormat: 'IN_RA_SO',
+  constraints: ['n <= 10^5'],
+  examples: [{ input: '[[1,0]]', output: '1' }],
+  tests: [{ stdin: '[[1,0]]', expected: '1' }],
+  hiddenTests: [{ stdin: '[[2,1]]', expected: '1' }],
+  starterCodes: { '71': 'STARTER_CODE_VIP' },
+  isVip: true,
+};
+const normalRow = {
+  slug: 'two-sum',
+  title: 'Hai số có tổng bằng mục tiêu',
+  difficulty: 'Dễ',
+  topic: 'array',
+  status: 'published',
+  description: 'NOI_DUNG_DE_BAI_THUONG',
+  inputFormat: '',
+  outputFormat: '',
+  constraints: [],
+  examples: [],
+  tests: [{ stdin: '1', expected: '2' }],
+  hiddenTests: [{ stdin: '2', expected: '3' }],
+  isVip: false,
+};
 
 function makeService(overrides?: {
   problem?: unknown;
@@ -42,6 +77,121 @@ describe('ProblemsService.findAll', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).not.toHaveProperty('hiddenTests');
     expect(rows[0]).toHaveProperty('slug', 'a');
+  });
+
+  it('bài VIP trong danh sách chỉ còn slug/tiêu đề/độ khó/chủ đề/cờ khoá', async () => {
+    const { svc } = makeService({ problems: [vipRow, normalRow] });
+    const rows = await svc.findAll();
+    const vip = rows.find((r) => r['slug'] === 'trapping-rain-water')!;
+    expect(Object.keys(vip).sort()).toEqual([
+      'difficulty',
+      'isVip',
+      'slug',
+      'title',
+      'topic',
+    ]);
+    expect(JSON.stringify(vip)).not.toContain('NOI_DUNG_DE_BAI_VIP');
+    expect(JSON.stringify(vip)).not.toContain('STARTER_CODE_VIP');
+  });
+
+  it('bài VIP vẫn hiện tiêu đề trong danh sách — người không VIP phải thấy nó', async () => {
+    const { svc } = makeService({ problems: [vipRow] });
+    const rows = await svc.findAll();
+    expect(rows[0]).toMatchObject({
+      slug: 'trapping-rain-water',
+      title: 'Hứng nước mưa',
+      isVip: true,
+    });
+  });
+
+  it('bài thường giữ nguyên nội dung như trước', async () => {
+    const { svc } = makeService({ problems: [normalRow] });
+    const rows = await svc.findAll();
+    expect(rows[0]).toHaveProperty('description', 'NOI_DUNG_DE_BAI_THUONG');
+    expect(rows[0]).not.toHaveProperty('hiddenTests');
+  });
+
+  it('cache của findAll cũng phải đã cắt — không có đường nào lấy lại được bản đầy', async () => {
+    const { svc } = makeService({ problems: [vipRow] });
+    await svc.findAll();
+    const lanHai = await svc.findAll();
+    expect(lanHai[0]).not.toHaveProperty('description');
+    expect(lanHai[0]).toMatchObject({ isVip: true });
+  });
+});
+
+describe('ProblemsService.findBySlug chặn bài VIP', () => {
+  it('bài VIP + role user/khách → 403 problem_vip_only, không rò nội dung', async () => {
+    for (const role of ['user', undefined] as const) {
+      const { svc } = makeService({ problem: vipRow });
+      let err: unknown;
+      try {
+        await svc.findBySlug('trapping-rain-water', role);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect((err as ForbiddenException).getResponse()).toMatchObject({
+        code: PROBLEM_VIP_ONLY_CODE,
+      });
+      expect(JSON.stringify((err as ForbiddenException).getResponse())).not.toContain(
+        'NOI_DUNG_DE_BAI_VIP',
+      );
+    }
+  });
+
+  it('bài VIP + vip/admin → trả đầy đủ, ẩn hiddenTests như mọi bài', async () => {
+    for (const role of ['vip', 'admin'] as const) {
+      const { svc } = makeService({ problem: vipRow });
+      const p = await svc.findBySlug('trapping-rain-water', role);
+      expect(p).toMatchObject({ slug: 'trapping-rain-water', isVip: true });
+      expect(p).toHaveProperty('description', 'NOI_DUNG_DE_BAI_VIP');
+      expect(p).not.toHaveProperty('hiddenTests');
+    }
+  });
+
+  it('bài thường + role nào cũng qua, kể cả khách', async () => {
+    for (const role of ['user', 'vip', 'admin', undefined] as const) {
+      const { svc } = makeService({ problem: normalRow });
+      const p = await svc.findBySlug('two-sum', role);
+      expect(p).toMatchObject({ slug: 'two-sum', isVip: false });
+    }
+  });
+});
+
+describe('ProblemsService.submit chặn bài VIP', () => {
+  const hidden = [{ stdin: 'in0', expected: 'out0' }];
+
+  it('bài VIP + role thường → 403 trước khi gọi Judge0', async () => {
+    const { svc, judge0, db } = makeService({
+      problem: { ...vipRow, hiddenTests: hidden },
+    });
+    await expect(
+      svc.submit('trapping-rain-water', 1, 71, 'code', 'user'),
+    ).rejects.toMatchObject({ response: { code: PROBLEM_VIP_ONLY_CODE } });
+    expect(judge0.createBatchSubmissions).not.toHaveBeenCalled();
+    expect(db.submission.create).not.toHaveBeenCalled();
+    expect(db.solvedProblem.upsert).not.toHaveBeenCalled();
+  });
+
+  it('bài VIP + vip thì vẫn chấm được', async () => {
+    const { svc, judge0 } = makeService({
+      problem: { ...vipRow, hiddenTests: hidden },
+    });
+    judge0.createBatchSubmissions.mockResolvedValue([{ token: 't0' }]);
+    judge0.getBatchSubmissions.mockResolvedValue({ submissions: [done('out0')] });
+    const res = await svc.submit('trapping-rain-water', 1, 71, 'code', 'vip');
+    expect(res.passed).toBe(true);
+  });
+
+  it('bài thường + role thường thì vẫn nộp được như cũ', async () => {
+    const { svc, judge0 } = makeService({
+      problem: { ...normalRow, hiddenTests: hidden },
+    });
+    judge0.createBatchSubmissions.mockResolvedValue([{ token: 't0' }]);
+    judge0.getBatchSubmissions.mockResolvedValue({ submissions: [done('out0')] });
+    const res = await svc.submit('two-sum', 1, 71, 'code', 'user');
+    expect(res.passed).toBe(true);
   });
 });
 

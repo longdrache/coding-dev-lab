@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
 import { Judge0Service } from '../judge0/judge0.service.ts';
 import { TtlCache } from '../common/ttl-cache.ts';
+import type { UserRole } from '../auth/auth.types.ts';
+import { assertVipProblemAllowed, readIsVipFlag, redactVipListRow } from './vip-problem.policy.ts';
 
 type PublicProblem = Record<string, unknown>;
 
@@ -52,16 +54,35 @@ export class ProblemsService {
       orderBy: { createdAt: 'asc' },
     });
     // ẩn hiddenTests với client
-    const out = rows.map(({ hiddenTests: _hiddenTests, ...rest }) => rest as PublicProblem);
+    const out = rows.map((row) => {
+      const record = row as Record<string, unknown>;
+      const { hiddenTests: _hiddenTests, ...rest } = record;
+      // Danh sách là **catalogue**: bài VIP ở đây chỉ còn slug/tiêu đề/độ khó/
+      // chủ đề/cờ khoá. Cắt cho **mọi** role chứ không chỉ người thường — nhờ vậy
+      // payload không phụ thuộc người gọi nên `Cache-Control: public` + CDN vẫn
+      // đúng, và không có đường nào để response của người nào lọt sang người
+      // khác. Người có VIP mở nội dung qua `GET /api/problems/:slug` như mọi bài.
+      return (readIsVipFlag(record['isVip']) ? redactVipListRow(rest) : rest) as PublicProblem;
+    });
     this.listCache.set(LIST_KEY, out);
     return out;
   }
 
-  async findBySlug(slug: string): Promise<PublicProblem | null> {
+  /**
+   * Chi tiết một bài. Bài VIP thì chỉ `vip`/`admin` mới đọc được — `role` lấy từ
+   * claim trong access token, xem `vip-problem.policy.ts`.
+   */
+  async findBySlug(slug: string, role?: UserRole | null): Promise<PublicProblem | null> {
     const hit = this.slugCache.get(slug);
-    if (hit) return hit;
+    if (hit) {
+      assertVipProblemAllowed(readIsVipFlag(hit['isVip']), role);
+      return hit;
+    }
     const row = await this.db.problem.findUnique({ where: { slug } });
     if (!row || (row as Record<string, unknown>).status !== 'published') return null;
+    // Chặn **trước** khi cắt `hiddenTests` và trước khi đụng cache: dòng đầy đủ
+    // của bài VIP không được đi qua bất kỳ đường trả về nào với người thường.
+    assertVipProblemAllowed(readIsVipFlag((row as Record<string, unknown>)['isVip']), role);
     const { hiddenTests: _hiddenTests, ...rest } = row as Record<string, unknown>;
     // Không cache null: bài vừa publish sẽ thấy ngay ở request kế tiếp
     // thay vì phải chờ hết TTL.
@@ -69,9 +90,19 @@ export class ProblemsService {
     return rest;
   }
 
-  async submit(slug: string, userId: number, languageId: number, sourceCode: string) {
+  async submit(
+    slug: string,
+    userId: number,
+    languageId: number,
+    sourceCode: string,
+    role?: UserRole | null,
+  ) {
     const problem = await this.db.problem.findUnique({ where: { slug } });
     if (!problem) throw new NotFoundException('Không tìm thấy bài toán');
+    // Chặn ngay sau khi biết bài là VIP và **trước** khi đọc `hiddenTests`, trước
+    // khi gọi Judge0: nếu chặn muộn thì một lần submit trôi qua đã tiêu tài nguyên
+    // máy chấm và đã lộ test ẩn qua thông báo lỗi phía dưới.
+    assertVipProblemAllowed(readIsVipFlag((problem as Record<string, unknown>)['isVip']), role);
     const hiddenTests = (problem.hiddenTests as Array<{ stdin: string; expected: string }>) ?? [];
     if (hiddenTests.length === 0) throw new NotFoundException('Bài toán chưa có test ẩn');
     if (hiddenTests.length > 10) throw new NotFoundException('Quá nhiều test ẩn');

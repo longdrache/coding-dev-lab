@@ -25,6 +25,12 @@ export type Problem = {
   tests: ProblemTest[];
   /** test ẩn chỉ dùng khi nộp bài — không hiện input/expected cho user */
   hiddenTests: ProblemTest[];
+  /**
+   * Nhãn "bài Premium" do BE gửi kèm. **Không** phải nguồn chân lý ở FE: file
+   * này tự tính bằng `isVipProblem`, còn trường này chỉ là để danh sách lấy từ API
+   * không phải suy lại. Tuỳ chọn vì bài trong `problems` khai báo tay không có nó.
+   */
+  isVip?: boolean;
 };
 
 export const problems: Problem[] = [
@@ -1024,4 +1030,53 @@ export const problems: Problem[] = [
 
 export function getProblemsByTopic(topic: string): Problem[] {
   return problems.filter((problem) => problem.topic === topic);
+}
+
+// ---------------------------------------------------------------------------
+// Bài VIP — quy tắc chọn **tất định**, không có danh sách viết tay
+// ---------------------------------------------------------------------------
+//
+// Vì sao phải tất định: `isVip` được ghi vào DB bởi `be/scripts/seed-problems.ts`
+// và bởi cả lần dựng lại DB. Nếu ai đó xoá bài giữa danh sách, bài được thêm mới,
+// hay chỉ đổi thứ tự khai báo, thì "20 bài VIP" phải **ra đúng 20 bài đó** —
+// không phải 20 bài khác. Danh sách slug viết tay không đạt được: nó trôi theo
+// bất kỳ thay đổi nào ở `problems` và lệch âm thầm.
+//
+// Quy tắc, đúng một câu:
+//   sắp theo (độ khó giảm dần, thứ tự xuất hiện trong `problems` tăng dần) rồi
+//   lấy 20 bài đầu.
+//
+// * Độ khó: Khó = 2 > Trung bình = 1 > Dễ = 0. Hiện có 1 bài Khó và 21 bài
+//   Trung bình, nên kết quả là 1 Khó + 19 Trung bình đầu tiên.
+// * Hoà thì giữ thứ tự khai báo — `index` tường minh thay vì trông cậy vào tính
+//   ổn định của `Array.prototype.sort`. Danh sách 20 phải giống nhau trên mọi
+//   runtime, không phụ thuộc engine nào sort thế nào.
+
+/** Số bài đánh dấu VIP. Hằng để test và seed dùng chung một con số. */
+export const VIP_PROBLEM_COUNT = 20;
+
+const DIFFICULTY_RANK: Record<Difficulty, number> = {
+  "Dễ": 0,
+  "Trung bình": 1,
+  "Khó": 2,
+};
+
+/** Slug của đúng 20 bài VIP, theo thứ tự sắp xếp ở trên. */
+export const VIP_SLUGS: readonly string[] = Object.freeze(
+  problems
+    .map((problem, index) => ({
+      slug: problem.slug,
+      rank: DIFFICULTY_RANK[problem.difficulty],
+      index,
+    }))
+    .sort((a, b) => b.rank - a.rank || a.index - b.index)
+    .slice(0, VIP_PROBLEM_COUNT)
+    .map((row) => row.slug),
+);
+
+const VIP_SLUG_SET: ReadonlySet<string> = new Set(VIP_SLUGS);
+
+/** Bài này có phải bài VIP không — nguồn chân lý dùng chung FE lẫn script seed. */
+export function isVipProblem(slug: string): boolean {
+  return VIP_SLUG_SET.has(slug);
 }

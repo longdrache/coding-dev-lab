@@ -160,6 +160,10 @@ model Problem {
   difficulty   String
   topic        String
   status       String   @default("draft")
+  // Bài chỉ mở cho tài khoản VIP. Quyết định quyền KHÔNG đọc cột này trực tiếp:
+  // nó chỉ là nhãn trên dữ liệu, còn quyền do `role` đã ký trong access token
+  // quyết định (xem `src/problems/vip-problem.policy.ts`).
+  isVip        Boolean  @default(false)
   description  String   @db.Text
   inputFormat  String   @db.Text @default("")
   outputFormat String   @db.Text @default("")

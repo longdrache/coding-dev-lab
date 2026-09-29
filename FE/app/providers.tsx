@@ -9,10 +9,20 @@ const TTL_MS = 24 * 60 * 60 * 1000; // cache dùng trong 1 ngày
 
 type StoredEntry = { data: unknown; ts: number };
 
-// Chỉ persist API public (danh sách/chi tiết bài) — data theo tài khoản
+// Chỉ persist API public (danh sách bài) — data theo tài khoản
 // (dashboard, history, solved...) không lưu để tránh lệch user và cũ.
+//
+// **Riêng chi tiết bài thì không persist dù nó cũng là API public.** Đề của bài
+// VIP được BE trả cho người có VIP; ghi nó vào `localStorage` (key
+// `gocode-swr-cache-v2`, sống 24h) là đặt nội dung Premium ra ngoài phạm vi
+// phiên. Lúc phiên còn sống thì `commitSession` xoá cache khi đổi tài khoản, nhưng
+// đó là lúc **tài khoản** đổi, không phải lúc **quyền** đổi — hạ VIP giữa chừng
+// thì key vẫn còn và `revalidateIfStale` chỉ refetch ở lần mount sau, tức đề đã
+// hiện lên trước đó. Danh sách thì vô hại: BE cắt sẵn còn slug/tiêu đề/cờ khoá
+// cho **mọi** role nên payload không phụ thuộc người xem.
 function persistable(key: string): boolean {
-  return key.includes("/api/problems");
+  if (!key.includes("/api/problems")) return false;
+  return !/\/api\/problems\/[^/?]+/.test(key);
 }
 
 function loadCache(): Map<string, unknown> {

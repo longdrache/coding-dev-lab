@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.ts';
 import { TtlCache } from '../common/ttl-cache.ts';
+import type { UserRole } from '../auth/auth.types.ts';
+import { VipProblemService } from '../problems/vip-problem.service.ts';
 
 // Suy ra từ computeDashboard để đổi shape response không phải sửa type
 // thủ công ở hai chỗ.
@@ -73,9 +75,26 @@ export class ProgressService {
   // `new ProgressService(db)` của test cũ.
   private readonly dashboardCache = new TtlCache<Dashboard>(200);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly vipProblems: VipProblemService,
+  ) {}
 
-  async recordSolved(userId: number, slug: string, difficulty: string | null) {
+  /**
+   * Đánh dấu đã giải. Bài VIP thì chỉ `vip`/`admin` mới đánh dấu được — nếu không
+   * thì `POST /api/progress/solve` là lối đi vòng: tự khai "xong" một bài mình
+   * không đọc được đề, rồi dùng nó để lên huy hiệu `solve_50`/`dsa_pro`.
+   *
+   * Yêu thích (`addFavorite`) thì **không** chặn: tiêu đề bài VIP vốn đã hiện
+   * công khai trong danh sách, nên việc bookmark nó không lộ gì.
+   */
+  async recordSolved(
+    userId: number,
+    slug: string,
+    difficulty: string | null,
+    role?: UserRole | null,
+  ) {
+    await this.vipProblems.assertSlugAllowed(slug, role);
     await this.db.solvedProblem.upsert({
       where: { userId_slug: { userId, slug } },
       create: { userId, slug, difficulty: difficulty ?? undefined },

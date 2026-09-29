@@ -32,7 +32,8 @@ import type { Problem, ProblemTest } from "@/app/data/problems";
 import { markSolved, useSolvedSlugs, useServerSolvedSlugs } from "../solved";
 import { recordActivity } from "../activity";
 import { topics } from "@/app/data/topics";
-import { useProblem } from "@/app/hooks/useProblems";
+import { useProblem, useProblems } from "@/app/hooks/useProblems";
+import { VipLockedNotice } from "@/app/premium/PremiumGuard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -367,7 +368,11 @@ const JSON_HEADERS = { "Content-Type": "application/json" } as const;
 export default function ProblemWorkspace() {
   const params = useParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
-  const { problem: swrProblem, loading: swrLoading, error, missing, retry } = useProblem(slug);
+  const { problem: swrProblem, loading: swrLoading, error, missing, vipLocked, retry } =
+    useProblem(slug);
+  // Chỉ dùng để lấy **tiêu đề** bài VIP cho màn khoá (chi tiết bài bị chặn nên
+  // không có ở đâu khác). Danh sách là payload công khai.
+  const { problems: danhSach } = useProblems();
   // Gate như trang list: lần render đầu khớp server, sau mount lấy cache có sẵn
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -395,6 +400,18 @@ export default function ProblemWorkspace() {
   // thành `notFound()`, nên một lần mạng chập chờn là bài có thật biến mất, không
   // có lối quay lại. Lỗi tải thì đưa ra màn riêng kèm nút thử lại.
   if (missing) notFound();
+
+  // Bài tồn tại nhưng khoá: BE trả 403 `problem_vip_only`. Phải nằm **trước**
+  // nhánh lỗi tải bên dưới, vì cả hai đều là "không có `problem`" — màn khoá ra
+  // sau thì người không VIP thấy "Không tải được bài toán, thử lại" thay vì nút
+  // nâng cấp, và bấm thử lại vô hạn cũng không bao giờ được.
+  //
+  // Danh sách vẫn **công khai** phần tiêu đề của bài VIP, nên lấy tiêu đề ở đây
+  // không phải đường vòng: cùng một key SWR với trang danh sách, tức vào từ danh
+  // sách thì không tốn request nào.
+  if (vipLocked) {
+    return <VipLockedNotice title={danhSach?.find((p) => p.slug === slug)?.title} />;
+  }
 
   if (error || !problem) {
     return (

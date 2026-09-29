@@ -30,7 +30,12 @@ export class ProgressController {
   ) {
     const slug = String(body?.slug ?? '').trim();
     if (!slug) return { error: 'slug required' };
-    return this.progress.recordSolved(Number(req.user!.userId), slug, body?.difficulty ?? null);
+    return this.progress.recordSolved(
+      Number(req.user!.userId),
+      slug,
+      body?.difficulty ?? null,
+      req.user!.role,
+    );
   }
 
   @Get('favorites')

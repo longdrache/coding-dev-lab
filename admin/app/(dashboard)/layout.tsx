@@ -66,7 +66,7 @@ export default function DashboardLayout({
     try {
       await adminFetch("/api/admin/logout", { method: "POST" });
     } finally {
-      router.push("/login");
+      router.push("/sign-in");
       router.refresh();
     }
   };

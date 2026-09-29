@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CircleAlert, LoaderCircle, MailCheck, Send } from "lucide-react";
@@ -9,10 +9,9 @@ import {
   VERIFY_LINK_HOURS,
   googleStartUrl,
   normalizeEmail,
-  resendVerification,
-  submitCredentials,
   type AuthMode,
 } from "@/lib/auth-form";
+import { createAuthRunner, pendingLabel, type AuthAction, type AuthPending, type AuthRunner } from "@/lib/auth-submit";
 import { useSession } from "./AuthProvider";
 import GoogleMark from "./GoogleMark";
 import { BODY, CARD, FOOTER, FOOTER_LINK, INPUT, PRIMARY, SECONDARY, SPINNER, TITLE } from "./auth-tokens";
@@ -35,6 +34,13 @@ import { BODY, CARD, FOOTER, FOOTER_LINK, INPUT, PRIMARY, SECONDARY, SPINNER, TI
  *
  * `@/lib/auth-form` cũng giữ cả bản đồ `OAUTH_MESSAGES`, nên component này
  * chỉ nhận **câu đã dịch** qua prop, không tự tra bản đồ lỗi lần nữa.
+ *
+ * Phần chờ và hạn thời gian nằm ở `@/lib/auth-submit`, không nằm ở đây: `busy`
+ * kiểu cũ chỉ là ảnh chụp theo lần render, nên một lần bấm thứ hai có thể đọc
+ * ra `null` và chạy `/register` hai lần — lần hai 409 và **không gửi mail**.
+ * Runner giữ chỗ đang chờ bằng biến thật nên bấm lần hai luôn bị chặn, kể cả khi
+ * `disabled` của nút chưa kịp được vẽ lại. Ở component này chỉ còn `pending`
+ * để vẽ nút, cộng vùng thông báo cho trình đọc màn hình.
  */
 export default function AuthForm({
   mode,
@@ -64,17 +70,27 @@ export default function AuthForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  /** Đang chờ server: `null` = rảnh, còn lại là việc đang chờ. */
+  const [pending, setPending] = useState<AuthPending>(null);
   /** Màn kết quả: `sent` = link đã đi, `signedin` = đã có phiên. */
   const [done, setDone] = useState<"sent" | "signedin" | null>(null);
   /** Câu của màn "đã gửi link" sau khi bấm "Gửi lại link" lần nữa. */
   const [notice, setNotice] = useState("");
+  /**
+   * Giữ qua suốt vòng đời component, tạo **lười** trong handler chứ không phải
+   * lúc render: đây là biến mang trạng thái, dựng lại mỗi lần render thì lần
+   * bấm kế tiếp sẽ không còn nhớ lần bấm trước và chốt bấm hai lần thành vô
+   * hiệu.
+   */
+  const runnerRef = useRef<AuthRunner | null>(null);
 
   const isSignup = mode === "signup";
   const submitLabel = isSignup ? "Tạo tài khoản" : "Đăng nhập";
   const toggleHref = isSignup ? "/sign-in" : "/sign-up";
   const toggleLabel = isSignup ? "Đã có tài khoản?" : "Chưa có tài khoản?";
   const toggleAction = isSignup ? "Đăng nhập" : "Đăng ký";
+  /** Chữ trên nút lúc đang chờ, hoặc `""` khi rảnh. */
+  const waiting = pendingLabel(pending);
 
   /**
    * Đã có phiên thì đi thẳng về trang chủ.
@@ -104,42 +120,18 @@ export default function AuthForm({
    * đã tồn tại, nên `/register` trả 409 và **không gửi mail**: nút "Gửi lại link"
    * chết đúng lúc cần nhất. `resendVerification` là route riêng, trả 200 với
    * cùng một câu cho mọi trạng thái tài khoản.
+   *
+   * Mọi quyết định còn lại — chặn bấm hai lần, chờ bao lâu, hết giờ thì nói gì,
+   * lỗi nào đọc ra câu nào — nằm ở `@/lib/auth-submit` và có test. Ở đây chỉ
+   * truyền `setState` của React vào làm hiệu ứng; `effects` dựng **mỗi lần bấm**
+   * nên `refresh` luôn là bản mới nhất, không phải bản của render đầu tiên.
    */
-  async function run(action: "submit" | "resend") {
-    setError("");
-    if (action === "resend") setNotice("");
-    setBusy(true);
-    try {
-      if (action === "resend") {
-        const r = await resendVerification(email);
-        if (r.kind === "error") setError(r.message);
-        else setNotice(r.message);
-        return;
-      }
-      const r = await submitCredentials(mode, email, password);
-      if (r.kind === "error") {
-        setError(r.message);
-      } else if (isSignup) {
-        // `/register` trả 200 **không** kèm cookie phiên (`auth.controller.ts:123`):
-        // tài khoản mới chỉ dùng được sau khi mở link xác nhận. Gọi `refresh()`
-        // ở đây sẽ đọc `/me` ra `null` và bỏ người dùng ở trang trắng không có
-        // một dòng giải thích nào.
-        setDone("sent");
-      } else {
-        // `refresh` đọc lại `/me` nên `useSession().user` có giá trị ngay, và
-        // `AuthProvider` tự hẹn lịch làm mới token từ `expiresIn` vừa nhận.
-        await refresh();
-        setDone("signedin");
-      }
-    } catch {
-      // `submitCredentials` tự dịch lỗi mạng thành `kind: "error"` rồi, nên
-      // nhánh này chỉ còn để đỡ `refresh()`. `loadSession` tự nuốt lỗi nên
-      // hiện chưa tới được — nhưng một lần reject ở đây không được nổi ra ngoài
-      // và biến thành màn trắng.
-      setError("Không đăng nhập được. Thử lại sau.");
-    } finally {
-      setBusy(false);
-    }
+  async function run(action: AuthAction) {
+    const runner = (runnerRef.current ??= createAuthRunner());
+    await runner.run(
+      { action, mode, email, password },
+      { setPending, setError, setNotice, setDone, refresh },
+    );
   }
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -152,7 +144,7 @@ export default function AuthForm({
       // Hai màn kết quả dùng **margin tường minh** chứ không `space-y-*`: ở đây ta
       // cần heading có khoảng trên rộng hơn khoảng dưới, mà `space-y-4 > *` thắng
       // `mt-2.5` về độ ưu tiên nên không dùng chung được hai kiểu.
-      <div className={CARD}>
+      <div className={CARD} aria-busy={pending !== null}>
         <h2 className={TITLE}>Kiểm tra hộp thư</h2>
         <p className={BODY}>
           Mình vừa gửi link xác nhận tới{" "}
@@ -174,14 +166,20 @@ export default function AuthForm({
           </p>
         )}
 
+        <PendingStatus pending={pending} />
+
         <button
           type="button"
           onClick={() => void run("resend")}
-          disabled={busy}
+          disabled={pending !== null}
           className={`${SECONDARY} mt-5`}
         >
-          {busy ? <LoaderCircle aria-hidden className={SPINNER} /> : <Send aria-hidden className="size-4" />}
-          {busy ? "Đang gửi lại…" : "Gửi lại link"}
+          {pending !== null ? (
+            <LoaderCircle aria-hidden className={SPINNER} />
+          ) : (
+            <Send aria-hidden className="size-4" />
+          )}
+          {waiting || "Gửi lại link"}
         </button>
 
         <p className={`${FOOTER} mt-4`}>
@@ -211,7 +209,8 @@ export default function AuthForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className={`${CARD} space-y-5`} aria-busy={busy}>
+    <form onSubmit={onSubmit} className={`${CARD} space-y-5`} aria-busy={pending !== null}>
+      <PendingStatus pending={pending} />
       {oauthNotice && (
         // `role="alert"` vì đây là **lý do** người dùng đang không đăng nhập
         // được, và nó xuất hiện ngay khi trang tải — screen reader không báo
@@ -298,9 +297,9 @@ export default function AuthForm({
         Tiếp tục với Google
       </a>
 
-      <button type="submit" disabled={busy} className={PRIMARY}>
-        {busy && <LoaderCircle aria-hidden className={SPINNER} />}
-        {busy ? "Đang xử lý…" : submitLabel}
+      <button type="submit" disabled={pending !== null} className={PRIMARY}>
+        {pending !== null && <LoaderCircle aria-hidden className={SPINNER} />}
+        {waiting || submitLabel}
       </button>
 
       {/* Ở chế độ đăng nhập thêm link "Quên mật khẩu?" — đó là lúc người dùng
@@ -331,6 +330,27 @@ function ErrorNote({ message }: { message: string }) {
     <p role="alert" className="flex gap-2 text-sm leading-relaxed text-rose-600">
       <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
       <span>{message}</span>
+    </p>
+  );
+}
+
+/**
+ * Vùng thông báo cho trình đọc màn hình khi đang chờ server.
+ *
+ * `aria-busy` trên form chỉ nói "chỗ này đang bận" — trình đọc màn hình không đọc
+ * được chữ trên nút vì nút đã bị `disabled`, nên người dùng bàn phím bấm xong
+ * nghe im lặng y và tưởng bấm trượt. Ở đây câu đang chờ **đọc ra thành tiếng**,
+ * nói luôn đang đăng nhập, đang tạo tài khoản hay đang gửi lại link.
+ *
+ * Vùng phải **luôn có mặt** trong DOM, rỗng khi không chờ: `role="status"` chỉ
+ * đọc phần chữ được thêm vào sau này, nên dựng nó đúng lúc bấm thì trình đọc
+ * không kịp bắt. `sr-only` vì trạng thái chờ đã hiện bằng chữ trên chính nút
+ * rồi — vùng này chỉ phục vụ người không nhìn thấy.
+ */
+function PendingStatus({ pending }: { pending: AuthPending }) {
+  return (
+    <p role="status" className="sr-only">
+      {pendingLabel(pending)}
     </p>
   );
 }

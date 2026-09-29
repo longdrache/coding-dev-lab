@@ -118,11 +118,18 @@ export type SubmitResult =
  *
  * Không bao giờ ném: mọi thất bại — kể cả mất mạng — đều thành
  * `{ kind: "error" }` để chỗ gọi chỉ có một đường để hiển thị.
+ *
+ * `signal` là tuỳ chọn và **không đổi hợp đồng**: không truyền thì hàm y hệt
+ * trước đây. Khi truyền, hết hạn thì `fetch` bị huỷ và rơi vào `catch` bên dưới
+ * — nên chỗ gọi **không** đọc câu ở đây để biết là hết giờ hay mất mạng (hai ca
+ * ném cùng một kiểu), mà đọi cờ của chính nó: xem `createDeadline` ở
+ * `@/lib/auth-submit`.
  */
 export async function submitCredentials(
   mode: AuthMode,
   email: string,
   password: string,
+  signal?: AbortSignal,
 ): Promise<SubmitResult> {
   let res: Response;
   try {
@@ -135,6 +142,7 @@ export async function submitCredentials(
       // httpOnly sinh ra để chặn. Thiếu `include` thì mọi request sau đó 401.
       credentials: "include",
       body: JSON.stringify({ email: normalizeEmail(email), password }),
+      signal,
     });
   } catch {
     return { kind: "error", message: NETWORK_ERROR };
@@ -223,7 +231,15 @@ export async function verifyEmailToken(token: string): Promise<VerifyResult> {
   return { kind: "ok" };
 }
 
-export async function resendVerification(email: string): Promise<ResendResult> {
+/**
+ * Gửi lại link xác nhận. `signal` tuỳ chọn, cùng lý do và cùng hạn chế với
+ * `submitCredentials`: hết hạn thì vào `catch` và ra câu lỗi mạng, nên chỗ gọi
+ * đọc cờ hết giờ của mình chứ không đọc message ở đây.
+ */
+export async function resendVerification(
+  email: string,
+  signal?: AbortSignal,
+): Promise<ResendResult> {
   let res: Response;
   try {
     res = await fetch(RESEND_URL, {
@@ -231,6 +247,7 @@ export async function resendVerification(email: string): Promise<ResendResult> {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ email: normalizeEmail(email) }),
+      signal,
     });
   } catch {
     return { kind: "error", message: NETWORK_ERROR };

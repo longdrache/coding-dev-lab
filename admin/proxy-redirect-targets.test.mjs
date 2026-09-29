@@ -121,3 +121,31 @@ test("trang auth that khong bi matcher dua vong quay ve chinh no", () => {
     );
   }
 });
+
+/**
+ * Bỏ comment để test chỉ soi **code**, không soi văn xuôi trong docblock — nhiều
+ * comment giải thích chính cái lỗi này và phải được phép nhắc `/login`.
+ */
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+test("khong con source nao tro toi duong dan /login cu", () => {
+  // `router.push("/login")` trong component cung dang 404 sau khi trang doi
+  // ten: client-side navigation toi route khong ton tai se hien trang 404.
+  const offenders = [];
+  for (const file of [join(here, "proxy.ts"), ...walk(appDir)]) {
+    if (!/\.(ts|tsx|mjs)$/.test(file)) continue;
+    const src = stripComments(readFileSync(file, "utf8"));
+    for (const m of src.matchAll(/["'`]\/login(?:[/?#"'`]|$)/g)) {
+      offenders.push(`${relative(here, file)} -> ${m[0]}`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `con duong dan /login cu (trang da doi ten sang /sign-in):\n  ${offenders.join("\n  ")}`,
+  );
+});

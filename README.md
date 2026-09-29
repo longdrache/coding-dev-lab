@@ -50,7 +50,8 @@ pnpm --dir be install && pnpm --dir FE install && pnpm --dir admin install
 # 2. Env: copy be/.env.example, FE/.env.example, admin/.env.example thành .env
 #    Điền: DATABASE_URL, DATABASE_URL_UNPOOLED, STRIPE_*, JUDGE0_URL, JUDGE0_API_TOKEN,
 #    ADMIN_EMAIL, ADMIN_PASSWORD_HASH, ADMIN_JWT_PRIVATE_KEY / PUBLIC_KEY,
-#    EMAIL_HOST, EMAIL_USERNAME, EMAIL_PASSWORD, FRONTEND_URL,
+#    BREVO_SMTP_LOGIN, BREVO_SMTP_KEY, MAIL_FROM (xem mục "Gửi mail" dưới),
+#    FRONTEND_URL,
 #    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI (xem mục dưới)
 
 # 3. Đẩy schema (1 migration nền tạo đủ 13 bảng) + seed 56 đề
@@ -111,12 +112,43 @@ Ghép **tự động** vẫn xảy ra, nhưng chỉ khi người dùng đã đă
 khẩu và bấm Google — khi đó `byEmail.id === signedInUserId` nên BE tự nối
 `UserAccount` và trả `ok`, tức lần sau vào thẳng bằng Google.
 
+## Gửi mail (Brevo)
+
+BE gửi mail qua **SMTP của [Brevo](https://www.brevo.com)** (tên cŝ Sendinblue) —
+dùng chung một bộ ba biến cho cả mail đăng ký / xác minh email / đặt lại mật khẩu
+lẫn mail trả lời QNA trong admin. Không còn nhánh API, không còn provider thứ hai.
+
+| Biến trong `be/.env` | Lấy ở đâu trên Brevo | Ghi chú |
+| --- | --- | --- |
+| `BREVO_SMTP_LOGIN` | Brevo → **SMTP & API** (tab *SMTP*) | Tài khoản đăng nhập SMTP, thường là email của tài khoản |
+| `BREVO_SMTP_KEY` | Brevo → **SMTP & API** (tab *SMTP*) | **SMTP key**, dạng `xsmtpsib-…` |
+| `MAIL_FROM` | Brevo → **Senders & Domains** | Địa chỉ gửi, **đã xác minh**; chỉ địa chỉ, không kèm tên hiển thị |
+
+Host/port cứng trong code: `smtp-relay.brevo.com:587` + STARTTLS.
+
+**Hai chỗ dễ sai nhất:**
+
+1. `BREVO_SMTP_KEY` phải là **SMTP key** (`xsmtpsib-…`), **không phải API key**
+   (`xkeysib-…`) của tài khoản. Hai loại khoá này không dùng thay nhau được; dán
+   nhầm API key thì SMTP fail bằng `535 authentication failed`. BE có chặn tiền tố
+   `xkeysib-` và log lỗi nói thẳng trước khi gửi, nhưng cứ lấy đúng loại khoá.
+2. `MAIL_FROM` phải là sender **đã xác minh** trên Brevo. Brevo từ chối gửi từ địa
+   chỉ chưa xác minh.
+
+Thiếu bất kỳ biến nào trong ba biến trên thì lúc gửi mail BE **log lỗi ở mức
+`error`** nêu đúng tên biến thiếu và không gửi — không có địa chỉ dự phòng, không
+im lặng bỏ qua. `register` vẫn trả 200 (tài khoản đã tạo, người dùng bấm "gửi lại
+link" được), `forgot-password` / gửi lại xác nhận vẫn trả đúng câu chung để không
+lộ email nào đã đăng ký, nhưng cả ba đều ghi log đủ để chẩn đoán. Tìm lỗi gửi mail
+thì grep `thất bại` trong log BE.
+
 ## Deploy (Vercel)
 
 - FE, Admin, BE là 3 project Vercel riêng (BE chạy qua `be/api/index.ts`).
 - Env bắt buộc trên BE: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `JUDGE0_URL`, `JUDGE0_API_TOKEN`,
-  `ADMIN_*`, `FRONTEND_URL`, `FRONTEND_ADMIN_URL`, `EMAIL_*` (hoặc `MAIL_API_TOKEN`),
+  `ADMIN_*`, `FRONTEND_URL`, `FRONTEND_ADMIN_URL`, `BREVO_SMTP_LOGIN`,
+  `BREVO_SMTP_KEY`, `MAIL_FROM` (xem mục "Gửi mail" ở trên),
   và `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` (bỏ trống
   thì nút Google báo lỗi cấu hình; xem mục OAuth ở trên).
 - Stripe webhook trỏ tới `https://<be>/api/premium/webhook`.
@@ -159,6 +191,6 @@ Có thể siết thêm: `MAX_QUEUE_SIZE=50` cho VM yếu. Chi tiết: `be/README
 ## Tech stack
 
 FE: Next.js 16, React 19, TypeScript, Tailwind v4, shadcn, SWR, R3F, Framer Motion,
-GSAP, Monaco • BE: NestJS 12, Prisma 7, Neon Postgres, Stripe, Nodemailer/Mailtrap •
+GSAP, Monaco • BE: NestJS 12, Prisma 7, Neon Postgres, Stripe, Nodemailer/Brevo •
 Infra: Vercel, pnpm, Judge0 Docker
 

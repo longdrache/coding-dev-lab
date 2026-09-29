@@ -51,7 +51,7 @@ export type Mail = { to: string; subject: string; text: string; html?: string };
 
 /**
  * Cổng gửi mail mà AuthService chỉ cần. Task 7 cài `AuthMailer` thật (nodemailer +
- * Mailtrap) vào `AuthModule` rồi wire vào đây.
+ * SMTP Brevo) vào `AuthModule` rồi wire vào đây.
  *
  * **Phải là `abstract class` chứ không phải `type`.** `emitDecoratorMetadata` chỉ ghi
  * được *tên lớp* vào `design:paramtypes`; với `type` thì Nest thấy `Object` và lúc
@@ -244,10 +244,18 @@ export class AuthService implements OnModuleInit {
     const user = await this.createUser(mail, password);
     const { mail: msg } = await this.issueVerification(user.id, mail, userAgent);
     // Lỗi gửi mail không được làm hỏng đăng ký — user vẫn tồn tại và có thể gửi lại.
+    // Nhưng **phải log**, không được `catch {}` rỗng: đây chính là chỗ làm sự cố
+    // "Brevo chưa cấu hình" biến mất không dấu vết — đăng ký trả 200, user vào
+    // hộp thư không thấy gì, log sạch, và ta mất hàng giờ đi tìm nguyên nhân ở
+    // chỗ khác. Mức `error`: hỏng mail xác nhận là mất chức năng, không phải
+    // bất thường nhỏ. Câu trả về cho người dùng giữ nguyên — không lộ chi tiết
+    // hạ tầng ra ngoài.
     try {
       await this.mail.send(msg);
-    } catch {
-      // im lặng có chủ ý: mail hỏng không được làm hỏng đăng ký
+    } catch (err) {
+      this.logger.error(
+        `Gửi mail xác nhận tới ${mail} thất bại (tài khoản đã tạo, người dùng có thể bấm gửi lại): ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
+      );
     }
     return { message: 'Đã gửi link xác nhận, vui lòng kiểm tra hộp thư.' };
   }
@@ -401,7 +409,9 @@ export class AuthService implements OnModuleInit {
       // Không nuốt im lặng: đường này chạy nền nên không có ai đỡ lỗi. Chỉ log —
       // y hệt `forgotPassword` (kể cả lý do không được bỏ qua `AuthMailer` tự
       // log: `AuthMailPort` là abstraction, một cài đặt khác có thể im lặng).
-      this.logger.warn(
+      // Mức `error` chứ không phải `warn`: đây là ngưỡng để lỗi gửi mail nổi lên
+      // thay vì lẫn vào những cảnh báo thường lệ.
+      this.logger.error(
         `Gửi lại mail xác nhận tới ${mail} thất bại: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
       );
       // Trả lại mã vừa cấp. Giữ nó lại nghĩa là tài khoản đang cầm một mã còn
@@ -603,8 +613,10 @@ export class AuthService implements OnModuleInit {
       .catch((err: unknown) => {
         // Không im lặng: đường này chạy nền nên không có ai đỡ lỗi nếu ta nuốt.
         // (`AuthMailer` cũng log, nhưng `AuthMailPort` là abstraction — một
-        // cài đặt khác hoàn toàn có thể không log gì.)
-        this.logger.warn(
+        // cài đặt khác hoàn toàn có thể không log gì.) Mức `error`: quên mật khẩu
+        // mà không nhận được mail là mất chức năng, không phải bất thường nhỏ.
+        // Người dùng vẫn nhận đúng `RESET_REQUESTED` — không lộ ra có tài khoản.
+        this.logger.error(
           `Gửi mail đặt lại mật khẩu tới ${mail} thất bại: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
         );
         // Trả lại mã vừa cấp. Giữ nó lại nghĩa là tài khoản đang cầm một mã còn

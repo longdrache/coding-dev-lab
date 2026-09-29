@@ -11,7 +11,6 @@ import {
 import * as bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
-import { MailtrapTransport } from 'mailtrap';
 import { DatabaseService } from '../database/database.service.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
 import { PresenceService } from '../presence/presence.service.ts';
@@ -333,49 +332,54 @@ export class AdminService {
       `<hr/><p><i>Câu hỏi của bạn: "${escapeHtml(q.question)}"</i></p>` +
       `<p>Trân trọng,<br/>Đội ngũ GoCode</p>`;
 
-    // Ưu tiên MailtrapTransport chính chủ bằng MAIL_API_TOKEN
-    const apiToken = (process.env.MAIL_API_TOKEN ?? '').trim();
-    if (apiToken) {
-      const fromEmail = process.env.MAIL_FROM ?? 'hello@demomailtrap.co';
-      const transport = nodemailer.createTransport(
-        MailtrapTransport({ token: apiToken }),
+    // Gửi qua SMTP của Brevo — cùng bộ ba biến với `AuthMailer`, không phải hai
+    // kiểu cấu hình mail trong cùng một backend. Nhánh Mailtrap Sending API
+    // (`MAIL_API_TOKEN`) đã bỏ hẳn: domain demo chỉ gửi được tới email chủ tài
+    // khoản, nên trả lời QNA "thành công" trong khi thư không bao giờ tới nơi.
+    const login = (process.env.BREVO_SMTP_LOGIN ?? '').trim();
+    const key = (process.env.BREVO_SMTP_KEY ?? '').trim();
+    const from = (process.env.MAIL_FROM ?? '').trim();
+    const thieu = [
+      ...(login ? [] : ['BREVO_SMTP_LOGIN']),
+      ...(key ? [] : ['BREVO_SMTP_KEY']),
+      ...(from ? [] : ['MAIL_FROM']),
+    ];
+    if (thieu.length > 0) {
+      throw new BadRequestException(
+        `Chưa cấu hình gửi mail qua Brevo — thiếu ${thieu.join(', ')}. `
+        + 'Lấy ở Brevo → Senders & Domains (phải xác minh) và Brevo → SMTP & API.',
       );
-      try {
-        const info = (await transport.sendMail({
-          from: { address: fromEmail, name: 'GoCode' },
-          to: [{ address: q.email }],
-          subject,
-          text,
-          html,
-        })) as { messageId?: string };
-        this.logger.log(`Đã gửi reply QNA ${id} tới ${q.email} qua Mailtrap (${info?.messageId ?? 'no-id'})`);
-        return { ok: true, to: q.email, messageId: info?.messageId ?? null };
-      } catch (err) {
-        throw new BadRequestException(
-          `Mailtrap lỗi: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
-        );
-      }
     }
-
-    // Fallback SMTP (nodemailer) khi không có MAIL_API_TOKEN
-    const host = process.env.EMAIL_HOST;
-    const user = process.env.EMAIL_USERNAME;
-    const pass = process.env.EMAIL_PASSWORD;
-    if (!host || !user || !pass) {
-      throw new BadRequestException('Chưa cấu hình MAIL_API_TOKEN hoặc EMAIL_HOST/EMAIL_USERNAME/EMAIL_PASSWORD');
+    if (key.startsWith('xkeysib-')) {
+      throw new BadRequestException(
+        'BREVO_SMTP_KEY đang là API key (xkeysib-…) chứ không phải SMTP key (xsmtpsib-…). '
+        + 'Hai loại khoá này không dùng thay nhau được.',
+      );
     }
-    const port = Number(process.env.EMAIL_PORT ?? 587);
-    const from = process.env.EMAIL_FROM ?? `GoCode <${user}>`;
 
     const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass },
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: login, pass: key },
     });
-    const info = await transporter.sendMail({ from, to: q.email, subject, text, html });
-    this.logger.log(`Đã gửi reply QNA ${id} tới ${q.email} qua SMTP (${info.messageId ?? 'no-id'})`);
-    return { ok: true, to: q.email, messageId: info.messageId ?? null };
+    let info: { messageId?: string };
+    try {
+      info = (await transporter.sendMail({
+        from: `GoCode <${from}>`,
+        to: q.email,
+        subject,
+        text,
+        html,
+      })) as { messageId?: string };
+    } catch (err) {
+      throw new BadRequestException(
+        `Brevo lỗi: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
+      );
+    }
+    this.logger.log(`Đã gửi reply QNA ${id} tới ${q.email} qua Brevo (${info?.messageId ?? 'no-id'})`);
+    return { ok: true, to: q.email, messageId: info?.messageId ?? null };
   }
 
   // ---- Users ----

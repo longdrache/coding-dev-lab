@@ -323,6 +323,7 @@ describe('đăng ký', () => {
   });
 
   it('mailer hỏng không làm hỏng đăng ký: user vẫn được tạo', async () => {
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const bom = makeDb();
     const svcBom = new AuthService(bom, {
       send: async () => { throw new Error('SMTP chết'); },
@@ -330,6 +331,32 @@ describe('đăng ký', () => {
     const r = await svcBom.register('a@b.co', 'matkhau123');
     expect(bom.state.user).toHaveLength(1);
     expect(bom.state.userToken).toHaveLength(1);
+    expect(r.message).toContain('xác nhận');
+  });
+
+  /**
+   * Hồi quy thật: `catch {}` rỗng ở `register` làm cả sự cố "SMTP chết" lẫn sự cố
+   * "Brevo chưa cấu hình" biến mất không dấu vết — đăng ký vẫn trả 200, user vào
+   * hộp thư không thấy gì, và log sạch. Bỏ `this.logger.error` trong `catch` thì
+   * test này đỏ.
+   */
+  it('mail hỏng lúc đăng ký thì log error kèm lý do, không nuốt im lặng', async () => {
+    const logErr = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const bom = makeDb();
+    const svcBom = new AuthService(bom, {
+      send: async () => { throw new Error('535 authentication failed'); },
+    } as any, makePremium());
+
+    const r = await svcBom.register('a@b.co', 'matkhau123');
+
+    expect(logErr).toHaveBeenCalledOnce();
+    const dong = String(logErr.mock.calls[0][0]);
+    expect(dong).toContain('535 authentication failed');
+    expect(dong).toContain('a@b.co');
+    // Log phải truy được nhưng không được lộ mã xác nhận ra file log.
+    expect(dong).not.toMatch(/[0-9a-f]{64}/);
+    // Người dùng không được thấy chi tiết lỗi hạ tầng — chỉ thấy câu chung.
+    expect(r.message).not.toContain('535');
     expect(r.message).toContain('xác nhận');
   });
 });
@@ -644,7 +671,7 @@ describe('gửi lại link xác nhận', () => {
     // không ai nhận được thì cooldown nuốt mọi lần xin lại, tức một lần SMTP
     // chết biến thành "gửi lại link bị treo 1 tiếng". Bỏ nhánh `updateMany`
     // trong `catch` là test này đỏ.
-    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const db = makeDb();
     let hong = true;
     const svc = new AuthService(db, {
@@ -699,19 +726,19 @@ describe('gửi lại link xác nhận', () => {
   });
 
   it('mailer hỏng thì vẫn trả đúng câu đó, và ghi log chứ không nuốt im lặng', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const logErr = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const db = makeDb();
     const svc = new AuthService(db, { send: async () => { throw new Error('SMTP chết'); } } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     quayLai(db);
-    warn.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
+    logErr.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
 
     const r = await svc.resendVerification('a@b.co');
     await flush();
     expect(r.message).toBe(RESEND_MSG);
     expect(verifyRows(db)).toHaveLength(2);
-    expect(warn).toHaveBeenCalledOnce();
-    const dong = String(warn.mock.calls[0][0]);
+    expect(logErr).toHaveBeenCalledOnce();
+    const dong = String(logErr.mock.calls[0][0]);
     expect(dong).toContain('SMTP chết');
     expect(dong).toContain('a@b.co');
     // Log phải truy được nhưng không được lộ mã xác nhận.
@@ -1202,7 +1229,7 @@ describe('quên mật khẩu', () => {
 
   it('mailer hỏng thì vẫn trả đúng câu đó, không lộ lỗi ra ngoài', async () => {
     const bom = makeDb();
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const logErr = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const svcBom = new AuthService(bom, { send: async () => { throw new Error('SMTP chết'); } } as any, makePremium());
     await svcBom.register('a@b.co', 'matkhau123');
     await bom.user.update({ where: { id: bom.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
@@ -1210,7 +1237,7 @@ describe('quên mật khẩu', () => {
     await flush();
     expect(r.message).toBe(RESET_MSG);
     expect(resetRows(bom)).toHaveLength(1);
-    expect(warn).toHaveBeenCalled();
+    expect(logErr).toHaveBeenCalled();
   });
 
   /**
@@ -1244,20 +1271,20 @@ describe('quên mật khẩu', () => {
     expect(resetRows(db)).toHaveLength(1);
   });
 
-  it('mail lỗi thì ghi Logger.warn kèm lý do, không nuốt im lặng', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  it('mail lỗi thì ghi Logger.error kèm lý do, không nuốt im lặng', async () => {
+    const logErr = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const db = makeDb();
     const svc = new AuthService(db, {
       send: async () => { throw new Error('SMTP chết'); },
     } as any, makePremium());
     await svc.register('a@b.co', 'matkhau123');
     await db.user.update({ where: { id: db.state.user[0].id }, data: { emailVerifiedAt: new Date() } });
-    warn.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
+    logErr.mockClear(); // bỏ qua log của mail xác minh lúc đăng ký
 
     await svc.forgotPassword('a@b.co');
     await flush();
-    expect(warn).toHaveBeenCalledOnce();
-    const dong = String(warn.mock.calls[0][0]);
+    expect(logErr).toHaveBeenCalledOnce();
+    const dong = String(logErr.mock.calls[0][0]);
     expect(dong).toContain('SMTP chết');
     // Log phải chỉ ra đích gửi để còn truy được, nhưng không được lộ mã đặt lại.
     expect(dong).toContain('a@b.co');
@@ -1267,7 +1294,7 @@ describe('quên mật khẩu', () => {
   it('mail lỗi thì trả lại mã đã cấp, không kẹt người dùng 1 giờ', async () => {
     // Giữ mã còn hạn mà không ai nhận được, thì cooldown 1 giờ/tài khoản sẽ nuốt
     // mọi lần xin lại → một lần SMTP chết biến thành "quên mật khẩu bị treo 1 tiếng".
-    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const db = makeDb();
     let hong = true;
     const svc = new AuthService(db, {

@@ -1,75 +1,90 @@
 import { Injectable, Logger } from '@nestjs/common';
 import nodemailer from 'nodemailer';
-import { MailtrapTransport } from 'mailtrap';
 import type { AuthMailPort, Mail } from './auth.service.ts';
 
 /**
- * Cổng gửi mail của hệ đăng ký nội bộ. Chọn transport y hệt `admin.service.ts:347-389`
- * để không phải vận hành hai kiểu cấu hình mail trong cùng một backend:
- * `MAIL_API_TOKEN` (Mailtrap) được ưu tiên, thiếu thì mới rơi về SMTP thật.
+ * Hạ tầng gửi mail: **Brevo** qua SMTP.
  *
- * Hai khác biệt có chủ ý so với `admin.service.ts`:
- * 1. `secure: port === 465` (admin cũng vậy) chứ không ép `false` — cổng 465 là TLS
- *    ẩn danh, ép `secure: false` ở đó là SMTP chết.
- * 2. Nhánh SMTP gửi từ `EMAIL_FROM ?? GoCode <user>`: tên người gửi phải là địa chỉ
- *    đã xác minh trên đúng tài khoản SMTP đó, gửi bằng địa chỉ Mailtrap thì server
- *    nhận sẽ chặn.
+ * Một hệ thống, ba biến, không có đường vòng:
+ * - `BREVO_SMTP_LOGIN` + `BREVO_SMTP_KEY` — tài khoản SMTP trên Brevo.
+ * - `MAIL_FROM` — địa chỉ **đã xác minh** trong Brevo → Senders & Domains. Brevo từ
+ *   chối mail gửi từ địa chỉ chưa xác minh, và hệ thống bên nhận cũng có thể chặn.
  *
- * `send` **không nuốt lỗi**: nó log rồi ném lại. `AuthService.register` cố tình nuốt
- * (`catch {}`) để mail hỏng không làm hỏng đăng ký, nên nếu im lặng ở đây thì khi SMTP
- * chết sẽ âm thầm tạo user hàng loạt mà không ai biết.
+ * Trước đây đây là hai nhánh: Mailtrap Sending API (`MAIL_API_TOKEN`) và SMTP
+ * (`EMAIL_*`). Nhánh Mailtrap đã bỏ hẳn — domain demo của Mailtrap chỉ gửi được
+ * tới email chủ tài khoản, nên "chạy được ở local" không đồng nghĩa "gửi được
+ * tới người dùng thật", và nhánh đó chỉ tỏ ra hỏng khi có người dùng thật.
+ *
+ * `secure: false` + `requireTLS: true` là cổng 587 của Brevo: STARTTLS. Không có
+ * `requireTLS` thì đó là " opportunistic" — nếu một tầng trung gian bỏ STARTTLS thì
+ * mail bay đi không mã hoá mà không ai báo gì.
+ *
+ * **Thiếu cấu hình thì ném, không bỏ qua im lặng.** Không có địa chỉ dự phòng:
+ * `MAIL_FROM ?? '<một địa chỉ bừa>'` là cách mail đi ra từ một sender không ai xác
+ * minh, bị Brevo chặn, mà log vẫn sạch — đúng trạng thái khiến sự cố mail hỏng
+ * không ai nhìn thấy. `AuthService` bắt lỗi này ở cả ba luồng nên nó không nổi ra
+ * ngoài HTTP; nó lên log ở mức `error`.
  */
+const BREVO_SMTP_HOST = 'smtp-relay.brevo.com';
+const BREVO_SMTP_PORT = 587;
+
 @Injectable()
 export class AuthMailer implements AuthMailPort {
   private readonly logger = new Logger(AuthMailer.name);
 
+  /**
+   * Đọc và kiểm tra cấu hình. Ném ra tên biến còn thiếu thay vì tự bịa giá trị:
+   * người đọc log phải biết chính xác cần điền gì, không phải đoán.
+   */
+  private readConfig(): { login: string; key: string; from: string } {
+    const login = (process.env.BREVO_SMTP_LOGIN ?? '').trim();
+    const key = (process.env.BREVO_SMTP_KEY ?? '').trim();
+    const from = (process.env.MAIL_FROM ?? '').trim();
+    const thieu = [
+      ...(login ? [] : ['BREVO_SMTP_LOGIN']),
+      ...(key ? [] : ['BREVO_SMTP_KEY']),
+      ...(from ? [] : ['MAIL_FROM']),
+    ];
+    if (thieu.length > 0) {
+      throw new Error(
+        `Chưa cấu hình gửi mail qua Brevo — thiếu ${thieu.join(', ')}. `
+        + 'Lấy ở Brevo → Senders & Domains (phải xác minh) và Brevo → SMTP & API.',
+      );
+    }
+    // API key (`xkeysib-`) dùng vào SMTP luôn fail bằng 401 khó hiểu. Chặn ở đây
+    // biến "sai một dấu" thành một dòng log nói thẳng nguyên nhân.
+    if (key.startsWith('xkeysib-')) {
+      throw new Error(
+        'BREVO_SMTP_KEY đang là API key (xkeysib-…) chứ không phải SMTP key (xsmtpsib-…). '
+        + 'Hai loại khoá này không dùng thay nhau được — lấy đúng loại ở Brevo → SMTP & API.',
+      );
+    }
+    return { login, key, from };
+  }
+
   async send(m: Mail): Promise<void> {
-    const apiToken = (process.env.MAIL_API_TOKEN ?? '').trim();
-    const fromEmail = process.env.MAIL_FROM ?? 'hello@demomailtrap.co';
+    const { login, key, from } = this.readConfig();
     try {
-      if (apiToken) {
-        const transport = nodemailer.createTransport(
-          MailtrapTransport({ token: apiToken }),
-        );
-        await transport.sendMail({
-          from: { address: fromEmail, name: 'GoCode' },
-          to: [{ address: m.to }],
-          subject: m.subject,
-          text: m.text,
-          html: m.html,
-        });
-        return;
-      }
-
-      const host = process.env.EMAIL_HOST;
-      const user = process.env.EMAIL_USERNAME;
-      const pass = process.env.EMAIL_PASSWORD;
-      if (!host || !user || !pass) {
-        // Không có transport nào: coi như gửi hụt, nhưng phải để lại dấu vết —
-        // đây là lúc im lặng thì tài khoản mới đăng ký không bao giờ nhận được mã.
-        this.logger.warn(
-          `Chưa cấu hình MAIL_API_TOKEN hoặc EMAIL_HOST/EMAIL_USERNAME/EMAIL_PASSWORD — bỏ qua mail "${m.subject}" tới ${m.to}`,
-        );
-        return;
-      }
-
-      const port = Number(process.env.EMAIL_PORT ?? 587);
       const transport = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
+        host: BREVO_SMTP_HOST,
+        port: BREVO_SMTP_PORT,
+        secure: false,
+        requireTLS: true,
+        auth: { user: login, pass: key },
       });
       await transport.sendMail({
-        from: process.env.EMAIL_FROM ?? `GoCode <${user}>`,
+        from: `GoCode <${from}>`,
         to: [{ address: m.to }],
         subject: m.subject,
         text: m.text,
         html: m.html,
       });
     } catch (err) {
-      this.logger.warn(
-        `Gửi mail "${m.subject}" tới ${m.to} thất bại: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
+      // Mức `error`, không phải `warn`: hỏng mail xác nhận/mail đặt lại mật khẩu là
+      // mất chức năng, chứ không phải bất thường nhỏ. `AuthService` vẫn bắt và log
+      // riêng vì `AuthMailPort` là abstraction, một cài đặt khác có thể im lặng.
+      this.logger.error(
+        `Gửi mail "${m.subject}" tới ${m.to} qua Brevo thất bại: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown'}`,
       );
       throw err;
     }

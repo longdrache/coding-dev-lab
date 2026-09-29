@@ -43,7 +43,7 @@ Luyện tập cá nhân, thường mỗi ngày một lần để giữ chuỗi n
 - Dữ liệu bài thật: `FE/app/data/problems.ts` (56 bài, kèm test mẫu).
 - Bảng giá thật: `FE/app/data/pricing.ts`.
 - Dữ liệu người dùng thật trên Neon (một tài khoản, lịch sử luyện tập).
-- Có sẵn hạ tầng gửi mail qua Mailtrap và `nodemailer` trong backend.
+- Có sẵn hạ tầng gửi mail qua Brevo (SMTP) và `nodemailer` trong backend.
 
 Những thứ chưa có, và không được bịa ra: không có testimonial, không có logo chính thức ngoài component `Logo`, không có số liệu người dùng, không có ảnh chụp sản phẩm thật.
 

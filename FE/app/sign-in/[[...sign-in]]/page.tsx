@@ -20,7 +20,7 @@ export const metadata: Metadata = {
  * `next build` hỏng. `safeRedirect` loại URL ngoài (open redirect).
  *
  * `?oauth=` đọc y hệt, và cùng lý do: khi vòng Google hỏng, BE `302` về đây
- * kèm mã lỗi (`auth.controller.ts:375,378,385,389,392,397,401`). Đọc thẳng
+ * kèm mã lỗi (`auth.controller.ts:386,390,397,401,404,409,413,423`). Đọc thẳng
  * `window.location.search` trong `AuthForm` như một bản brief Task 5 gợi ý
  * sẽ sinh **hydration mismatch**: server render ra form không có dòng cảnh
  * báo, client lại thêm vào — React ghi cảnh báo lệch DOM trong console. Đọc

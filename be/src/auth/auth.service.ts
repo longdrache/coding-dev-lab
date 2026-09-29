@@ -646,6 +646,11 @@ export class AuthService {
    * Khớp theo `sub`, không theo email: `sub` ổn định, email thì Google cho đổi.
    * Một `sub` chỉ được gắn vào một user (khoá unique `(provider, providerUserId)`
    * ở DB), nên nếu nó đã thuộc về user khác thì báo `conflict` chứ không ghép lại.
+   *
+   * `conflict` **phải log** chứ không trả rồi im: đây là sự kiện không bao giờ
+   * xảy ra trong vận hành bình thường, nên đúng lúc nó xảy ra thì log là thứ duy
+   * nhất chỉ ra. Chỉ `id` và `sub` — **không** log `email`: đó là PII, và log ở
+   * đây đang ở chế độ công khai.
    */
   async linkOrCreateFromGoogle(
     p: GoogleProfile,
@@ -656,6 +661,15 @@ export class AuthService {
     // này. Chặn ở đây, trước cả lần tra cặp nào với DB.
     if (p.emailVerified !== true) return { kind: 'unverified' };
 
+    // Chuẩn hoá **một lần** rồi dùng biến này cho cả tra cứu lẫn tạo mới.
+    // `User.email` là `TEXT @unique` nên Postgres phân biệt hoa/thường: tra
+    // bằng đúng chuỗi Google trả thì `A@B.CO` không khớp dòng `a@b.co` đã có,
+    // `findUnique` trượt và ta rơi xuống nhánh tạo user mới — tức ranh giới
+    // "email đã tồn tại mà chưa đăng nhập thì không ghép" mở lỗ (fail-open)
+    // đúng vào lúc quan trọng nhất. Mọi đường ghi khác trong file đều đã
+    // `.trim().toLowerCase()`, chỗ này là ngoại lệ đã tạo ra lỗ hổng.
+    const email = String(p.email).trim().toLowerCase();
+
     const existingLink = await this.db.userAccount.findUnique({
       where: { provider_providerUserId: { provider: GOOGLE_PROVIDER, providerUserId: p.sub } },
     });
@@ -663,38 +677,66 @@ export class AuthService {
       // Đã đăng nhập mà khác user thì `sub` này đang bị kéo sang tài khoản khác —
       // trả `conflict` thay vì trả `ok`, kẻ ghép sẽ vào nhầm tài khoản người khác.
       if (signedInUserId !== null && existingLink.userId !== signedInUserId) {
+        this.logger.warn(
+          `Google conflict: sub đã gắn vào user khác (linkUserId=${existingLink.userId}, ` +
+            `signedInId=${signedInUserId}, sub=${p.sub})`,
+        );
         return { kind: 'conflict' };
       }
       return { kind: 'ok', userId: existingLink.userId };
     }
 
-    const byEmail = await this.db.user.findUnique({ where: { email: p.email } });
+    const byEmail = await this.db.user.findUnique({ where: { email } });
     if (byEmail) {
       // Email đã có mà chưa đăng nhập: KHÔNG ghép, kể cả khi `sub` chưa từng
       // xuất hiện. Ghép ở đây là lỗ hổng chiếm tài khoản theo email.
-      if (signedInUserId === null) return { kind: 'needs-password', email: p.email };
-      if (byEmail.id !== signedInUserId) return { kind: 'conflict' };
+      if (signedInUserId === null) return { kind: 'needs-password', email };
+      if (byEmail.id !== signedInUserId) {
+        this.logger.warn(
+          `Google conflict: email trùng với user khác (emailUserId=${byEmail.id}, ` +
+            `signedInId=${signedInUserId}, sub=${p.sub})`,
+        );
+        return { kind: 'conflict' };
+      }
       await this.db.userAccount.create({
         data: { userId: byEmail.id, provider: GOOGLE_PROVIDER, providerUserId: p.sub },
       });
       return { kind: 'ok', userId: byEmail.id };
     }
 
-    const created = await this.db.user.create({
-      data: {
-        email: p.email,
-        name: p.name,
-        // Email do Google xác minh rồi, và không có đường nào để gửi mã xác minh
-        // tới hộp thư đó: để `emailVerifiedAt` null thì tài khoản vừa sinh ra sẽ
-        // bị `login` chặn vĩnh viễn.
-        emailVerifiedAt: new Date(),
-        // Không có mật khẩu: user này chỉ dùng Google. `passwordHash` để null —
-        // đó là tín hiệu mà `login` dựa vào để biết tài khoản không đăng nhập
-        // được bằng mật khẩu, và sinh một mật khẩu ngẫu nhiên ở đây là tạo ra
-        // bí mật không ai giữ.
-        role: 'user',
-      },
-    });
+    let created;
+    try {
+      created = await this.db.user.create({
+        data: {
+          email,
+          name: p.name,
+          // Email do Google xác minh rồi, và không có đường nào để gửi mã xác
+          // minh tới hộp thư đó: để `emailVerifiedAt` null thì tài khoản vừa
+          // sinh ra sẽ bị `login` chặn vĩnh viễn.
+          emailVerifiedAt: new Date(),
+          // Không có mật khẩu: user này chỉ dùng Google. `passwordHash` để null
+          // — đó là tín hiệu mà `login` dựa vào để biết tài khoản không đăng
+          // nhập được bằng mật khẩu, và sinh một mật khẩu ngẫu nhiên ở đây là
+          // tạo ra bí mật không ai giữ.
+          role: 'user',
+        },
+      });
+    } catch (e) {
+      // Không dùng `createUser()` vì hàm đó dịch P2002 thành `409` — trong
+      // callback OAuth thì `409` là màn trắng, còn `needs-password` là câu
+      // dẫn người dùng đi tiếp. Đây là race thật: hai callback cùng dùng một
+      // email mới, cả hai tra `findUnique` đều trượt rồi cùng `create`.
+      //
+      // `P2002` nghĩa là email **đã có trong DB** mà tra cứu không khớp — tức
+      // đúng nghĩa "tài khoản đã tồn tại", nên trả `needs-password` là
+      // fail-closed đúng ranh giới: bắt họ chứng minh bằng mật khẩu, không
+      // cấp phiên cho ai. Lỗi khác thì ném nguyên để không giả làm trùng email.
+      if ((e as { code?: string })?.code === 'P2002') {
+        this.logger.warn(`Google race tạo user: email đã tồn tại, trả needs-password (sub=${p.sub})`);
+        return { kind: 'needs-password', email };
+      }
+      throw e;
+    }
     await this.db.userAccount.create({
       data: { userId: created.id, provider: GOOGLE_PROVIDER, providerUserId: p.sub },
     });

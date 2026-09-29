@@ -53,7 +53,7 @@ test('/forgot-password hiện form quên mật khẩu', async ({ page }) => {
 });
 
 // Khi vòng OAuth Google hỏng, BE `302` về `/sign-in?oauth=<mã>`
-// (`auth.controller.ts:375,378,385,389,392,397,401`). Trước khi có Task 5 thì
+// (`auth.controller.ts:386,390,397,401,404,409,413,423`). Trước khi có Task 5 thì
 // người dùng quay lại đúng trang đăng nhập và thấy… một form bình thường, không
 // có dòng nào giải thích vì sao mình không vào được. Test này canh đúng chỗ đó.
 test('/sign-in?oauth=… hiện nút Google và câu báo theo mã BE', async ({ page }) => {

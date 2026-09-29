@@ -1594,6 +1594,21 @@ describe('linkOrCreateFromGoogle', () => {
     expect(db.state.userAccount).toHaveLength(0);
   });
 
+  it('Google trả email khác chữ hoa/thường thì vẫn ra needs-password, không tạo user thứ hai', async () => {
+    // `User.email` là `TEXT @unique` — Postgres phân biệt hoa/thường. Tra bằng
+    // đúng chuỗi Google trả thì `A@B.CO` không khớp dòng `a@b.co` đã có,
+    // `findUnique` **trượt**, và ta rơi xuống nhánh TẠO USER MỚI: ranh giới
+    // "email đã tồn tại mà chưa đăng nhập thì không ghép" hoá thành "không tồn
+    // tại", và tài khoản cũ mãi mãi không được gắn với Google.
+    const { db, svc } = await seedVerified();
+    const r = await svc.linkOrCreateFromGoogle({ ...GOOGLE_OK, email: 'A@B.CO' }, null);
+    // Email trả về là bản đã chuẩn hoá: nó đi thẳng vào `?email=` để điền sẵn ô
+    // form, và mọi đường ghi còn lại của DB đều viết dạng chữ thường.
+    expect(r).toEqual({ kind: 'needs-password', email: 'a@b.co' });
+    expect(db.state.user).toHaveLength(1);
+    expect(db.state.userAccount).toHaveLength(0);
+  });
+
   it('khớp theo sub chứ không theo email: sub đã gắn user khác thì báo conflict', async () => {
     const { db, svc } = await seedVerified();
     const idA = db.state.user[0].id;
@@ -1615,6 +1630,72 @@ describe('linkOrCreateFromGoogle', () => {
     expect(db.userAccount.findUnique).toHaveBeenCalledWith({
       where: { provider_providerUserId: { provider: 'google', providerUserId: 'g-1' } },
     });
+  });
+
+  it('conflict vì sub đã gắn user khác thì log id và sub — không log email', async () => {
+    // Spec yêu cầu "từ chối **và log**". `conflict` không bao giờ xảy ra trong vận
+    // hành bình thường, nên nếu nó xảy ra mà log im thì không ai biết. Email là
+    // PII và log ở đây ở chế độ công khai, nên chỉ `id` + `sub`.
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { db, svc } = await seedVerified();
+    const idA = db.state.user[0].id;
+    await svc.register('b@b.co', 'matkhau123');
+    const idB = db.state.user[1].id;
+    await db.user.update({ where: { id: idB }, data: { emailVerifiedAt: new Date() } });
+    expect(await svc.linkOrCreateFromGoogle(GOOGLE_OK, idA)).toEqual({ kind: 'ok', userId: idA });
+
+    const r = await svc.linkOrCreateFromGoogle({ ...GOOGLE_OK, email: 'b@b.co' }, idB);
+    expect(r).toEqual({ kind: 'conflict' });
+    const line = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(line).toContain(`sub=${GOOGLE_OK.sub}`);
+    expect(line).toContain(`linkUserId=${idA}`);
+    expect(line).toContain(`signedInId=${idB}`);
+    // Xoá dòng `this.logger.warn` trước `return { kind: 'conflict' }` thì `line`
+    // rỗng → test này đỏ. Không có assert nào ở trên bắt được việc thiếu log.
+    expect(line).not.toContain('b@b.co');
+  });
+
+  it('conflict vì email trùng user khác thì log id và sub — không log email', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { db, svc } = await seedVerified();
+    await svc.register('b@b.co', 'matkhau123');
+    const idB = db.state.user[1].id;
+    await db.user.update({ where: { id: idB }, data: { emailVerifiedAt: new Date() } });
+
+    // `sub` chưa từng gắn, nhưng email đã thuộc về user A còn người gọi đang
+    // đăng nhập B — đây là nhánh `conflict` thứ hai, và nó cũng phải log.
+    const r = await svc.linkOrCreateFromGoogle({ ...GOOGLE_OK, sub: 'g-2' }, idB);
+    expect(r).toEqual({ kind: 'conflict' });
+    const line = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(line).toContain('sub=g-2');
+    expect(line).toContain(`emailUserId=${db.state.user[0].id}`);
+    expect(line).toContain(`signedInId=${idB}`);
+    expect(line).not.toContain('a@b.co');
+  });
+
+  it('race hai callback cùng email mới: P2002 thành needs-password, không phải 500', async () => {
+    // Cả hai callback tra `findUnique` lúc email còn chưa có rồi cùng `create`.
+    // Người thứ hai nhận `P2002`; để nó ném ra thì callback trả 500 — màn trắng.
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { db, svc } = makeEmptySvc();
+    db.user.create.mockRejectedValueOnce({ code: 'P2002', meta: { target: ['email'] } });
+
+    const r = await svc.linkOrCreateFromGoogle(GOOGLE_OK, null);
+    expect(r).toEqual({ kind: 'needs-password', email: 'a@b.co' });
+    // Không ghi UserAccount: tài khoản đã tồn tại thì bắt đăng nhập bằng mật khẩu,
+    // tuyệt đối không ghép — đây là ranh giới, không phải lỗi để bỏ qua.
+    expect(db.state.userAccount).toHaveLength(0);
+    expect(warn).toHaveBeenCalled();
+    expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).not.toContain('a@b.co');
+  });
+
+  it('lỗi DB khác P2002 thì ném nguyên, không giả thành "email đã tồn tại"', async () => {
+    // Bắt rộng hơn `P2002` là nói dối người dùng rằng email của họ trùng khi
+    // thật ra máy chủ chết; lỗi thật phải nổi lên để điều tra được.
+    const { db, svc } = makeEmptySvc();
+    const loi = Object.assign(new Error('hết thời gian chờ'), { code: 'P1001' });
+    db.user.create.mockRejectedValueOnce(loi);
+    await expect(svc.linkOrCreateFromGoogle(GOOGLE_OK, null)).rejects.toBe(loi);
   });
 
   it('đã gắn rồi thì bấm lại nút Google khi chưa đăng nhập vẫn vào đúng tài khoản cũ', async () => {

@@ -6,6 +6,7 @@ import { CircleAlert, LoaderCircle, MailCheck, Send } from "lucide-react";
 import {
   MIN_PASSWORD_LENGTH,
   VERIFY_LINK_HOURS,
+  googleLinkOffer,
   googleStartUrl,
   normalizeEmail,
   resendVerification,
@@ -172,6 +173,11 @@ export default function AuthForm({
     // Người dùng mở `/problem/two-sum` rồi bị đá sang đây sẽ phải quay lại đúng
     // bài đó; nếu vào thẳng `/sign-in` thì về trang chủ như trước.
     const wentToProblem = redirectTo !== "/";
+    // Không có `googleLink` thì nhánh `needs-password` của BE là ngõ cụt: đăng
+    // nhập mật khẩu xong là mất nút Google, phải tự tải lại trang mới bấm lại
+    // được. Quyết định có hiện hay không nằm ở `googleLinkOffer` (file .ts thuần)
+    // chứ không ở đây, để nó test được — xem `lib/auth-form.ts`.
+    const googleLink = googleLinkOffer(mode, redirectTo);
     return (
       <div className={CARD}>
         <h2 className={TITLE}>Đã đăng nhập</h2>
@@ -183,6 +189,21 @@ export default function AuthForm({
         <Link href={redirectTo} className={`${PRIMARY} mt-5`}>
           {wentToProblem ? "Quay lại bài đang làm" : "Vào trang chủ"}
         </Link>
+        {googleLink && (
+          // Nằm SAU nút chính và sau đường kẻ: đây là việc tuỳ chọn, không phải
+          // chuyện phải làm để dùng được. Câu giải thích nằm ngay trên nút —
+          // không có nó thì người dùng không hiểu vì sao sau khi đã đăng nhập lại
+          // còn một nút "Google" ở đây.
+          <div className="mt-6 border-t border-zinc-200 pt-5">
+            <p className={BODY}>
+              Muốn lần sau mở GoCode bằng Google mà không phải nhớ mật khẩu thì gộp tài khoản ở đây.
+            </p>
+            <a href={googleLink.href} className={`${SECONDARY} mt-3`} data-testid="google-link">
+              <GoogleMark aria-hidden className="size-4" />
+              Gộp tài khoản Google
+            </a>
+          </div>
+        )}
       </div>
     );
   }

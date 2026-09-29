@@ -5,6 +5,7 @@ import {
   VERIFY_LINK_HOURS,
   authEndpoint,
   authErrorMessage,
+  googleLinkOffer,
   googleStartUrl,
   normalizeEmail,
   oauthMessage,
@@ -402,7 +403,7 @@ describe('googleStartUrl', () => {
   });
 
   it('redirect_to ngoài nội bộ bị thay bằng trang chủ TRƯỚC khi gửi lên BE', () => {
-    // Hai đầu đều phải kiểm: `auth.controller.ts:339` có `safeInternalPath`
+    // Hai đầu đều phải kiểm: `auth.controller.ts:342` có `safeInternalPath`
     // nhưng `beginGoogleOAuth` ghi giá trị vào DB rồi callback đọc lại từ đó,
     // nên nếu chỉ một đầu kiểm thì đường ngoài nội bộ vẫn đi lọt.
     expect(googleStartUrl('https://evil.com')).toContain('redirect_to=' + encodeURIComponent('/'));
@@ -419,10 +420,37 @@ describe('googleStartUrl', () => {
   });
 });
 
+describe('googleLinkOffer - nút gộp tài khoản trên thẻ "Đã đăng nhập"', () => {
+  it('chế độ đăng nhập thì có nút, trỏ đúng route start của BE', () => {
+    // Không có nút này thì nhánh `needs-password` của BE là ngõ cụt: đăng nhập
+    // mật khẩu xong, `AuthForm` chuyển sang thẻ "Đã đăng nhập" và mất nút Google.
+    expect(googleLinkOffer('signin', '/problem/two-sum')).toEqual({
+      href: googleStartUrl('/problem/two-sum'),
+    });
+  });
+
+  it('có nút kể cả khi KHÔNG có redirect_url — vì nhánh exists của BE không mang theo nó', () => {
+    // Đúng những người dùng duy nhất cần nút này là người tới từ
+    // `?oauth=exists`, mà URL đó không có `redirect_url` (`redirectTo` rơi về
+    // "/"). Điều kiện "phải có redirect_url" ở đây là dựng lại đúng ngõ cụt.
+    expect(googleLinkOffer('signin', '/')).toEqual({ href: googleStartUrl('/') });
+  });
+
+  it('chế độ đăng ký thì không có: sau khi đăng ký còn phải mở link xác nhận mới vào được', () => {
+    expect(googleLinkOffer('signup', '/')).toBeNull();
+  });
+
+  it('href đi qua safeRedirect — link tới không bao giờ là open redirect', () => {
+    expect(googleLinkOffer('signin', 'https://evil.com')?.href).toContain(
+      'redirect_to=' + encodeURIComponent('/'),
+    );
+  });
+});
+
 describe('OAUTH_MESSAGES', () => {
   /**
    * Sáu mã, không phải năm. Brief Task 5 chỉ liệt kê năm và bỏ sót
-   * `conflict` — nhưng `auth.controller.ts:389` **có** trả mã đó, nên bỏ sót
+   * `conflict` — nhưng `auth.controller.ts:401` **có** trả mã đó, nên bỏ sót
    * thì người gặp xung đột tài khoản quay lại `/sign-in` và thấy… không
    * có gì cả: form im lặng y như mình chưa từng bấm Google.
    */
@@ -459,7 +487,7 @@ describe('OAUTH_MESSAGES', () => {
     // người dùng làm hỏng gì. Câu không nói rõ điều đó thì họ sẽ đi tìm
     // lỗi ở phía mình.
     expect(OAUTH_MESSAGES.conflict).toContain('không phải lỗi của bạn');
-    // Bước tiếp theo phải là **đăng xuất**. `auth.service.ts:667,678` chỉ
+    // Bước tiếp theo phải là **đăng xuất**. `auth.service.ts:679,694` chỉ
     // trả `conflict` khi người dùng ĐANG đăng nhập — bấm lại Google mà vẫn
     // giữ phiên đó thì BE trả đúng mã này lần nữa, vòng lặp vô tận.
     expect(OAUTH_MESSAGES.conflict).toContain('đăng xuất');

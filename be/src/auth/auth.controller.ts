@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Logger,
   Post,
   Query,
   Req,
@@ -154,6 +155,8 @@ async function signedInUserId(req: CookieRequest): Promise<number | null> {
  */
 @Controller('api/auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private readonly auth: AuthService) {}
 
   /** Chỉ tạo tài khoản chưa xác minh và gửi mã, **không** cấp phiên. */
@@ -357,10 +360,18 @@ export class AuthController {
    * Google trả kết quả về đây bằng `?code&state` (hoặc `?error` nếu người dùng
    * bấm Hủy).
    *
-   * Mọi nhánh đều trả `302` về FE chứ không ném lỗi: callback là trang người
-   * dùng nhìn thấy trực tiếp, `500` ở đây nghĩa là màn trắng thay vì một câu
-   * bảo thử lại. Nhánh nào **không** cấp cookie phiên thì cũng phải nói rõ bằng
-   * mã trên URL — `needs-password` và `conflict` không được gộp vào nhau.
+   * **Mọi nhánh đều trả `302` về FE, không nhánh nào ném ra ngoài** — nhưng
+   * đây là điều *đã được bảo đảm*, không phải điều hiển nhiên: callback là trang
+   * người dùng nhìn thấy trực tiếp, nên `500` ở đây nghĩa là màn trắng thay vì
+   * một câu bảo thử lại. Ba lời gọi dưới đây đều đi tới DB nên đều **có thể
+   * ném** (mất kết nối, hết thời gian chờ, `P2002`), và chỉ `googleProfile` là
+   * được bọc `.catch()`; không có `try` bao quanh thì một lỗi DB hiếm gặp là
+   * người dùng nhìn thấy màn trắng. `P2002` của nhánh tạo user thì bị bắt ngay
+   * bên trong `linkOrCreateFromGoogle` và thành `needs-password` — tức đúng ranh
+   * giới, không phải lỗi cần nuốt.
+   *
+   * Nhánh nào **không** cấp cookie phiên thì cũng phải nói rõ bằng mã trên URL
+   * — `needs-password` và `conflict` không được gộp vào nhau.
    */
   @Get('oauth/google/callback')
   @UseGuards(ThrottleGuard)
@@ -373,36 +384,44 @@ export class AuthController {
     @Res() res: CookieResponse,
   ) {
     if (err || !code) return res.redirect(302, frontendUrl('/sign-in?oauth=cancelled'));
-    const consumed = await this.auth.takeGoogleState(String(state ?? ''));
-    // State sai, hết hạn hoặc đã dùng: từ chối trước khi đụng tới Google.
-    if (!consumed) return res.redirect(302, frontendUrl('/sign-in?oauth=expired'));
-    // `googleProfile` trả `null` cho lỗi phía Google, nhưng `fetch` tới Google
-    // có thể **ném** (mạng, DNS). Không bắt thì callback trả 500 và người dùng
-    // thấy lỗi server thay vì câu "thử lại sau một lát".
-    const profile = await this.auth
-      .googleProfile(String(code), consumed.codeVerifier)
-      .catch(() => null);
-    if (!profile) return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
+    try {
+      const consumed = await this.auth.takeGoogleState(String(state ?? ''));
+      // State sai, hết hạn hoặc đã dùng: từ chối trước khi đụng tới Google.
+      if (!consumed) return res.redirect(302, frontendUrl('/sign-in?oauth=expired'));
+      // `googleProfile` trả `null` cho lỗi phía Google, nhưng `fetch` tới Google
+      // có thể **ném** (mạng, DNS). Không bắt thì callback trả 500 và người dùng
+      // thấy lỗi server thay vì câu "thử lại sau một lát".
+      const profile = await this.auth
+        .googleProfile(String(code), consumed.codeVerifier)
+        .catch(() => null);
+      if (!profile) return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
 
-    const r = await this.auth.linkOrCreateFromGoogle(profile, await signedInUserId(req));
-    if (r.kind === 'conflict') {
-      return res.redirect(302, frontendUrl('/sign-in?oauth=conflict'));
+      const r = await this.auth.linkOrCreateFromGoogle(profile, await signedInUserId(req));
+      if (r.kind === 'conflict') {
+        return res.redirect(302, frontendUrl('/sign-in?oauth=conflict'));
+      }
+      if (r.kind === 'unverified') {
+        return res.redirect(302, frontendUrl('/sign-in?oauth=unverified'));
+      }
+      if (r.kind === 'needs-password') {
+        return res.redirect(
+          302,
+          frontendUrl(`/sign-in?oauth=exists&email=${encodeURIComponent(r.email)}`),
+        );
+      }
+      const tokens = await this.auth.issueSessionForUserId(r.userId, userAgent(req));
+      if (!tokens) return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
+      setSessionCookies(res, tokens);
+      // Lần thứ hai trong hai lần kiểm: giá trị này đã nằm trong DB, tức dữ liệu
+      // bị sửa tay hay ghi bởi một bản cũ cũng bị chặn ở đây.
+      return res.redirect(302, frontendUrl(safeInternalPath(consumed.redirectTo)));
+    } catch {
+      // Log lỗi **không kèm chi tiết người dùng**: đủ để biết DB/phiên hỏng ở
+      // đâu mà không đổ PII lên log. Người dùng thì nhận `failed`, câu dành cho
+      // cả lỗi tạm thời lẫn lỗi cấu hình, và vẫn có lối thoát bằng mật khẩu.
+      this.logger.error('callback Google ném lỗi ngoài dự kiến — về /sign-in?oauth=failed');
+      return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
     }
-    if (r.kind === 'unverified') {
-      return res.redirect(302, frontendUrl('/sign-in?oauth=unverified'));
-    }
-    if (r.kind === 'needs-password') {
-      return res.redirect(
-        302,
-        frontendUrl(`/sign-in?oauth=exists&email=${encodeURIComponent(r.email)}`),
-      );
-    }
-    const tokens = await this.auth.issueSessionForUserId(r.userId, userAgent(req));
-    if (!tokens) return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
-    setSessionCookies(res, tokens);
-    // Lần thứ hai trong hai lần kiểm: giá trị này đã nằm trong DB, tức dữ liệu
-    // bị sửa tay hay ghi bởi một bản cũ cũng bị chặn ở đây.
-    return res.redirect(302, frontendUrl(safeInternalPath(consumed.redirectTo)));
   }
 
   @Get('me')

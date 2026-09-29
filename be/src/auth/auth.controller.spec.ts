@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { HttpException } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import type { ExecutionContext, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
@@ -655,6 +655,43 @@ describe('đăng nhập bằng Google — callback', () => {
     await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
     expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
     expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  it('DB chết ở takeGoogleState thì về failed chứ không 500', async () => {
+    // Ba lời gọi dưới `takeGoogleState` đều đi tới DB nên đều có thể ném, và
+    // callback là trang người dùng nhìn thấy trực tiếp — ném ra ngoài là màn
+    // trắng. Chỉ `googleProfile` được bọc `.catch()`, nên thiếu `try` ở đây là
+    // `500` thật chứ không phải giả định.
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { c, auth, res } = ctl();
+    auth.takeGoogleState.mockRejectedValue(new Error('connection terminated'));
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
+    expect(auth.linkOrCreateFromGoogle).not.toHaveBeenCalled();
+    expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  it('linkOrCreateFromGoogle ném lỗi DB thì về failed, tuyệt đối không cấp phiên', async () => {
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { c, auth, res } = ctl();
+    auth.linkOrCreateFromGoogle.mockRejectedValue(new Error('hết thời gian chờ'));
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
+    expect(auth.issueSessionForUserId).not.toHaveBeenCalled();
+    expect(res.cookie).not.toHaveBeenCalled();
+    // Một lần redirect duy nhất: `catch` không được phát ra `Location` lần nữa
+    // sau khi nhánh trong `try` đã phát rồi mới ném.
+    expect(res.redirect).toHaveBeenCalledTimes(1);
+  });
+
+  it('issueSessionForUserId ném lỗi thì về failed và không đặt cookie nào', async () => {
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { c, auth, res } = ctl();
+    auth.issueSessionForUserId.mockRejectedValue(new Error('db down'));
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
+    expect(res.cookie).not.toHaveBeenCalled();
+    expect(res.redirect).toHaveBeenCalledTimes(1);
   });
 
   it('cookie session hợp lệ thì ghép vào đúng user đang đăng nhập', async () => {

@@ -245,12 +245,12 @@ export async function resendVerification(email: string): Promise<ResendResult> {
  *
  * Đi thẳng `<a href>` chứ không bắt sự kiện bấm rồi `fetch` là chủ ý: BE trả
  * `302` tới `accounts.google.com` kèm `state` và PKCE
- * (`auth.controller.ts:352`), nên trình duyệt phải tự điều hướng — `fetch`
+ * (`auth.controller.ts:355`), nên trình duyệt phải tự điều hướng — `fetch`
  * sẽ nuốt mất `Location` và màn hình đứng yên.
  *
  * `safeRedirect` chạy **trước khi** gửi lên BE, không dựa vào BE. Lý do:
- * `auth.controller.ts:339` có `safeInternalPath` nhưng giá trị đó được ghi vào
- * `UserOAuthState` rồi `callback` đọc lại từ DB (`auth.controller.ts:405`) —
+ * `auth.controller.ts:342` có `safeInternalPath` nhưng giá trị đó được ghi vào
+ * `UserOAuthState` rồi `callback` đọc lại từ DB (`auth.controller.ts:417`) —
  * mọi đường ghi tay vào DB giữa hai chỗ đó đều thành open redirect. Kiểm ở
  * cả hai đầu thì lớp bảo vệ thứ hai là lưới an toàn, không phải thừa.
  */
@@ -261,14 +261,35 @@ export function googleStartUrl(redirectTo: string): string {
 }
 
 /**
+ * Nút "Gộp tài khoản Google" trên thẻ "Đã đăng nhập", hoặc `null` khi không nên
+ * hiện. Người dùng **đã vào rồi** nên nút này không phải để đăng nhập, mà để
+ * liên kết tài khoản Google với tài khoản vừa mở bằng mật khẩu.
+ *
+ * Không có nó thì nhánh `needs-password` của BE là ngõ cụt: người dùng đăng
+ * nhập mật khẩu xong, `AuthForm` chuyển sang thẻ "Đã đăng nhập" và **không còn
+ * nút Google** — muốn gộp thì phải tự tải lại trang mà không chỗ nào nói điều
+ * đó. Bấm nút ở đây thì BE đọc cookie phiên vừa cấp, ghép `UserAccount`, và
+ * lần sau vào thẳng bằng Google.
+ *
+ * **Không có điều kiện "đã tới từ `?redirect_url=`"** — cố ý. Nhánh `exists` mà
+ * BE trả về (`auth.controller.ts`, `?oauth=exists&email=…`) **không mang theo**
+ * `redirect_url`, nên đúng những người dùng duy nhất cần nút này lại luôn không
+ * có `redirect_url`. Thêm điều kiện đó là dựng lại đúng cái ngõ cụt cần sửa.
+ */
+export function googleLinkOffer(mode: AuthMode, redirectTo: string): { href: string } | null {
+  if (mode === "signup") return null;
+  return { href: googleStartUrl(redirectTo) };
+}
+
+/**
  * Câu nói cho từng mã mà BE trả về qua `?oauth=` khi vòng OAuth Google hỏng.
  *
- * Khoá là **mã** BE ghi thẳng lên URL (`auth.controller.ts:335,375,378,385,389,392,397,401`),
- * không phải message — mọi nhánh đều trả `302` về FE chứ không ném lỗi, vì
- * callback là trang người dùng nhìn thấy trực tiếp và `500` ở đây nghĩa là
- * màn trắng thay vì một câu bảo thử lại.
+ * Khoá là **mã** BE ghi thẳng lên URL (`auth.controller.ts:338,386,390,397,401,404,409,413,423`),
+ * không phải message — mọi nhánh đều trả `302` về FE chứ không ném lỗi ra
+ * ngoài, vì callback là trang người dùng nhìn thấy trực tiếp và `500` ở đây
+ * nghĩa là màn trắng thay vì một câu bảo thử lại.
  *
- * **Sáu mã, không phải năm.** `conflict` (`auth.controller.ts:389`) dễ bị bỏ
+ * **Sáu mã, không phải năm.** `conflict` (`auth.controller.ts:401`) dễ bị bỏ
  * sót vì nó sinh ra ở tầng service chứ không ở controller, nhưng nó là mã mà
  * người dùng hay gặp nhất sau `exists`. Bỏ nó thì họ quay lại `/sign-in` và
  * thấy… không có gì: form im lặng y như mình chưa từng bấm Google.
@@ -277,15 +298,17 @@ export function googleStartUrl(redirectTo: string): string {
  *
  * - `exists` — nói rõ **phải đăng nhập bằng mật khẩu trước**, không thì
  *   người dùng bấm Google lại mãi. Bấm lại mà chưa đăng nhập thì BE trả lại
- *   đúng mã này (`auth.service.ts:677`).
+ *   đúng mã này (`auth.service.ts:693`).
  * - `conflict` — chỉ xảy ra khi người dùng **đang đăng nhập** mà tài khoản
- *   Google thuộc về user khác (`auth.service.ts:667,678`). Nên câu tuyệt đối
+ *   Google thuộc về user khác (`auth.service.ts:679,694`). Nên câu tuyệt đối
  *   không bảo họ "thử lại": bấm lại mà giữ nguyên phiên là lặp vô hạn. Việc
  *   phải làm là đăng xuất trước.
  * - `failed` — cũng là lúc Google chưa được cấu hình
- *   (`auth.controller.ts:334`), tức lỗi triển khai chứ không phải lỗi họ. Vì
+ *   (`auth.controller.ts:337`), tức lỗi triển khai chứ không phải lỗi họ. Vì
  *   vậy câu phải có **lối thoát bằng mật khẩu**: nếu cấu hình hỏng thì bấm
- *   Google lại mãi cũng không bao giờ được.
+ *   Google lại mãi cũng không bao giờ được. Nó cũng là mã của nhánh `catch`
+ *   chung (`auth.controller.ts:423`) — mọi lỗi DB/phiên bất ngờ đều dừng ở
+ *   đây thay vì màn trắng.
  */
 export const OAUTH_MESSAGES: Record<string, string> = {
   cancelled:

@@ -110,6 +110,25 @@ export class ProblemsService {
     return rest;
   }
 
+  /**
+   * Xoá cache của một bài sau khi admin sửa nó.
+   *
+   * Bắt buộc, không phải tối ưu: cache ở đây giữ **cả cột `isVip`**, và
+   * `findBySlug` chấn chấn bằng `hit['isVip']` (xem dòng assert bên trên). Nên nếu
+   * admin bật cờ VIP cho một bài mà dòng đầy đủ của nó đang nằm trong
+   * `slugCache`, thì tới hết TTL (5 phút) mọi người vẫn đọc được đề bài đó — đúng
+   * lỗi rò nội dung VIP mà `problem_vip_only` sinh ra để chặn. TTL là biện pháp
+   * tạm thời cho dữ liệu gần như bất biến, không phải lưới an toàn; khoá bài thì
+   * phải có hiệu lực ngay.
+   *
+   * `listCache` xoá luôn vì danh sách chứa cột `isVip` của **mọi** bài, nên đổi
+   * cờ của một bài làm cả danh sách cũ.
+   */
+  invalidateProblemCache(slug: string): void {
+    this.listCache.delete(LIST_KEY);
+    this.slugCache.delete(slug);
+  }
+
   async submit(
     slug: string,
     userId: number,

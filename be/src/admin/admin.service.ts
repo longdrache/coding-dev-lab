@@ -15,6 +15,8 @@ import { MailtrapTransport } from 'mailtrap';
 import { DatabaseService } from '../database/database.service.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
 import { PresenceService } from '../presence/presence.service.ts';
+import { ProblemsService } from '../problems/problems.service.ts';
+import { readIsVipFlag } from '../problems/vip-problem.policy.ts';
 
 function escapeHtml(value: string): string {
   return value
@@ -33,6 +35,12 @@ export class AdminService {
     @Optional()
     @Inject(PresenceService)
     private readonly presence?: PresenceService,
+    // `@Optional` vì lý do đã ghi ở `problems.module.ts`: đây là phụ thuộc chỉ để
+    // xoá cache. Nếu `ProblemsModule` không được import (test cũ dựng service
+    // tay) thì service vẫn chạy, chỉ mất bước xoá cache — mọi assert về khoá
+    // vẫn đúng vì policy không phụ thuộc cache.
+    @Optional()
+    private readonly problems?: ProblemsService,
   ) {}
 
   // PEM trong env có thể ở 3 dạng: newline thật (dotenv đã expand),
@@ -530,6 +538,48 @@ export class AdminService {
     const existing = await this.db.problem.findUnique({ where: { slug } });
     if (!existing) throw new NotFoundException('Problem not found');
     return this.db.problem.update({ where: { slug }, data: { status: 'draft' } });
+  }
+
+  /**
+   * Bật/tắt cờ VIP của một bài.
+   *
+   * Endpoint riêng thay vì trường trong `PUT /problems/:slug` — xem
+   * `dto/set-problem-vip.dto.ts` để biết ba lý do.
+   *
+   * @param isVip kiểu `unknown` cố ý: `ValidationPipe` chặn giá trị sai kiểu ở
+   * tầng HTTP, nhưng service cũng phải tự chặn được vì nó là nơi **quyết định**
+   * được ghi gì xuống cột `isVip`. Chuỗi `"false"` là chuỗi truthy — nếu lọt
+   * tới đây thì lệnh "gỡ cờ VIP" của admin lại bật cờ VIP. Fail-closed ở cả hai
+   * tầng, tầng dưới không tin tầng trên.
+   */
+  async setProblemVip(slug: string, isVip: unknown) {
+    if (typeof isVip !== 'boolean') {
+      throw new BadRequestException('isVip phải là boolean (true/false), không phải chuỗi');
+    }
+    // `findUnique` + `NotFoundException` chứ không để Prisma ném `P2025`: slug
+    // không có là câu trả lời 404, không phải 500.
+    const existing = await this.db.problem.findUnique({
+      where: { slug },
+      select: { slug: true, isVip: true },
+    });
+    if (!existing) throw new NotFoundException('Problem not found');
+
+    const updated = await this.db.problem.update({
+      where: { slug },
+      data: { isVip },
+      select: { slug: true, isVip: true },
+    });
+
+    // Xoá cache **trước** khi trả lời: nếu để sót, người thường còn đọc được đề
+    // bài vừa khoá tới hết TTL. `slugCache` giữ nguyên cột `isVip` và
+    // `findBySlug` chấn chấn bằng đúng bản cache đó.
+    this.problems?.invalidateProblemCache(slug);
+
+    const from = readIsVipFlag(existing.isVip);
+    // Cột `isVip` trong JWT là chuyện của `User` — dòng log này chỉ ghi bài nào
+    // đổi cờ, không đụng tới `roleForToken` hay logic hạ VIP của user.
+    this.logger.log(`Admin bật/tắt VIP: ${slug} ${from ? 'true -> false' : 'false -> true'}`);
+    return { slug: updated.slug, isVip: readIsVipFlag(updated.isVip) };
   }
 
   async deleteProblem(slug: string) {

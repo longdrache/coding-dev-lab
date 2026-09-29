@@ -9,6 +9,7 @@ import {
   Delete,
   Param,
   Put,
+  Patch,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { AdminGuard } from './admin.guard.ts';
 import { ViewsService } from '../views/views.service.ts';
 import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
+import { SetProblemVipDto } from './dto/set-problem-vip.dto.ts';
 
 type CookieOptions = {
   httpOnly?: boolean;
@@ -186,5 +188,22 @@ export class AdminController {
   @UseGuards(AdminGuard)
   unpublishProblem(@Param('slug') slug: string) {
     return this.svc.unpublishProblem(slug);
+  }
+
+  /**
+   * Bật/tắt cờ VIP của một bài. `PATCH` chứ không phải `PUT` vì thân request là
+   * **một phần** của bài: `PUT problems/:slug` đã chiếm chỗ "thay toàn bộ bài" và
+   * nó không đụng tới `isVip`.
+   *
+   * `forbidNonWhitelisted: true` — khác hẳn hai route kia (cùng dùng
+   * `ValidationPipe` nhưng để `false`). Ở đây body đúng **một** trường nên
+   * trường lạ là dấu hiệu gọi sai chỗ, và từ chối thành 400 còn sạch hơn là im
+   * lặng bỏ qua.
+   */
+  @Patch('problems/:slug/vip')
+  @UseGuards(AdminGuard)
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  setProblemVip(@Param('slug') slug: string, @Body() dto: SetProblemVipDto) {
+    return this.svc.setProblemVip(slug, dto?.isVip);
   }
 }

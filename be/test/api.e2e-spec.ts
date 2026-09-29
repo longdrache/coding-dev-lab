@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { App } from 'supertest/types';
 import { generateKeyPairSync } from 'node:crypto';
+import jwt from 'jsonwebtoken';
 import { PrismaClient } from './../src/generated/prisma/client.ts';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { generateKeyPair, SignJWT } from 'jose';
@@ -1156,6 +1157,193 @@ describe('API (e2e)', () => {
       const res = await submit(SLUG_THUONG, await authCookie(1, 'user'));
       expect(res.status).toBe(404);
       expect(res.body.message).toContain('test ẩn');
+    });
+  });
+
+  /**
+   * Admin bật/tắt cờ VIP qua HTTP thật.
+   *
+   * Đây là bằng chứng cho **cả vòng đời cờ**: trước khi bật thì bài mở được, sau
+   * khi bật thì mọi endpoint trong `ENDPOINTS_CHUA_KHOA` chặn đúng, và sau khi tắt
+   * thì mở lại. Chỉ kiểm "endpoint trả 200" thì chưa đủ — cờ có thể chưa từng
+   * được ghi, hoặc ghi sai cột, mà test vẫn xanh.
+   *
+   * Bài probe tự tạo và `isVip` luôn trả về `false` ở `afterAll`: các test phía
+   * trên ghim "đúng 20 bài VIP khớp `VIP_SLUGS`", nên để sót một bài VIP ngoài danh
+   * sách đó sẽ làm đỏ chúng ở lần chạy kế tiếp. Dùng slug riêng, không đụng vào
+   * 20 bài thật.
+   */
+  describe('admin bật/tắt cờ VIP: cờ có hiệu lực thật, không chỉ trả 200', () => {
+    const SLUG = 'e2e-admin-vip-toggle-probe';
+    const MO_TA = 'NOI_DUNG_BAI_PROBE_HAI_CHU_THAT_ABCDEFGHIJ';
+
+    /** Token admin ký bằng đúng khoá mà `AdminGuard` dùng để verify. */
+    function adminCookie(): string {
+      const t = jwt.sign({ sub: 'admin', role: 'admin' }, process.env.ADMIN_JWT_PRIVATE_KEY!, {
+        algorithm: 'RS256',
+        expiresIn: '30m',
+      });
+      return `admin_token=${t}`;
+    }
+
+    function doiVip(isVip: boolean) {
+      return request(app.getHttpServer())
+        .patch(`/api/admin/problems/${SLUG}/vip`)
+        .set('Cookie', adminCookie())
+        .send({ isVip });
+    }
+
+    beforeAll(async () => {
+      await db.problem.upsert({
+        where: { slug: SLUG },
+        create: {
+          slug: SLUG,
+          title: 'probe toggle VIP',
+          difficulty: 'Dễ',
+          topic: 'array',
+          status: 'draft',
+          isVip: false,
+          description: MO_TA,
+          tests: [],
+          hiddenTests: [],
+        },
+        update: { isVip: false, status: 'draft', description: MO_TA, hiddenTests: [] },
+      });
+    });
+
+    afterAll(async () => {
+      await db.problem.deleteMany({ where: { slug: SLUG } });
+    });
+
+    it('thiếu token → 401, role không phải admin → 401', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/admin/problems/${SLUG}/vip`)
+        .send({ isVip: true })
+        .expect(401);
+      await request(app.getHttpServer())
+        .patch(`/api/admin/problems/${SLUG}/vip`)
+        .set('Cookie', await authCookie(1, 'user'))
+        .send({ isVip: true })
+        .expect(401);
+    });
+
+    it('isVip là chuỗi → 400, và cờ trong DB không đổi', async () => {
+      const truoc = (await db.problem.findUnique({ where: { slug: SLUG } }))!.isVip;
+      // Chuỗi "false" là chuỗi truthy: nếu BE ép kiểu thì lệnh "gỡ cờ" lại bật cờ.
+      for (const isVip of ['false', 'true', '0', '1']) {
+        await doiVip(isVip as unknown as boolean).expect(400);
+      }
+      const sau = (await db.problem.findUnique({ where: { slug: SLUG } }))!.isVip;
+      expect(sau).toBe(truoc);
+    });
+
+    it('slug không tồn tại → 404 chứ không phải 500', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/api/admin/problems/khong-ton-tai-khong-bao-gio/vip')
+        .set('Cookie', adminCookie())
+        .send({ isVip: true });
+      expect(res.status).toBe(404);
+    });
+
+    it('bật cờ → cột `isVip` đổi thật trong DB và response trả về cờ mới', async () => {
+      const truoc = await db.problem.findUnique({ where: { slug: SLUG } });
+      expect(truoc!.isVip).toBe(false);
+      const res = await doiVip(true).expect(200);
+      expect(res.body).toEqual({ slug: SLUG, isVip: true });
+      const sau = await db.problem.findUnique({ where: { slug: SLUG } });
+      expect(sau!.isVip).toBe(true);
+    });
+
+    it('tắt cờ → cột `isVip` trở lại false', async () => {
+      const res = await doiVip(false).expect(200);
+      expect(res.body).toEqual({ slug: SLUG, isVip: false });
+      expect((await db.problem.findUnique({ where: { slug: SLUG } }))!.isVip).toBe(false);
+    });
+
+    /**
+     * Vòng đời đầy đủ trên bài **đã publish**, vì `isVip` chỉ ảnh hưởng người đọc
+     * khi bài đang nằm trong danh sách công khai — `beforeAll` để `draft` là vì
+     * các test cơ chế chặn ở trên không cần nó hiện ra.
+     */
+    it('bài vừa bật VIP thì người thường mất mọi đường vào, tắt thì mở lại', async () => {
+      await db.problem.update({ where: { slug: SLUG }, data: { status: 'published' } });
+      try {
+        // Trước khi khoá: mở được, và danh sách có mô tả.
+        const mo = await request(app.getHttpServer()).get(`/api/problems/${SLUG}`).expect(200);
+        expect(mo.body.description).toBe(MO_TA);
+        const listMo = await request(app.getHttpServer()).get('/api/problems').expect(200);
+        expect(
+          JSON.stringify(listMo.body.find((p: { slug: string }) => p.slug === SLUG)),
+        ).toContain(MO_TA);
+
+        await doiVip(true).expect(200);
+
+        // Sau khi khoá: **ngay lập tức**, không chờ hết TTL cache.
+        const khoa = await request(app.getHttpServer()).get(`/api/problems/${SLUG}`).expect(403);
+        expect(khoa.body.code).toBe('problem_vip_only');
+        // Danh sách cắt còn allowlist — không còn mô tả.
+        const listKhoa = await request(app.getHttpServer()).get('/api/problems').expect(200);
+        const dong = listKhoa.body.find((p: { slug: string }) => p.slug === SLUG);
+        expect(Object.keys(dong).sort()).toEqual(['difficulty', 'isVip', 'slug', 'title', 'topic']);
+        expect(JSON.stringify(listKhoa.body)).not.toContain(MO_TA);
+
+        // Các endpoint còn lại trong bảng khoá cũng phải chặn, dù bài này không
+        // chạy Judge0 (nên dùng `hiddenTests: []` ở `beforeAll`).
+        const cookie = await authCookie(1, 'user');
+        const ck: Array<[string, () => request.Test]> = [
+          ['POST /:slug/submit', () => request(app.getHttpServer()).post(`/api/problems/${SLUG}/submit`).set('Cookie', cookie).send({ languageId: 71, sourceCode: 'print(1)' })],
+          ['POST /api/history', () => request(app.getHttpServer()).post('/api/history').set('Cookie', cookie).send({ problemSlug: SLUG, languageId: 71, sourceCode: 'print(1)' })],
+          ['GET /api/history?slug=', () => request(app.getHttpServer()).get(`/api/history?slug=${SLUG}`).set('Cookie', cookie)],
+          ['GET /api/history/me?slug=', () => request(app.getHttpServer()).get(`/api/history/me?slug=${SLUG}`).set('Cookie', cookie)],
+          ['POST /api/progress/solve', () => request(app.getHttpServer()).post('/api/progress/solve').set('Cookie', cookie).send({ slug: SLUG, difficulty: 'Khó' })],
+        ];
+        for (const [label, call] of ck) {
+          const res = await call();
+          expect(res.status, `${label} trả ${res.status}`).toBe(403);
+          expect(res.body.code, label).toBe('problem_vip_only');
+          expect(JSON.stringify(res.body), label).not.toContain(MO_TA);
+        }
+
+        // Người có VIP vẫn đọc được: cờ của bài không liên quan hạ VIP của user.
+        const vipDoc = await request(app.getHttpServer())
+          .get(`/api/problems/${SLUG}`)
+          .set('Cookie', await authCookie(1, 'vip'))
+          .expect(200);
+        expect(vipDoc.body.description).toBe(MO_TA);
+
+        // Tắt cờ: mở lại ngay, không chờ hết TTL.
+        await doiVip(false).expect(200);
+        const lai = await request(app.getHttpServer()).get(`/api/problems/${SLUG}`).expect(200);
+        expect(lai.body.description).toBe(MO_TA);
+        const listLai = await request(app.getHttpServer()).get('/api/problems').expect(200);
+        expect(
+          JSON.stringify(listLai.body.find((p: { slug: string }) => p.slug === SLUG)),
+        ).toContain(MO_TA);
+      } finally {
+        // Luôn trả DB về `isVip: false` kể cả khi assert ở giữa đường đỏ, để
+        // lần chạy sau không kế thừa bài VIP "mồ côi".
+        await doiVip(false).catch(() => undefined);
+        await db.problem.deleteMany({ where: { slug: SLUG } });
+      }
+    });
+
+    it('đổi cờ một bài không làm đổi khoá của bài khác', async () => {
+      const thuong = await db.problem.findFirst({
+        where: { isVip: false, status: 'published' },
+        select: { slug: true, description: true },
+        orderBy: { slug: 'asc' },
+      });
+      expect(thuong).toBeTruthy();
+      await doiVip(true).expect(200);
+      try {
+        // Bài thường vẫn mở được, và vẫn có mô tả trong danh sách.
+        const res = await request(app.getHttpServer())
+          .get(`/api/problems/${thuong!.slug}`)
+          .expect(200);
+        expect(res.body.description).toBe(thuong!.description);
+      } finally {
+        await doiVip(false).catch(() => undefined);
+      }
     });
   });
 });

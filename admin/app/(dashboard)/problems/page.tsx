@@ -8,7 +8,7 @@ import { swrFetcher } from "@/lib/swr";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Trash2, Pencil, CheckCircle2, Undo2 } from "lucide-react";
+import { Search, Trash2, Pencil, CheckCircle2, Undo2, Crown, Unlock, Loader2 } from "lucide-react";
 
 type ProblemStatus = "draft" | "pending" | "published";
 
@@ -26,6 +26,10 @@ type Problem = {
   topic: string;
   description?: string;
   status?: string;
+  // `=== true` chứ không phải truthy: BE gửi boolean, và chuỗi "false" là chuỗi
+  // truthy — hiển thị nhầm thành "VIP" trên bài thường là lỗi dễ xảy ra nhất ở
+  // chỗ đọc cờ.
+  isVip?: boolean;
   createdAt?: string;
 };
 
@@ -93,6 +97,37 @@ export default function ProblemsPage() {
     }
   };
 
+  // Slug đang bật/tắt VIP. Giữ **một** slug thay vì boolean chung: hai lần bấm
+  // nhanh trên hai hàng khác nhau sẽ khoá lẫn nhau, và người dùng không biết
+  // hàng nào đang chờ.
+  const [dangDoiVip, setDangDoiVip] = useState<string | null>(null);
+  const [loiVip, setLoiVip] = useState<string | null>(null);
+
+  const handleVip = async (slug: string, isVip: boolean) => {
+    setDangDoiVip(slug);
+    setLoiVip(null);
+    try {
+      const res = await adminFetch(`/api/admin/problems/${slug}/vip`, {
+        method: "PATCH",
+        // Gửi boolean thật. `JSON.stringify` làm đúng việc này — dựng tay
+        // chuỗi `"false"` là lỗi BE phải chặn và cũng là lỗi mà test
+        // `isVip: "false" -> 400` tồn tại để bắt.
+        body: JSON.stringify({ isVip }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || `Cập nhật VIP thất bại: ${res.status}`);
+      }
+      await mutate();
+    } catch (e: unknown) {
+      // Báo tại chỗ thay vì `alert`: người dùng vừa bấm nhầm ở hàng này, alert
+      // buộc họ nhìn ra khỏi bảng mà không biết lỗi của hàng nào.
+      setLoiVip(e instanceof Error ? e.message : "Cập nhật VIP thất bại");
+    } finally {
+      setDangDoiVip(null);
+    }
+  };
+
   const [cutoff] = useState(() => Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const recentCount = useMemo(() => {
@@ -103,6 +138,11 @@ export default function ProblemsPage() {
       return !Number.isNaN(t) && t >= cutoff;
     }).length;
   }, [problems]);
+
+  const vipCount = useMemo(
+    () => (problems ?? []).filter((p) => p.isVip === true).length,
+    [problems],
+  );
 
   if (error) {
     return (
@@ -140,7 +180,7 @@ export default function ProblemsPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <div className="rounded-lg border border-slate-200 bg-white p-6">
           <p className="text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Tổng bài tập</p>
           <p className="mt-2 font-mono text-[32px] font-bold leading-none tabular-nums text-slate-900">{problems.length}</p>
@@ -156,7 +196,21 @@ export default function ProblemsPage() {
           <p className="mt-2 font-mono text-[32px] font-bold leading-none tabular-nums text-slate-900">0</p>
           <p className="mt-2 text-xs text-amber-600">Không có nội dung chờ</p>
         </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <p className="text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Bài VIP</p>
+          <p className="mt-2 font-mono text-[32px] font-bold leading-none tabular-nums text-slate-900">{vipCount}</p>
+          <p className="mt-2 text-xs text-amber-600">Chỉ tài khoản Premium mở được</p>
+        </div>
       </div>
+
+      {loiVip && (
+        <p
+          role="alert"
+          className="rounded-lg border-2 border-red-500 bg-white px-3.5 py-2.5 text-sm text-red-600"
+        >
+          {loiVip}
+        </p>
+      )}
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -201,6 +255,7 @@ export default function ProblemsPage() {
                   <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Chủ đề</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Độ khó</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Trạng thái</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">VIP</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Cập nhật</TableHead>
                   <TableHead className="px-4 py-3 text-right text-xs font-medium uppercase tracking-[0.5px] text-slate-500">Thao tác</TableHead>
                 </TableRow>
@@ -239,6 +294,18 @@ export default function ProblemsPage() {
                         {STATUS_LABEL[(p.status as ProblemStatus) ?? "draft"] ?? p.status ?? "Nháp"}
                       </span>
                     </TableCell>
+                    <TableCell className="px-4 py-2">
+                      {p.isVip === true ? (
+                        <span
+                          title="Bài VIP: chỉ tài khoản Premium mở được đề và test ẩn"
+                          className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.5px] text-amber-700"
+                        >
+                          <Crown className="size-3" /> VIP
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap px-4 py-2 font-mono text-xs tabular-nums text-slate-500">
                       {p.createdAt
                         ? new Date(p.createdAt).toLocaleString("vi-VN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
@@ -246,6 +313,37 @@ export default function ProblemsPage() {
                     </TableCell>
                     <TableCell className="px-4 py-2 text-right">
                       <span className="inline-flex items-center justify-end gap-1.5">
+                        {p.isVip === true ? (
+                          <button
+                            type="button"
+                            onClick={() => handleVip(p.slug, false)}
+                            disabled={dangDoiVip === p.slug}
+                            title="Gỡ cờ VIP: mở cho mọi tài khoản"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-500 transition hover:text-slate-900 disabled:opacity-50"
+                          >
+                            {dangDoiVip === p.slug ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Unlock className="size-3.5" />
+                            )}
+                            Gỡ VIP
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleVip(p.slug, true)}
+                            disabled={dangDoiVip === p.slug}
+                            title="Bật cờ VIP: chỉ tài khoản Premium mở được đề và test ẩn"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 text-xs font-medium text-amber-700 transition hover:bg-amber-500/20 disabled:opacity-50"
+                          >
+                            {dangDoiVip === p.slug ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Crown className="size-3.5" />
+                            )}
+                            Bật VIP
+                          </button>
+                        )}
                         {p.status !== "published" ? (
                           <button
                             type="button"

@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import NavBar from "@/app/ui/Navbar";
-import { ArrowRight, Terminal, Crown, LogOut } from "lucide-react";
+import { ArrowRight, Terminal, Crown } from "lucide-react";
 import { useState, useEffect } from "react";
 import { codeLines } from "@/app/data/code";
 import { recordLogin } from "@/app/problem/activity";
-import { signOut } from "@/lib/api";
+import { greetingName } from "@/lib/account";
 import { useSession } from "./ui/AuthProvider";
+import AccountMenu from "./ui/AccountMenu";
 import FeatureCard from "./ui/FeatureCard";
 import OnlineCounter from "./ui/OnlineCounter";
 import Reveal from "./ui/Reveal";
@@ -34,9 +35,8 @@ const copyItem: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
 };
 export default function Home() {
-  const { user, loading: sessionLoading, refresh } = useSession();
+  const { user, loading: sessionLoading } = useSession();
   const isSignedIn = user !== null;
-  const [signOutError, setSignOutError] = useState("");
   const [visibleLines, setVisibleLines] = useState(0);
   const [mounted, setMounted] = useState(false);
   // Giữ loader tối thiểu 1.5s để nhìn thấy màn boot + % chạy xong
@@ -59,25 +59,6 @@ export default function Home() {
   function resetTilt() {
     tiltX.set(0);
     tiltY.set(0);
-  }
-
-  /**
-   * Đăng xuất: xoá dòng phiên ở BE rồi đọc lại `/me`.
-   *
-   * Bước `refresh()` là bắt buộc, không phải cho đẹp: nó mới là chỗ xoá cache
-   * SWR và hạ user về `null` (`AuthProvider.applyUser`). Bỏ nó thì UI vẫn hiện
-   * tài khoản cũ tới lần làm mới kế tiếp (tối đa 15 phút), và dữ liệu của tài
-   * khoản đó vẫn nằm lại trong cache — đăng nhập tài khoản khác trong cùng tab
-   * là nhìn thấy dữ liệu người trước.
-   */
-  async function onSignOut() {
-    setSignOutError("");
-    const r = await signOut();
-    if (r === "retry") {
-      setSignOutError("Chưa đăng xuất được. Kiểm tra mạng rồi thử lại.");
-      return;
-    }
-    await refresh();
   }
 
   useEffect(() => {
@@ -445,47 +426,15 @@ export default function Home() {
                       VIP
                     </span>
                   ) : null}
-                  <span className="hidden text-xs text-zinc-600 md:inline">
-                    Xin chào, {user?.name ?? user?.email ?? "Coder"}!
+                  <span className="hidden min-w-0 truncate text-xs text-zinc-600 md:inline">
+                    Xin chào, {greetingName(user)}!
                   </span>
-                  {/* Avatar + nút đăng xuất. Trước đây đây là widget của nhà
-                      cung cấp danh tính cũ: bỏ nó đi mà không thay bằng gì thì
-                      ứng dụng **không còn cách đăng xuất** — nên phải thay, không
-                      phải xoá. */}
-                  <div className="relative flex items-center gap-2">
-                    <span
-                      aria-hidden
-                      className={
-                        user?.role === "vip"
-                          ? "flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-sm font-bold text-white ring-2 ring-white"
-                          : "flex size-9 items-center justify-center rounded-full bg-zinc-200 text-sm font-bold text-zinc-700"
-                      }
-                    >
-                      {(user?.name ?? user?.email ?? "C").trim().charAt(0).toUpperCase()}
-                    </span>
-                    {user?.role === "vip" && (
-                      <span className="pointer-events-none absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow ring-2 ring-white">
-                        <Crown className="size-3 fill-white" />
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void onSignOut()}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/20 focus-visible:ring-offset-2"
-                    >
-                      <LogOut aria-hidden className="size-3.5" />
-                      Đăng xuất
-                    </button>
-                  </div>
+                  {/* Avatar kèm dropdown chứa cả "Nâng cấp lên VIP" lẫn
+                      "Đăng xuất". Trước đây đăng xuất là một nút rời ngay cạnh
+                      avatar, và badge vương miệng VIP dính sát nó. */}
+                  <AccountMenu />
                 </div>
               </nav>
-
-              {signOutError && (
-                // `role="alert"` để screen reader đọc ngay khi câu xuất hiện.
-                <p role="alert" className="mt-3 text-sm text-rose-600">
-                  {signOutError}
-                </p>
-              )}
 
               <div className="py-6">
                 <StreakDashboard />

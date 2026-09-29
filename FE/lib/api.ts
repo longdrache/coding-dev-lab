@@ -10,6 +10,14 @@ export type PublicUser = {
   email: string;
   name: string | null;
   role: "user" | "vip" | "admin";
+  /**
+   * Ảnh đại diện từ Google, `null` khi tài khoản không đặt ảnh. Thêm ở commit
+   * `869daba` (BE: `User.avatarUrl`, `toPublic()` ở `auth.service.ts:210`).
+   *
+   * `null` = "không biết", không phải "chắc chắn không có ảnh": `syncAvatarUrl`
+   * (`auth.service.ts:758`) cố ý không ghi đè `null` xuống DB.
+   */
+  avatarUrl: string | null;
 };
 
 /**

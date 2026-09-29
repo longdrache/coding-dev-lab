@@ -16,6 +16,8 @@ const USER = {
   email: 'hs@gocode.vn',
   name: 'Bạn Học Sinh',
   role: 'vip' as const,
+  // Thêm ở `PublicUser` cùng commit `869daba`. `null` = Google không trả `picture`.
+  avatarUrl: null,
 };
 
 /** Response giả của fetch, chỉ cần các trường code thật sự đọc. */

@@ -6,12 +6,14 @@ import { CircleAlert, LoaderCircle, MailCheck, Send } from "lucide-react";
 import {
   MIN_PASSWORD_LENGTH,
   VERIFY_LINK_HOURS,
+  googleStartUrl,
   normalizeEmail,
   resendVerification,
   submitCredentials,
   type AuthMode,
 } from "@/lib/auth-form";
 import { useSession } from "./AuthProvider";
+import GoogleMark from "./GoogleMark";
 import { BODY, CARD, FOOTER, FOOTER_LINK, INPUT, KICKER, PRIMARY, SECONDARY, SPINNER, TITLE } from "./auth-tokens";
 
 /**
@@ -29,10 +31,14 @@ import { BODY, CARD, FOOTER, FOOTER_LINK, INPUT, KICKER, PRIMARY, SECONDARY, SPI
  * đồ lỗi bỏ sót một câu sẽ không bị test nào báo, vì `vitest.config.ts` chỉ có
  * `environment: 'node'`, không jsdom (`api.ts` tách `commitSession` ra cũng vì
  * đúng lý do này).
+ *
+ * `@/lib/auth-form` cũng giữ cả bản đồ `OAUTH_MESSAGES`, nên component này
+ * chỉ nhận **câu đã dịch** qua prop, không tự tra bản đồ lỗi lần nữa.
  */
 export default function AuthForm({
   mode,
   redirectTo = "/",
+  oauthNotice,
 }: {
   mode: AuthMode;
   /**
@@ -40,6 +46,11 @@ export default function AuthForm({
    * Mặc định `/` (trang chủ) khi người dùng vào thẳng `/sign-in`.
    */
   redirectTo?: string;
+  /**
+   * Câu báo về vòng OAuth vừa hỏng, đã dịch sẵn từ `?oauth=` ở server
+   * component. `null` khi không có gì để báo.
+   */
+  oauthNotice?: string | null;
 }) {
   const { refresh } = useSession();
   const [email, setEmail] = useState("");
@@ -178,6 +189,22 @@ export default function AuthForm({
 
   return (
     <form onSubmit={onSubmit} className={`${CARD} space-y-5`} aria-busy={busy}>
+      {oauthNotice && (
+        // `role="alert"` vì đây là **lý do** người dùng đang không đăng nhập
+        // được, và nó xuất hiện ngay khi trang tải — screen reader không báo
+        // thì người dùng quay lại `/sign-in?oauth=exists` sẽ thấy một form
+        // bình thường chẳng có gì sai, rồi bấm Google lần nữa mãi.
+        // Dùng lại đúng khối của màn xác nhận email (`VerifyEmail.tsx:101`)
+        // để hai câu "không vào được" trong luồng auth trông như một.
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3"
+        >
+          <CircleAlert aria-hidden className="mt-px size-4 shrink-0 text-amber-700" />
+          <p className="text-sm leading-relaxed text-amber-900">{oauthNotice}</p>
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <label htmlFor="auth-email" className="block text-sm font-medium text-zinc-800">
           Email
@@ -235,6 +262,18 @@ export default function AuthForm({
       )}
 
       {error && <ErrorNote message={error} />}
+
+      {/*
+        Nút Google nằm TRÊN nút chính: mốc trên thẻ là `Dùng email và mật khẩu`
+        (đã quen, không cần nghĩ), Google là đường thứ hai cho người không muốn
+        nhớ mật khẩu. `SECONDARY` (viền, nền trắng) chứ không phải `PRIMARY`:
+        hai nút đen đặt cạnh nhau sẽ giống hệt nhau và người dùng không biết
+        nút nào là mặc định.
+      */}
+      <a href={googleStartUrl(redirectTo)} className={`${SECONDARY} mt-3`} data-testid="google-signin">
+        <GoogleMark aria-hidden className="size-4" />
+        Tiếp tục với Google
+      </a>
 
       <button type="submit" disabled={busy} className={PRIMARY}>
         {busy && <LoaderCircle aria-hidden className={SPINNER} />}

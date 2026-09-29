@@ -239,3 +239,84 @@ export async function resendVerification(email: string): Promise<ResendResult> {
   if (!res.ok) return { kind: "error", message: authErrorMessage(res.status, body, "signup") };
   return { kind: "ok", message: beMessage(body) ?? RESEND_SENT };
 }
+
+/**
+ * Link bắt đầu OAuth Google — `href` của nút, không phải `fetch`.
+ *
+ * Đi thẳng `<a href>` chứ không bắt sự kiện bấm rồi `fetch` là chủ ý: BE trả
+ * `302` tới `accounts.google.com` kèm `state` và PKCE
+ * (`auth.controller.ts:352`), nên trình duyệt phải tự điều hướng — `fetch`
+ * sẽ nuốt mất `Location` và màn hình đứng yên.
+ *
+ * `safeRedirect` chạy **trước khi** gửi lên BE, không dựa vào BE. Lý do:
+ * `auth.controller.ts:339` có `safeInternalPath` nhưng giá trị đó được ghi vào
+ * `UserOAuthState` rồi `callback` đọc lại từ DB (`auth.controller.ts:405`) —
+ * mọi đường ghi tay vào DB giữa hai chỗ đó đều thành open redirect. Kiểm ở
+ * cả hai đầu thì lớp bảo vệ thứ hai là lưới an toàn, không phải thừa.
+ */
+export function googleStartUrl(redirectTo: string): string {
+  return `${API_URL}/api/auth/oauth/google/start?redirect_to=${encodeURIComponent(
+    safeRedirect(redirectTo),
+  )}`;
+}
+
+/**
+ * Câu nói cho từng mã mà BE trả về qua `?oauth=` khi vòng OAuth Google hỏng.
+ *
+ * Khoá là **mã** BE ghi thẳng lên URL (`auth.controller.ts:335,375,378,385,389,392,397,401`),
+ * không phải message — mọi nhánh đều trả `302` về FE chứ không ném lỗi, vì
+ * callback là trang người dùng nhìn thấy trực tiếp và `500` ở đây nghĩa là
+ * màn trắng thay vì một câu bảo thử lại.
+ *
+ * **Sáu mã, không phải năm.** `conflict` (`auth.controller.ts:389`) dễ bị bỏ
+ * sót vì nó sinh ra ở tầng service chứ không ở controller, nhưng nó là mã mà
+ * người dùng hay gặp nhất sau `exists`. Bỏ nó thì họ quay lại `/sign-in` và
+ * thấy… không có gì: form im lặng y như mình chưa từng bấm Google.
+ *
+ * Ba câu phải đọc là câu dành riêng cho người dùng, không phải câu dịch:
+ *
+ * - `exists` — nói rõ **phải đăng nhập bằng mật khẩu trước**, không thì
+ *   người dùng bấm Google lại mãi. Bấm lại mà chưa đăng nhập thì BE trả lại
+ *   đúng mã này (`auth.service.ts:677`).
+ * - `conflict` — chỉ xảy ra khi người dùng **đang đăng nhập** mà tài khoản
+ *   Google thuộc về user khác (`auth.service.ts:667,678`). Nên câu tuyệt đối
+ *   không bảo họ "thử lại": bấm lại mà giữ nguyên phiên là lặp vô hạn. Việc
+ *   phải làm là đăng xuất trước.
+ * - `failed` — cũng là lúc Google chưa được cấu hình
+ *   (`auth.controller.ts:334`), tức lỗi triển khai chứ không phải lỗi họ. Vì
+ *   vậy câu phải có **lối thoát bằng mật khẩu**: nếu cấu hình hỏng thì bấm
+ *   Google lại mãi cũng không bao giờ được.
+ */
+export const OAUTH_MESSAGES: Record<string, string> = {
+  cancelled:
+    "Bạn đã hủy đăng nhập bằng Google nên chưa có gì thay đổi. Dùng email và mật khẩu cũng được.",
+  expired:
+    "Phiên đăng nhập bằng Google đã hết hạn — thường do bạn để mở lâu rồi mới bấm. Bấm nút Google lần nữa là vào được ngay.",
+  exists:
+    "Email này đã có tài khoản. Đăng nhập bằng mật khẩu trước, rồi bấm Google là sẽ gộp vào tài khoản cũ.",
+  failed:
+    "Không lấy được thông tin từ Google, và đây không phải lỗi của bạn. Chờ một lát rồi bấm lại; nếu vẫn bị thì vào bằng email và mật khẩu như cũ.",
+  unverified:
+    "Google chưa xác minh email này nên mình không lập được tài khoản từ phía Google. Hãy đăng ký bằng email và mật khẩu.",
+  conflict:
+    "Tài khoản Google này đang gắn với một tài khoản GoCode khác, và đây không phải lỗi của bạn. Hãy đăng xuất khỏi GoCode rồi bấm Google lại, hoặc vào bằng email và mật khẩu của tài khoản cũ.",
+};
+
+/**
+ * Đọc `?oauth=` thành câu để hiện, hoặc `null` khi không có gì để hiện.
+ *
+ * Không cho chỗ gọi tra thẳng `OAUTH_MESSAGES[code]`: `Record<string, string>`
+ * khai báo kiểu là `string`, nên tra mã lạ trả `undefined` mà TypeScript không
+ * bắt được — render `{undefined}` vào JSX sẽ in ra chữ **"undefined"** ngay
+ * giữa thẻ. `?oauth=` do người dùng gõ tay được và BE có thể thêm mã ở bản
+ * sau, nên "không biết" là trạng thái bình thường phải xử lý được.
+ *
+ * Chặn luôn `__proto__` / `constructor` vì đây là tra trên object thật: đọc
+ * `OAUTH_MESSAGES['constructor']` không ném nhưng trả về hàm.
+ */
+export function oauthMessage(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  if (!Object.prototype.hasOwnProperty.call(OAUTH_MESSAGES, raw)) return null;
+  const hit: string | undefined = OAUTH_MESSAGES[raw];
+  return hit ?? null;
+}

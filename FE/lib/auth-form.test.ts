@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MIN_PASSWORD_LENGTH,
+  OAUTH_MESSAGES,
   VERIFY_LINK_HOURS,
   authEndpoint,
   authErrorMessage,
+  googleStartUrl,
   normalizeEmail,
+  oauthMessage,
   resendVerification,
   safeRedirect,
   submitCredentials,
@@ -390,3 +393,103 @@ describe('safeRedirect', () => {
     expect(safeRedirect(undefined, '/problem')).toBe('/problem');
   });
 });
+
+describe('googleStartUrl', () => {
+  it('trỏ thẳng route start của BE, mang redirect_to đã an toàn', () => {
+    expect(googleStartUrl('/problem/two-sum')).toBe(
+      API_URL + '/api/auth/oauth/google/start?redirect_to=' + encodeURIComponent('/problem/two-sum'),
+    );
+  });
+
+  it('redirect_to ngoài nội bộ bị thay bằng trang chủ TRƯỚC khi gửi lên BE', () => {
+    // Hai đầu đều phải kiểm: `auth.controller.ts:339` có `safeInternalPath`
+    // nhưng `beginGoogleOAuth` ghi giá trị vào DB rồi callback đọc lại từ đó,
+    // nên nếu chỉ một đầu kiểm thì đường ngoài nội bộ vẫn đi lọt.
+    expect(googleStartUrl('https://evil.com')).toContain('redirect_to=' + encodeURIComponent('/'));
+    expect(googleStartUrl('//evil.com')).not.toContain('evil.com');
+    expect(googleStartUrl('//evil.com')).toContain('redirect_to=' + encodeURIComponent('/'));
+  });
+
+  it('encode đủ, để dấu & hay ? trong đường dẫn không lọt thành tham số khác', () => {
+    // `redirect_to` là tham số cuối của URL. Nếu không encode, link này
+    // `?a=1&state=spoofed` sẽ sinh ra tham số `state` do kẻ xấu chọn.
+    const url = googleStartUrl('/problem?a=1&b=2#x');
+    expect(url).toContain('redirect_to=' + encodeURIComponent('/problem?a=1&b=2#x'));
+    expect(url.split('redirect_to=')[1]).not.toContain('&');
+  });
+});
+
+describe('OAUTH_MESSAGES', () => {
+  /**
+   * Sáu mã, không phải năm. Brief Task 5 chỉ liệt kê năm và bỏ sót
+   * `conflict` — nhưng `auth.controller.ts:389` **có** trả mã đó, nên bỏ sót
+   * thì người gặp xung đột tài khoản quay lại `/sign-in` và thấy… không
+   * có gì cả: form im lặng y như mình chưa từng bấm Google.
+   */
+  const ALL_CODES = ['cancelled', 'expired', 'exists', 'failed', 'unverified', 'conflict'] as const;
+
+  it('có câu cho MỌI mã BE trả về qua ?oauth=', () => {
+    for (const k of ALL_CODES) {
+      expect(typeof OAUTH_MESSAGES[k]).toBe('string');
+      expect(OAUTH_MESSAGES[k].length).toBeGreaterThan(10);
+    }
+  });
+
+  it('đúng sáu mã, không thừa không thiếu', () => {
+    // Mã thừa là câu chết không ai đọc tới; mã thiếu là im lặng. Hai lỗi ngược
+    // nhau nên phải canh bằng cách so sánh cả hai chiều.
+    expect(Object.keys(OAUTH_MESSAGES).sort()).toEqual([...ALL_CODES].sort());
+  });
+
+  it('mỗi câu đều là câu trọn vẹn, không phải mã lỗi lộ ra màn hình', () => {
+    for (const k of ALL_CODES) {
+      expect(OAUTH_MESSAGES[k]).toMatch(/[.!?]/);
+      expect(OAUTH_MESSAGES[k]).not.toContain('undefined');
+    }
+  });
+
+  it('`exists` chỉ đúng việc phải làm: đăng nhập bằng mật khẩu trước', () => {
+    // Câu quan trọng nhất. Không nói "đăng nhập bằng mật khẩu trước" thì
+    // người dùng bấm Google lại mãi và không bao giờ đổi cách.
+    expect(OAUTH_MESSAGES.exists).toContain('Đăng nhập bằng mật khẩu trước');
+  });
+
+  it('`conflict` nói rõ đây KHÔNG phải lỗi của họ, và chỉ ra việc phải làm', () => {
+    // Xung đột tài khoản là lỗi phía hệ thống/ghép tài khoản, không phải
+    // người dùng làm hỏng gì. Câu không nói rõ điều đó thì họ sẽ đi tìm
+    // lỗi ở phía mình.
+    expect(OAUTH_MESSAGES.conflict).toContain('không phải lỗi của bạn');
+    // Bước tiếp theo phải là **đăng xuất**. `auth.service.ts:667,678` chỉ
+    // trả `conflict` khi người dùng ĐANG đăng nhập — bấm lại Google mà vẫn
+    // giữ phiên đó thì BE trả đúng mã này lần nữa, vòng lặp vô tận.
+    expect(OAUTH_MESSAGES.conflict).toContain('đăng xuất');
+    // Vì vậy câu tuyệt đối không được bảo họ "thử lại".
+    expect(OAUTH_MESSAGES.conflict).not.toMatch(/thử lại/i);
+  });
+});
+
+describe('oauthMessage — đọc ?oauth= từ URL', () => {
+  it('mã biết thì ra đúng câu', () => {
+    expect(oauthMessage('exists')).toBe(OAUTH_MESSAGES.exists);
+    expect(oauthMessage('conflict')).toBe(OAUTH_MESSAGES.conflict);
+  });
+
+  it('mã lạ thì KHÔNG hiện gì, chứ không in `undefined` lên màn hình', () => {
+    // `?oauth=` là do người dùng gõ tay được, và BE có thể thêm mã mới ở bản
+    // sau. Tra thẳng `OAUTH_MESSAGES[x]` cho `undefined`, mà render `{undefined}`
+    // vào JSX thì React hiện chữ "undefined" — tệ hơn là im lặng.
+    expect(oauthMessage('ma-moi-tu-be')).toBeNull();
+    expect(oauthMessage('')).toBeNull();
+    expect(oauthMessage(undefined)).toBeNull();
+    expect(oauthMessage(null)).toBeNull();
+  });
+
+  it('sai kiểu thì không ném, vì searchParams của Next 16 có thể là mảng', () => {
+    // `?oauth=a&oauth=b` thành mảng. Không có `typeof` check thì `.toLowerCase`
+    // ném và cả trang 500.
+    expect(oauthMessage(['exists', 'failed'])).toBeNull();
+    expect(oauthMessage(42)).toBeNull();
+    expect(oauthMessage({ toString: () => 'exists' })).toBeNull();
+  });
+});
+

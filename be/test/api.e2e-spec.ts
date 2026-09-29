@@ -111,6 +111,7 @@ describe('API (e2e)', () => {
   afterAll(async () => {
     // dọn dữ liệu test
     await db.qnaQuestion.deleteMany({ where: { email: 'e2e@test.local' } });
+    await db.userOAuthState.deleteMany({});
     await db.pageView.deleteMany({ where: { path: '/e2e-probe' } });
     await db.$disconnect();
     await app.close();
@@ -324,6 +325,119 @@ describe('API (e2e)', () => {
         .set('Cookie', 'session=' + (await foreignKeyToken()))
         .expect(401);
       expect(res.body.message).toBe('Phiên không hợp lệ hoặc đã hết hạn');
+    });
+  });
+
+  // ===== Route Google OAuth =====
+  //
+  // Hai route này **public**: người bấm nút "Đăng nhập bằng Google" thường chưa có
+  // cookie phiên nào, nên chúng phải trả 302 chứ không phải 401. Đây là bằng
+  // chứng ở tầng HTTP thật; tầng unit (`auth.controller.spec.ts`) canh thêm
+  // metadata `__guards__` để `@UseGuards(AuthGuard)` bị gắn nhầm là lộ ra.
+  describe('route Google OAuth không yêu cầu phiên', () => {
+    const FRONTEND_URL_CU = process.env.FRONTEND_URL;
+
+    /** `start` từ chối phát redirect khi chưa cấu hình, nên test tự đặt. */
+    function cauHinhGoogle() {
+      process.env.GOOGLE_CLIENT_ID = 'e2e.apps.googleusercontent.com';
+      process.env.GOOGLE_REDIRECT_URI = 'https://api.go-code.vercel.app/api/auth/oauth/google/callback';
+      process.env.FRONTEND_URL = 'https://go-code.vercel.app';
+    }
+
+    afterEach(() => {
+      delete process.env.GOOGLE_CLIENT_ID;
+      delete process.env.GOOGLE_REDIRECT_URI;
+      if (FRONTEND_URL_CU === undefined) delete process.env.FRONTEND_URL;
+      else process.env.FRONTEND_URL = FRONTEND_URL_CU;
+    });
+
+    it('GET start không cookie thì 302 tới accounts.google.com, không phải 401', async () => {
+      cauHinhGoogle();
+      const res = await request(app.getHttpServer()).get('/api/auth/oauth/google/start');
+      expect(res.status).toBe(302);
+      const url = new URL(String(res.headers.location));
+      expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
+      expect(url.searchParams.get('client_id')).toBe('e2e.apps.googleusercontent.com');
+      expect(url.searchParams.get('scope')).toBe('openid email profile');
+      expect(url.searchParams.get('state')).toBeTruthy();
+      // PKCE S256 là thứ chống chặn đoạn `code`; thiếu nó thì Google trả 400
+      // lúc đổi code và mọi test khác vẫn xanh vì lý do khác.
+      expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+      expect(url.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    });
+
+    it('GET callback không tham số thì 302 về FE, không phải 401 và không phải 500', async () => {
+      cauHinhGoogle();
+      const res = await request(app.getHttpServer()).get('/api/auth/oauth/google/callback');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=cancelled');
+    });
+
+    it('redirect_to ngoài nội bộ thì dòng state lưu "/" chứ không lưu URL đó', async () => {
+      cauHinhGoogle();
+      // Xoá trước: nếu không, `findMany()[0]` là dòng của test trước và test
+      // xanh vì lý do hoàn toàn khác.
+      await db.userOAuthState.deleteMany({});
+      const res = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/start?redirect_to=https://evil.com');
+      expect(res.status).toBe(302);
+      const dong = await db.userOAuthState.findMany();
+      expect(dong).toHaveLength(1);
+      expect(dong[0].redirectTo).toBe('/');
+      // State lưu dạng hash, không lưu bản rõ — rò bảng này cũng không cấp được
+      // phiên.
+      const state = new URL(String(res.headers.location)).searchParams.get('state')!;
+      expect(dong[0].stateHash).not.toBe(state);
+      expect(dong[0].stateHash).toHaveLength(64);
+    });
+
+    it('redirect_to hợp lệ thì dòng state lưu nguyên đường dẫn', async () => {
+      cauHinhGoogle();
+      await db.userOAuthState.deleteMany({});
+      await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/start?redirect_to=/problem/two-sum');
+      const dong = await db.userOAuthState.findMany();
+      expect(dong).toHaveLength(1);
+      expect(dong[0].redirectTo).toBe('/problem/two-sum');
+    });
+
+    it('state dùng một lần rồi chết: callback thứ hai về expired', async () => {
+      cauHinhGoogle();
+      await db.userOAuthState.deleteMany({});
+      const start = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/start?redirect_to=/premium');
+      const state = new URL(String(start.headers.location)).searchParams.get('state')!;
+
+      // Bỏ cấu hình trước khi gọi callback: `googleProfile` không có `fetch`
+      // nào để gọi nên trả `null` ngay, test chạy ngoài mạng và chỉ chứng minh
+      // "state chết sau một lần" chứ không lẫn vào nhánh thành công.
+      delete process.env.GOOGLE_CLIENT_ID;
+      const lan1 = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/callback?code=abc&state=' + state);
+      expect(lan1.status).toBe(302);
+      expect(lan1.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=failed');
+
+      const lan2 = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/callback?code=abc&state=' + state);
+      expect(lan2.status).toBe(302);
+      expect(lan2.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=expired');
+    });
+
+    it('state không tồn tại thì về expired, không 500', async () => {
+      cauHinhGoogle();
+      const res = await request(app.getHttpServer())
+        .get('/api/auth/oauth/google/callback?code=abc&state=khong-ton-tai');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=expired');
+    });
+
+    it('chưa cấu hình GOOGLE_CLIENT_ID thì start báo lỗi, không đẩy sang Google', async () => {
+      process.env.FRONTEND_URL = 'https://go-code.vercel.app';
+      delete process.env.GOOGLE_CLIENT_ID;
+      delete process.env.GOOGLE_REDIRECT_URI;
+      const res = await request(app.getHttpServer()).get('/api/auth/oauth/google/start');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('https://go-code.vercel.app/sign-in?oauth=failed');
     });
   });
 

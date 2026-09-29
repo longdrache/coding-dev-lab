@@ -78,7 +78,7 @@ function sortByOrder(rows: any[], orderBy: any): any[] {
 
 // `any` cố ý: đây là db giả, không phải DatabaseService thật.
 function makeDb(): any {
-  const state: Record<string, any[]> = { user: [], userToken: [], userAccount: [] };
+  const state: Record<string, any[]> = { user: [], userToken: [], userAccount: [], userOAuthState: [] };
   return {
     state,
     user: {
@@ -155,6 +155,25 @@ function makeDb(): any {
           const r = { id: state.userAccount.length + 1, createdAt: new Date(), ...data };
           state.userAccount.push(r);
           return r;
+        }),
+      },
+    userOAuthState:
+      // `oauth-state.ts` tra bằng khoá chính `stateHash` (lưu dạng hash) và đánh
+      // dấu đã dùng bằng `update`, không xoá dòng. Db giả phải giữ đúng hình
+      // dạng đó, kể cả `usedAt: null`: so sánh `undefined === null` là false sẽ
+      // làm `consumeState` tưởng state chưa dùng lần thứ hai.
+      {
+        create: vi.fn(async ({ data }: any) => {
+          const r = { usedAt: null, ...data };
+          state.userOAuthState.push(r);
+          return r;
+        }),
+        findUnique: vi.fn(async ({ where }: any) =>
+          state.userOAuthState.find((x) => x.stateHash === where?.stateHash) ?? null),
+        update: vi.fn(async ({ where, data }: any) => {
+          const x = state.userOAuthState.find((r) => r.stateHash === where.stateHash)!;
+          Object.assign(x, data);
+          return x;
         }),
       },
   };
@@ -1716,5 +1735,111 @@ describe('googleProfile', () => {
     const { svc } = makeEmptySvc();
     await expect(svc.googleProfile('code', 'verifier')).resolves.toBeNull();
     expect(calls).toHaveLength(2);
+  });
+});
+
+/**
+ * Phiên phát ra sau OAuth **phải** đi qua đúng đường của `login`: ký access
+ * token bằng `roleForToken` (hạ VIP quá hạn trong DB trước khi ký) rồi mới cấp
+ * refresh. `roleForToken` và `issueRefresh` đều `private`, nên nếu controller
+ * tự ký token thì `tsc` vẫn 0 lỗi — chỉ có test này mới bắt được.
+ */
+describe('phiên sau OAuth', () => {
+  /** Dựng user đã xác minh, role tuỳ ý, kèm premium mock trả về kết quả mong muốn. */
+  async function seedVipUser(role: string, premiumResult: Record<string, unknown>) {
+    const db = makeDb();
+    const premium = makePremium(premiumResult);
+    const svc = new AuthService(db, { send: async () => {} } as any, premium);
+    await svc.register('a@b.co', 'matkhau123');
+    await db.user.update({
+      where: { id: db.state.user[0].id },
+      data: { emailVerifiedAt: new Date(), role, vipExpiresAt: new Date(Date.now() + 86_400_000) },
+    });
+    return { db, svc, premium };
+  }
+
+  it('VIP hết hạn: token từ OAuth mang role user chứ không phải vip', async () => {
+    const { svc, db } = await seedVipUser('vip', { downgraded: true, wasVip: true, expired: true });
+    const r = await svc.issueSessionForUserId(db.state.user[0].id, 'UA');
+    const claims = await tokens.verifyAccessToken(r!.accessToken);
+    expect(claims?.role).toBe('user');
+  });
+
+  it('VIP chưa hết hạn: token từ OAuth vẫn mang role vip', async () => {
+    const { svc, db } = await seedVipUser('vip', { downgraded: false, wasVip: true, expired: false });
+    const r = await svc.issueSessionForUserId(db.state.user[0].id, 'UA');
+    const claims = await tokens.verifyAccessToken(r!.accessToken);
+    expect(claims?.role).toBe('vip');
+  });
+
+  it('OAuth cũng phải hạ VIP hết hạn trong DB, không chỉ đổi role trong token', async () => {
+    const { svc, db, premium } = await seedVipUser('vip', { downgraded: true, wasVip: true, expired: true });
+    await svc.issueSessionForUserId(db.state.user[0].id, 'UA');
+    expect(premium.checkAndDowngradeIfExpired).toHaveBeenCalledWith(db.state.user[0].id);
+  });
+
+  it('cấp cả refresh token thật trong DB và ghi user-agent', async () => {
+    const { svc, db } = await seedVipUser('user', { downgraded: false, wasVip: false, expired: false });
+    const id = db.state.user[0].id;
+    const r = await svc.issueSessionForUserId(id, 'Mozilla/5.0');
+    const dong = db.state.userToken.filter((t: any) => t.type === 'refresh');
+    expect(dong).toHaveLength(1);
+    expect(dong[0].userId).toBe(id);
+    expect(dong[0].tokenHash).toBe(tokens.hashToken(r!.refreshToken));
+    expect(dong[0].userAgent).toBe('Mozilla/5.0');
+    // Access token phải là chữ ký RS256 thật, không phải chuỗi bất kỳ.
+    expect((await tokens.verifyAccessToken(r!.accessToken))?.sub).toBe(String(id));
+  });
+
+  it('user không tồn tại thì trả null chứ không ký token không ai dùng được', async () => {
+    const { svc } = await seedVipUser('user', { downgraded: false, wasVip: false, expired: false });
+    expect(await svc.issueSessionForUserId(999, 'UA')).toBeNull();
+  });
+
+  it('phát phiên OAuth cũng cắt bớt phiên cũ vượt MAX_SESSIONS', async () => {
+    // `login` cắt phiên cũ; nếu đường OAuth quên thì người dùng bấm Google nhiều
+    // lần sẽ vượt giới hạn phiên và không bao giờ bị đuổi phiên cũ.
+    const { svc, db } = await seedVipUser('user', { downgraded: false, wasVip: false, expired: false });
+    const id = db.state.user[0].id;
+    for (let i = 0; i < 12; i += 1) {
+      await db.userToken.create({
+        data: { userId: id, type: 'refresh', tokenHash: 'hash-' + i, expiresAt: new Date(Date.now() + 86_400_000) },
+      });
+    }
+    await svc.issueSessionForUserId(id, 'UA');
+    expect(db.state.userToken.filter((t: any) => t.type === 'refresh')).toHaveLength(10);
+  });
+});
+
+describe('state OAuth qua AuthService', () => {
+  it('beginGoogleOAuth lưu redirectTo đã đi qua safeInternalPath', async () => {
+    // Lần đầu trong hai lần kiểm (lúc đọc `?redirect_to=`); lần sau ở controller.
+    const { svc, db } = makeEmptySvc();
+    await svc.beginGoogleOAuth('https://evil.com');
+    expect(db.state.userOAuthState[0].redirectTo).toBe('/');
+  });
+
+  it('state dùng một lần rồi chết, lần hai trả null', async () => {
+    const { svc } = makeEmptySvc();
+    const { state } = await svc.beginGoogleOAuth('/premium');
+    expect(await svc.takeGoogleState(state)).toEqual({
+      codeVerifier: expect.any(String), redirectTo: '/premium',
+    });
+    expect(await svc.takeGoogleState(state)).toBeNull();
+  });
+
+  it('state lưu dạng hash, không lưu bản rõ', async () => {
+    const { svc, db } = makeEmptySvc();
+    const { state, codeVerifier } = await svc.beginGoogleOAuth('/');
+    expect(db.state.userOAuthState[0].stateHash).toBe(tokens.hashToken(state));
+    expect(db.state.userOAuthState[0].stateHash).not.toBe(state);
+    // `code_verifier` phải khớp đúng thứ trả về, vì callback dùng nó để đổi code.
+    expect(db.state.userOAuthState[0].codeVerifier).toBe(codeVerifier);
+  });
+
+  it('state rỗng hoặc không tồn tại thì trả null, không ném', async () => {
+    const { svc } = makeEmptySvc();
+    expect(await svc.takeGoogleState('')).toBeNull();
+    expect(await svc.takeGoogleState('khong-ton-tai')).toBeNull();
   });
 });

@@ -3,15 +3,31 @@ import { HttpException } from '@nestjs/common';
 import type { ExecutionContext, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';
 import { ThrottleGuard, THROTTLE_KEY } from '../common/throttle.guard.ts';
 import { AuthController, REFRESH_COOKIE, SESSION_COOKIE } from './auth.controller.ts';
 import { AuthGuard } from './auth.guard.ts';
 import { AuthService, REFRESH_TTL_MS } from './auth.service.ts';
-import { ACCESS_TTL_SECONDS } from './tokens.ts';
+import { ACCESS_TTL_SECONDS, signAccessToken } from './tokens.ts';
 import type { UserRole } from './auth.types.ts';
 
 const OLD_ENV = { ...process.env };
+
+// `signedInUserId` xác minh cookie `session` bằng RS256 nên cần cặp khoá thật,
+// đặt ở đây (sau khi chụp `OLD_ENV`) để spec không phụ thuộc `be/.env`.
+{
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  process.env.ADMIN_JWT_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+  process.env.ADMIN_JWT_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+}
+
+const FE = 'https://go-code.vercel.app';
+const STATE = 's'.repeat(64);
+const VERIFIER = 'v'.repeat(64);
+const PROFILE = { sub: 'g-1', email: 'a@b.co', emailVerified: true, name: 'A B' };
+/** PKCE S256: base64url(sha256(verifier)). Test tự tính lại, không chép từ controller. */
+const CHALLENGE = createHash('sha256').update(VERIFIER).digest('base64url');
 
 const USER = { id: 7, email: 'a@b.co', name: null, role: 'user' as UserRole };
 const REFRESH = 'r'.repeat(64);
@@ -32,8 +48,15 @@ function ctl() {
     forgotPassword: vi.fn().mockResolvedValue({ message: RESET_MSG }),
     resetPassword: vi.fn().mockResolvedValue(true),
     resendVerification: vi.fn().mockResolvedValue({ message: RESEND_MSG }),
+    beginGoogleOAuth: vi.fn().mockResolvedValue({ state: STATE, codeVerifier: VERIFIER }),
+    takeGoogleState: vi.fn().mockResolvedValue({ codeVerifier: VERIFIER, redirectTo: '/' }),
+    googleProfile: vi.fn().mockResolvedValue(PROFILE),
+    linkOrCreateFromGoogle: vi.fn().mockResolvedValue({ kind: 'ok', userId: 7 }),
+    issueSessionForUserId: vi
+      .fn()
+      .mockResolvedValue({ accessToken: 'g', refreshToken: REFRESH }),
   };
-  const res = { cookie: vi.fn(), clearCookie: vi.fn() };
+  const res = { cookie: vi.fn(), clearCookie: vi.fn(), redirect: vi.fn() };
   return { c: new AuthController(auth as never), auth, res };
 }
 
@@ -65,7 +88,21 @@ function restoreEnv(key: string, value: string | undefined): void {
 afterEach(() => {
   restoreEnv('NODE_ENV', OLD_ENV.NODE_ENV);
   restoreEnv('VERCEL', OLD_ENV.VERCEL);
+  for (const k of ['FRONTEND_URL', 'GOOGLE_CLIENT_ID', 'GOOGLE_REDIRECT_URI'] as const) {
+    restoreEnv(k, OLD_ENV[k]);
+  }
 });
+
+/**
+ * `Location` mà controller vừa phát ra. Luôn là **URL tuyệt đối** trỏ về FE: FE
+ * và BE nằm trên hai domain khác nhau nên `Location: /sign-in` sẽ rơi vào domain
+ * API và thành 404.
+ */
+function viDenFe(res: { redirect: ReturnType<typeof vi.fn> }): URL {
+  const call = res.redirect.mock.calls[0];
+  expect(call?.[0]).toBe(302);
+  return new URL(call![1] as string);
+}
 
 afterAll(() => {
   process.env = { ...OLD_ENV };
@@ -414,6 +451,250 @@ describe('gửi lại link xác nhận', () => {
 });
 
 /**
+ * Hai route OAuth là **public**: người bấm "Đăng nhập bằng Google" thường chưa có
+ * phiên nào, nên `@UseGuards(AuthGuard)` ở đây là khoá cửa trước mặt nút bấm và
+ * khiến tính năng chết đúng lúc cần nhất. Chứng minh bằng cả hai chiều: metadata
+ * không có `AuthGuard`, và test HTTP bên dưới gọi không cookie vẫn 302.
+ */
+describe('đăng nhập bằng Google — start', () => {
+  /** Cấu hình tối thiểu để `start` chịu phát redirect; không có thì nó báo lỗi. */
+  function cauHinhGoogle() {
+    setEnv('GOOGLE_CLIENT_ID', 'cid.apps.googleusercontent.com');
+    setEnv('GOOGLE_REDIRECT_URI', 'https://api.go-code.vercel.app/api/auth/oauth/google/callback');
+    setEnv('FRONTEND_URL', FE);
+  }
+
+  it('302 tới accounts.google.com kèm state, PKCE S256 và scope', async () => {
+    cauHinhGoogle();
+    const { c, auth, res } = ctl();
+    await c.googleStart('/problem/two-sum', res);
+    const url = viDenFe(res);
+    expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
+    expect(url.searchParams.get('client_id')).toBe('cid.apps.googleusercontent.com');
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'https://api.go-code.vercel.app/api/auth/oauth/google/callback',
+    );
+    expect(url.searchParams.get('response_type')).toBe('code');
+    expect(url.searchParams.get('access_type')).toBe('online');
+    expect(url.searchParams.get('scope')).toBe('openid email profile');
+    expect(url.searchParams.get('state')).toBe(STATE);
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    // Bỏ `code_challenge` là test này đỏ. Không có nó thì Google chỉ trả 400
+    // lúc đổi code, tức mọi assert khác vẫn xanh vì lý do khác.
+    expect(url.searchParams.get('code_challenge')).toBe(CHALLENGE);
+    expect(auth.beginGoogleOAuth).toHaveBeenCalledWith('/problem/two-sum');
+  });
+
+  it('không dùng prompt=select_account', async () => {
+    // Nó ép hiện danh sách tài khoản mỗi lần bấm — đúng thứ không cần ở nút
+    // "Đăng nhập bằng Google", và người dùng đã chọn tài khoản một lần rồi.
+    cauHinhGoogle();
+    const { c, res } = ctl();
+    await c.googleStart('/', res);
+    expect(viDenFe(res).searchParams.get('prompt')).toBeNull();
+  });
+
+  it('redirect_to ngoài nội bộ thì xuống "/" — lần đầu trong hai lần kiểm', async () => {
+    cauHinhGoogle();
+    for (const raw of ['https://evil.com', '//evil.com', '/\\evil.com', 'javascript:alert(1)']) {
+      const { c, auth, res } = ctl();
+      await c.googleStart(raw, res);
+      expect(auth.beginGoogleOAuth).toHaveBeenCalledWith('/');
+    }
+  });
+
+  it('redirect_to thiếu hoặc sai kiểu (mảng) thì xuống "/", không ném 500', async () => {
+    cauHinhGoogle();
+    const { c, auth, res } = ctl();
+    await c.googleStart(undefined, res);
+    expect(auth.beginGoogleOAuth).toHaveBeenLastCalledWith('/');
+    await c.googleStart(['/a', '/b'], res);
+    expect(auth.beginGoogleOAuth).toHaveBeenLastCalledWith('/');
+  });
+
+  it('chưa cấu hình GOOGLE_CLIENT_ID thì báo lỗi, không đẩy sang trang lỗi của Google', async () => {
+    cauHinhGoogle();
+    setEnv('GOOGLE_CLIENT_ID', undefined);
+    const { c, auth, res } = ctl();
+    await c.googleStart('/', res);
+    const url = viDenFe(res);
+    expect(url.origin + url.pathname).toBe(FE + '/sign-in');
+    expect(url.searchParams.get('oauth')).toBe('failed');
+    // Không sinh state: sinh ra cũng chẳng ai dùng, và mỗi lần bấm nút lại để lại
+    // một dòng rác trong bảng state.
+    expect(auth.beginGoogleOAuth).not.toHaveBeenCalled();
+  });
+
+  it('thiếu GOOGLE_REDIRECT_URI thì cũng báo lỗi, không đẩy sang Google', async () => {
+    cauHinhGoogle();
+    setEnv('GOOGLE_REDIRECT_URI', undefined);
+    const { c, auth, res } = ctl();
+    await c.googleStart('/', res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
+    expect(auth.beginGoogleOAuth).not.toHaveBeenCalled();
+  });
+});
+
+describe('đăng nhập bằng Google — callback', () => {
+  beforeEach(() => setEnv('FRONTEND_URL', FE));
+
+  it('không có code thì về cancelled', async () => {
+    const { c, auth, res } = ctl();
+    await c.googleCallback({ headers: {} }, undefined, 's', undefined, res);
+    const url = viDenFe(res);
+    expect(url.origin + url.pathname).toBe(FE + '/sign-in');
+    expect(url.searchParams.get('oauth')).toBe('cancelled');
+    // Không ăn `state`: state mà không có code thì vô dụng, và ăn nó ở đây làm
+    // một state **còn hạn** bị chết oan.
+    expect(auth.takeGoogleState).not.toHaveBeenCalled();
+  });
+
+  it('người bấm Hủy ở Google (error=access_denied) thì về cancelled', async () => {
+    const { c, auth, res } = ctl();
+    await c.googleCallback({ headers: {} }, 'code', 'state', 'access_denied', res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('cancelled');
+    expect(auth.takeGoogleState).not.toHaveBeenCalled();
+    expect(auth.googleProfile).not.toHaveBeenCalled();
+  });
+
+  it('state sai, hết hạn hoặc đã dùng thì về expired, không đổi code', async () => {
+    const { c, auth, res } = ctl();
+    auth.takeGoogleState.mockResolvedValue(null);
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('expired');
+    expect(auth.googleProfile).not.toHaveBeenCalled();
+    expect(auth.linkOrCreateFromGoogle).not.toHaveBeenCalled();
+  });
+
+  it('state thiếu thì vẫn gọi takeGoogleState với chuỗi rỗng, không ném 500', async () => {
+    const { c, auth, res } = ctl();
+    auth.takeGoogleState.mockResolvedValue(null);
+    await c.googleCallback({ headers: {} }, 'code', undefined, undefined, res);
+    expect(auth.takeGoogleState).toHaveBeenCalledWith('');
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('expired');
+  });
+
+  it('lấy không được profile thì về failed', async () => {
+    const { c, auth, res } = ctl();
+    auth.googleProfile.mockResolvedValue(null);
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
+    expect(auth.linkOrCreateFromGoogle).not.toHaveBeenCalled();
+  });
+
+  it('fetch tới Google ném lỗi mạng thì về failed chứ không 500', async () => {
+    // `googleProfile` trả `null` cho lỗi phía Google nhưng `fetch` có thể ném
+    // (mạng, DNS). Không bắt thì callback trả 500 và người dùng thấy lỗi server
+    // thay vì câu "thử lại sau một lát".
+    const { c, auth, res } = ctl();
+    auth.googleProfile.mockRejectedValue(new Error('fetch failed'));
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
+  });
+
+  it('thành công thì đặt cả hai cookie rồi 302 về đúng redirectTo đã lưu', async () => {
+    const { c, auth, res } = ctl();
+    auth.takeGoogleState.mockResolvedValue({ codeVerifier: VERIFIER, redirectTo: '/premium' });
+    await c.googleCallback(
+      { headers: { 'user-agent': 'UA/1.0' } }, 'code', 'state', undefined, res,
+    );
+    expect(auth.googleProfile).toHaveBeenCalledWith('code', VERIFIER);
+    expect(auth.linkOrCreateFromGoogle).toHaveBeenCalledWith(PROFILE, null);
+    expect(auth.issueSessionForUserId).toHaveBeenCalledWith(7, 'UA/1.0');
+    expect(res.cookie.mock.calls.map((x) => x[0])).toEqual([SESSION_COOKIE, REFRESH_COOKIE]);
+    expect(viDenFe(res).origin + viDenFe(res).pathname).toBe(FE + '/premium');
+  });
+
+  it('redirectTo lưu trong DB mà ra ngoài nội bộ thì vẫn về "/" — lần thứ hai', async () => {
+    // Lần đầu đã chặn ở `start`, nhưng cột trong DB là **dữ liệu**, không phải
+    // lời gọi của trình duyệt: nếu bảng bị sửa tay hoặc một bản cũ ghi vào thì
+    // đây là chốt chặn cuối trước khi phát ra `Location`.
+    for (const raw of ['https://evil.com', '//evil.com']) {
+      const { c, auth, res } = ctl();
+      auth.takeGoogleState.mockResolvedValue({ codeVerifier: VERIFIER, redirectTo: raw });
+      await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+      expect(viDenFe(res).origin + viDenFe(res).pathname).toBe(FE + '/');
+    }
+  });
+
+  it('email đã có tài khoản thì về exists kèm email đã mã hoá, tuyệt đối không cấp phiên', async () => {
+    const { c, auth, res } = ctl();
+    auth.linkOrCreateFromGoogle.mockResolvedValue({
+      kind: 'needs-password', email: 'a+b@b.co',
+    });
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    const url = viDenFe(res);
+    expect(url.searchParams.get('oauth')).toBe('exists');
+    expect(url.searchParams.get('email')).toBe('a+b@b.co');
+    // Đây là ranh giới bảo mật: nhánh này không được cấp bất kỳ token nào.
+    expect(auth.issueSessionForUserId).not.toHaveBeenCalled();
+    expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  it('email chưa xác minh thì về unverified, không cấp phiên', async () => {
+    const { c, auth, res } = ctl();
+    auth.linkOrCreateFromGoogle.mockResolvedValue({ kind: 'unverified' });
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('unverified');
+    expect(auth.issueSessionForUserId).not.toHaveBeenCalled();
+  });
+
+  it('sub đã gắn với user khác thì về conflict — không gộp vào unverified', async () => {
+    // Câu của `unverified` là "Google chưa xác minh email" — với `conflict` thì
+    // câu đó sai hoàn toàn và dắt người dùng vào ngõ cụt.
+    const { c, auth, res } = ctl();
+    auth.linkOrCreateFromGoogle.mockResolvedValue({ kind: 'conflict' });
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('conflict');
+    expect(auth.issueSessionForUserId).not.toHaveBeenCalled();
+  });
+
+  it('user bị xoá giữa chừng thì về failed chứ không 500', async () => {
+    const { c, auth, res } = ctl();
+    auth.issueSessionForUserId.mockResolvedValue(null);
+    await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+    expect(viDenFe(res).searchParams.get('oauth')).toBe('failed');
+    expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  it('cookie session hợp lệ thì ghép vào đúng user đang đăng nhập', async () => {
+    const { c, auth, res } = ctl();
+    const jwt = await signAccessToken(42, 'user');
+    await c.googleCallback(
+      { headers: { cookie: 'session=' + jwt } }, 'code', 'state', undefined, res,
+    );
+    expect(auth.linkOrCreateFromGoogle).toHaveBeenCalledWith(PROFILE, 42);
+    expect(auth.issueSessionForUserId).toHaveBeenCalledWith(7, undefined);
+  });
+
+  it('cookie session rác thì coi như khách, không 500', async () => {
+    const { c, auth, res } = ctl();
+    await c.googleCallback(
+      { headers: { cookie: 'session=khong-phai-jwt' } }, 'code', 'state', undefined, res,
+    );
+    expect(auth.linkOrCreateFromGoogle).toHaveBeenCalledWith(PROFILE, null);
+  });
+
+  it('mọi nhánh trả về đều là URL tuyệt đối trỏ về FE', async () => {
+    for (const kind of ['ok', 'needs-password', 'unverified', 'conflict'] as const) {
+      const { c, auth, res } = ctl();
+      auth.linkOrCreateFromGoogle.mockResolvedValue(
+        kind === 'ok' ? { kind: 'ok', userId: 7 } : { kind, email: 'a@b.co' },
+      );
+      await c.googleCallback({ headers: {} }, 'code', 'state', undefined, res);
+      expect(viDenFe(res).origin).toBe(FE);
+    }
+  });
+
+  it('thiếu FRONTEND_URL thì về localhost:3000, không phải chuỗi "undefined"', async () => {
+    setEnv('FRONTEND_URL', undefined);
+    const { c, res } = ctl();
+    await c.googleCallback({ headers: {} }, undefined, 'state', undefined, res);
+    expect(res.redirect.mock.calls[0][1]).toBe('http://localhost:3000/sign-in?oauth=cancelled');
+  });
+});
+
+/**
  * Nest đọc guard của route từ metadata `__guards__` (hằng `GUARDS_METADATA` trong
  * `@nestjs/common/constants`), nên đây là chỗ duy nhất để chứng minh route nào thật
  * sự được bảo vệ. Phần "có thật sự chạy không" thì test bên dưới dùng `ThrottleGuard`
@@ -425,7 +706,16 @@ function guardsOf(handler: (...args: never[]) => unknown): unknown[] {
 
 /** Cùng logic với `guardsOf`, nhưng đọc metadata của `ThrottleGuard`. */
 function throttleOf(
-  name: 'register' | 'verify' | 'login' | 'refresh' | 'forgot' | 'reset' | 'resend',
+  name:
+    | 'register'
+    | 'verify'
+    | 'login'
+    | 'refresh'
+    | 'forgot'
+    | 'reset'
+    | 'resend'
+    | 'googleStart'
+    | 'googleCallback',
 ) {
   const found = Reflect.getMetadata(THROTTLE_KEY, AuthController.prototype[name]) as
     | { limit: number; ttl: number }
@@ -476,6 +766,37 @@ describe('guard và giới hạn tần suất', () => {
     // Không `AuthGuard`: người bấm nút này đang ở giữa lúc đăng ký, chưa có phiên.
     expect(guardsOf(AuthController.prototype.resend)).toContain(ThrottleGuard);
     expect(guardsOf(AuthController.prototype.resend)).not.toContain(AuthGuard);
+  });
+
+  it('hai route OAuth không dùng AuthGuard — nút Google phải bấm được khi chưa đăng nhập', () => {
+    for (const h of ['googleStart', 'googleCallback'] as const) {
+      expect(guardsOf(AuthController.prototype[h])).not.toContain(AuthGuard);
+    }
+  });
+
+  it('hai route OAuth dùng ThrottleGuard — không để bị dùng để spam Google', () => {
+    for (const h of ['googleStart', 'googleCallback'] as const) {
+      expect(guardsOf(AuthController.prototype[h])).toContain(ThrottleGuard);
+    }
+  });
+
+  it('số giới hạn tần suất của hai route OAuth đúng như đã chốt', () => {
+    expect(throttleOf('googleStart')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
+    expect(throttleOf('googleCallback')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
+  });
+
+  it('start bị chặn sau 20 lần trong 1 giờ', () => {
+    const g = new ThrottleGuard(new Reflector());
+    const ctx = ctxFor(AuthController.prototype.googleStart as never, '10.0.0.8');
+    for (let i = 0; i < 20; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    expect(statusOf(() => g.canActivate(ctx))).toBe(429);
+  });
+
+  it('callback bị chặn sau 20 lần trong 1 giờ', () => {
+    const g = new ThrottleGuard(new Reflector());
+    const ctx = ctxFor(AuthController.prototype.googleCallback as never, '10.0.0.9');
+    for (let i = 0; i < 20; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
 
   it('logout không dùng AuthGuard — access token hết hạn vẫn phải đăng xuất được', () => {
@@ -715,6 +1036,70 @@ describe('route thật qua Nest', () => {
     expect(res.body).toEqual({ message: RESEND_MSG });
     expect(auth.resendVerification).toHaveBeenCalledWith('a@b.co', undefined);
     expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('GET /api/auth/oauth/google/start không cookie vẫn 302 tới Google, không phải 401', async () => {
+    setEnv('FRONTEND_URL', FE);
+    setEnv('GOOGLE_CLIENT_ID', 'cid.apps.googleusercontent.com');
+    setEnv('GOOGLE_REDIRECT_URI', 'https://api/cb');
+    const res = await request(app.getHttpServer()).get('/api/auth/oauth/google/start');
+    expect(res.status).toBe(302);
+    const url = new URL(String(res.headers.location));
+    expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
+    expect(url.searchParams.get('code_challenge')).toBe(CHALLENGE);
+    expect(auth.beginGoogleOAuth).toHaveBeenCalledWith('/');
+  });
+
+  it('GET /api/auth/oauth/google/start đọc redirect_to từ query string', async () => {
+    // `@Query` chứ không phải `@Param`: path không có `/:redirect_to` nên
+    // `@Param` sẽ ra `undefined` và mọi `redirect_to` đều bị bỏ qua.
+    setEnv('GOOGLE_CLIENT_ID', 'cid');
+    setEnv('GOOGLE_REDIRECT_URI', 'https://api/cb');
+    const res = await request(app.getHttpServer())
+      .get('/api/auth/oauth/google/start?redirect_to=/premium');
+    expect(res.status).toBe(302);
+    expect(auth.beginGoogleOAuth).toHaveBeenLastCalledWith('/premium');
+  });
+
+  it('GET /api/auth/oauth/google/callback không tham số thì 302 về FE kèm cancelled', async () => {
+    setEnv('FRONTEND_URL', FE);
+    const res = await request(app.getHttpServer()).get('/api/auth/oauth/google/callback');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(FE + '/sign-in?oauth=cancelled');
+  });
+
+  it('GET /api/auth/oauth/google/callback đọc code, state và error từ query string', async () => {
+    setEnv('FRONTEND_URL', FE);
+    const res = await request(app.getHttpServer())
+      .get('/api/auth/oauth/google/callback?code=abc&state=xyz');
+    expect(res.status).toBe(302);
+    expect(auth.takeGoogleState).toHaveBeenLastCalledWith('xyz');
+    expect(auth.googleProfile).toHaveBeenLastCalledWith('abc', VERIFIER);
+
+    // `error` khiến nhánh cancelled chạy trước, nên `googleProfile` phải **không**
+    // được gọi thêm — xoá lịch sử lần gọi của nhánh hợp lệ trước khi so.
+    auth.googleProfile.mockClear();
+    await request(app.getHttpServer())
+      .get('/api/auth/oauth/google/callback?error=access_denied&state=xyz');
+    expect(auth.googleProfile).not.toHaveBeenCalled();
+  });
+
+  it('state chỉ dùng được một lần: callback thứ hai về expired', async () => {
+    setEnv('FRONTEND_URL', FE);
+    // Lần đầu cố tình hỏng để dừng ở sau bước ăn state: như vậy test chỉ chứng
+    // minh "state chết", không lẫn vào nhánh thành công.
+    auth.googleProfile.mockResolvedValueOnce(null);
+    auth.takeGoogleState
+      .mockResolvedValueOnce({ codeVerifier: VERIFIER, redirectTo: '/' })
+      .mockResolvedValue(null);
+    const lan1 = await request(app.getHttpServer())
+      .get('/api/auth/oauth/google/callback?code=abc&state=' + STATE);
+    expect(lan1.status).toBe(302);
+    expect(lan1.headers.location).toBe(FE + '/sign-in?oauth=failed');
+    const lan2 = await request(app.getHttpServer())
+      .get('/api/auth/oauth/google/callback?code=abc&state=' + STATE);
+    expect(lan2.status).toBe(302);
+    expect(lan2.headers.location).toBe(FE + '/sign-in?oauth=expired');
   });
 
   it('POST /api/auth/resend-verification thiếu body vẫn 200, không phải 500', async () => {

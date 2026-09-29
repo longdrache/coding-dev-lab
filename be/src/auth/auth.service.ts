@@ -4,7 +4,7 @@ import {
 import { DatabaseService } from '../database/database.service.ts';
 import { PremiumService } from '../premium/premium.service.ts';
 import type { UserRole } from './auth.types.ts';
-import { GOOGLE_PROVIDER } from './oauth-state.ts';
+import { GOOGLE_PROVIDER, consumeState, createState } from './oauth-state.ts';
 import {
   hashPassword, hashToken, newToken, signAccessToken, verifyPassword,
 } from './tokens.ts';
@@ -227,12 +227,7 @@ export class AuthService {
     const user = await this.db.user.update({
       where: { id: row.userId }, data: { emailVerifiedAt: new Date() },
     });
-    const accessToken = await signAccessToken(
-      user.id,
-      await this.roleForToken(user.id, (user.role as UserRole) ?? 'user'),
-    );
-    const refreshToken = await this.issueRefresh(user.id, userAgent);
-    return { accessToken, refreshToken, user: this.toPublic(user) };
+    return { ...(await this.issueSession(user, userAgent)), user: this.toPublic(user) };
   }
 
   /** Cấp phiên cho một thiết bị. Mỗi lần gọi là một dòng UserToken riêng. */
@@ -246,6 +241,37 @@ export class AuthService {
       },
     });
     return token;
+  }
+
+  /**
+   * **Chỗ duy nhất** trong `AuthService` gọi `signAccessToken`.
+   *
+   * Không gom vào `issueSession` thì mỗi nơi phát token sẽ tự viết
+   * `signAccessToken(...)`, và một chỗ quên gọi `roleForToken` là user VIP quá
+   * hạn vẫn nhận token mang `role=vip` — mà `tsc` không báo gì vì kiểu trả về
+   * y hệt nhau. Tách ra thành một hàm thì chỗ bỏ sót không còn tồn tại.
+   */
+  private async signFor(user: { id: number; role?: unknown }): Promise<string> {
+    return signAccessToken(
+      user.id,
+      await this.roleForToken(user.id, (user.role as UserRole) ?? 'user'),
+    );
+  }
+
+  /**
+   * Cấp **phiên mới**: access token + một dòng `UserToken` refresh.
+   *
+   * `trimSessions` để **ngoài** hàm này: `login` cắt phiên cũ còn
+   * `verifyEmail` thì không, và việc đó là hành vi đã có sẵn. `refresh` không
+   * đi qua đây vì nó xoay vòng dòng phiên sẵn có chứ không tạo dòng mới.
+   */
+  private async issueSession(
+    user: { id: number; role?: unknown },
+    userAgent?: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const accessToken = await this.signFor(user);
+    const refreshToken = await this.issueRefresh(user.id, userAgent);
+    return { accessToken, refreshToken };
   }
 
   /**
@@ -346,13 +372,9 @@ export class AuthService {
     if (!(await verifyPassword(String(password ?? ''), user.passwordHash))) this.denyCredentials();
     if (!user.emailVerifiedAt) this.denyCredentials();
 
-    const accessToken = await signAccessToken(
-      user.id,
-      await this.roleForToken(user.id, (user.role as UserRole) ?? 'user'),
-    );
-    const refreshToken = await this.issueRefresh(user.id, userAgent);
+    const tokens = await this.issueSession(user, userAgent);
     await this.trimSessions(user.id);
-    return { accessToken, refreshToken, user: this.toPublic(user) };
+    return { ...tokens, user: this.toPublic(user) };
   }
 
   /**
@@ -415,10 +437,7 @@ export class AuthService {
         expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
       },
     });
-    const accessToken = await signAccessToken(
-      user.id,
-      await this.roleForToken(user.id, (user.role as UserRole) ?? 'user'),
-    );
+    const accessToken = await this.signFor(user);
     return { accessToken, refreshToken: fresh, user: this.toPublic(user) };
   }
 
@@ -680,5 +699,45 @@ export class AuthService {
       data: { userId: created.id, provider: GOOGLE_PROVIDER, providerUserId: p.sub },
     });
     return { kind: 'ok', userId: created.id };
+  }
+
+  /**
+   * Mở phiên đăng nhập Google: sinh `state` + `code_verifier` và ghi vào
+   * `UserOAuthState`. Controller không tự chạm DB (không route nào khác của
+   * `auth` làm thế), nên đây là chỗ duy nhất nó đi qua.
+   *
+   * `redirectTo` vẫn được `createState` chạy `safeInternalPath` lần nữa: đầu
+   * vào tới từ trình duyệt, và lớp ở biên không thay thế được lớp ở sâu.
+   */
+  async beginGoogleOAuth(
+    redirectTo: string,
+  ): Promise<{ state: string; codeVerifier: string }> {
+    return createState(this.db, redirectTo);
+  }
+
+  /** Ăn `state` một lần rồi chết. `null`: state sai, hết hạn, hoặc đã dùng. */
+  async takeGoogleState(
+    state: string,
+  ): Promise<{ codeVerifier: string; redirectTo: string } | null> {
+    return consumeState(this.db, state);
+  }
+
+  /**
+   * Cấp phiên cho một user **đã xác định** — cửa duy nhất để luồng OAuth phát
+   * token, và nó đi qua `issueSession` nên không bỏ qua `roleForToken`.
+   *
+   * Trả `null` chứ không ném khi user không còn: `linkOrCreateFromGoogle` vừa
+   * trả `userId`, nên `null` ở đây là việc dữ liệu vừa đổi giữa chừng; ném ra
+   * sẽ biến callback thành 500, đúng cái mà `googleProfile` tránh bằng `null`.
+   */
+  async issueSessionForUserId(
+    userId: number,
+    userAgent?: string,
+  ): Promise<{ accessToken: string; refreshToken: string } | null> {
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (!user) return null;
+    const tokens = await this.issueSession(user, userAgent);
+    await this.trimSessions(user.id);
+    return tokens;
   }
 }

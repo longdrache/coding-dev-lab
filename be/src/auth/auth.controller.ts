@@ -11,11 +11,13 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
 import { AuthService, REFRESH_TTL_MS } from './auth.service.ts';
 import { AuthGuard } from './auth.guard.ts';
 import { readCookie } from './auth.cookies.ts';
-import { ACCESS_TTL_SECONDS } from './tokens.ts';
+import { GOOGLE_SCOPES, safeInternalPath } from './oauth-state.ts';
+import { ACCESS_TTL_SECONDS, verifyAccessToken } from './tokens.ts';
 import type { AuthenticatedRequest } from './auth.types.ts';
 
 export const SESSION_COOKIE = 'session';
@@ -33,6 +35,8 @@ type CookieOptions = {
 type CookieResponse = {
   cookie(name: string, value: string, options?: CookieOptions): unknown;
   clearCookie(name: string, options?: CookieOptions): unknown;
+  /** Chỉ hai route OAuth dùng: chúng không trả JSON mà trả `302` để trình duyệt đi tiếp. */
+  redirect(status: number, url: string): unknown;
 };
 
 /**
@@ -102,6 +106,43 @@ function readRefresh(req: CookieRequest): string | undefined {
 function userAgent(req: AuthenticatedRequest): string | undefined {
   const ua = req.headers['user-agent'];
   return typeof ua === 'string' ? ua : undefined;
+}
+
+/** PKCE S256: base64url(sha256(verifier)). */
+function pkceChallenge(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url');
+}
+
+/**
+ * Đích đến sau khi đăng nhập Google luôn là **FE**, mà FE nằm ở domain khác
+ * (xem docblock của `cookieOptions`: "trên production BE và FE nằm trên hai domain
+ * Vercel khác nhau"). `Location: /sign-in` tương đối sẽ rơi vào domain API và
+ * thành 404, nên phải ghép tuyệt đối từ `FRONTEND_URL` — cùng cách link trong mail.
+ */
+function frontendUrl(path: string): string {
+  return `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}${path}`;
+}
+
+/**
+ * Người gọi đang đăng nhập hay không, đọc **tùy chọn** từ cookie `session`.
+ *
+ * Không dùng `AuthGuard`: callback phải chạy được với cả khách (lần đầu bấm nút
+ * Google thì chưa có cookie nào) lẫn người đã đăng nhập (để ghép Google vào đúng
+ * tài khoản đó). `null` = không có phiên hoặc phiên không xác minh được — không
+ * phải lỗi, vì thiếu phiên là chuyện bình thường ở route này.
+ *
+ * `req.cookies` trước, header thô sau: đúng thứ tự và đúng hàm `AuthGuard` dùng.
+ */
+async function signedInUserId(req: CookieRequest): Promise<number | null> {
+  const token = req.cookies?.[SESSION_COOKIE] ?? readCookie(req.headers.cookie, SESSION_COOKIE);
+  if (!token) return null;
+  const claims = await verifyAccessToken(token);
+  if (!claims) return null;
+  // `sub` do ta tự ký nên luôn là số nguyên dương, nhưng nó là **dữ liệu từ token**
+  // nên vẫn kiểm — `Number('abc')` là `NaN` và `NaN` sẽ thành id `NaN` trong
+  // truy vấn `findUnique`.
+  const id = Number(claims.sub);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 /**
@@ -273,6 +314,95 @@ export class AuthController {
     const ok = await this.auth.resetPassword(String(b?.token ?? ''), String(b?.password ?? ''));
     if (!ok) throw new BadRequestException(RESET_DEAD);
     return { message: 'Đã đổi mật khẩu. Vui lòng đăng nhập lại.' };
+  }
+
+  /**
+   * Bắt đầu đăng nhập bằng Google: sinh `state` + PKCE verifier, ghi vào
+   * `UserOAuthState`, rồi đẩy trình duyệt sang Google.
+   *
+   * **Không `AuthGuard`** — người bấm nút này thường chưa đăng nhập, nên chặn
+   * cookie ở đây là khoá cửa trước mặt nút bấm và khiến tính năng chết đúng lúc
+   * cần nhất. `ThrottleGuard` thì có: đây là cửa để bị dùng để spam Google.
+   */
+  @Get('oauth/google/start')
+  @UseGuards(ThrottleGuard)
+  @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
+  async googleStart(@Query('redirect_to') redirectTo: unknown, @Res() res: CookieResponse) {
+    // Chưa cấu hình thì đừng đẩy người dùng sang trang lỗi của Google với
+    // `client_id` rỗng — cùng lý do `googleProfile` trả `null` thay vì ném:
+    // đây là tình trạng triển khai, không phải lỗi của người dùng.
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REDIRECT_URI) {
+      return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
+    }
+    // Lần đầu trong hai lần kiểm `redirectTo`: lần thứ hai ở `callback`, lúc
+    // đọc lại giá trị đã nằm trong DB.
+    const safe = safeInternalPath(redirectTo);
+    const { state, codeVerifier } = await this.auth.beginGoogleOAuth(safe);
+    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    url.searchParams.set('client_id', process.env.GOOGLE_CLIENT_ID);
+    url.searchParams.set('redirect_uri', process.env.GOOGLE_REDIRECT_URI);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', GOOGLE_SCOPES.join(' '));
+    // KHÔNG dùng `prompt=select_account`: nó ép hiện danh sách tài khoản mỗi
+    // lần bấm, đúng thứ không cần ở nút "Đăng nhập bằng Google".
+    url.searchParams.set('access_type', 'online');
+    url.searchParams.set('state', state);
+    url.searchParams.set('code_challenge', pkceChallenge(codeVerifier));
+    url.searchParams.set('code_challenge_method', 'S256');
+    res.redirect(302, url.toString());
+    return undefined;
+  }
+
+  /**
+   * Google trả kết quả về đây bằng `?code&state` (hoặc `?error` nếu người dùng
+   * bấm Hủy).
+   *
+   * Mọi nhánh đều trả `302` về FE chứ không ném lỗi: callback là trang người
+   * dùng nhìn thấy trực tiếp, `500` ở đây nghĩa là màn trắng thay vì một câu
+   * bảo thử lại. Nhánh nào **không** cấp cookie phiên thì cũng phải nói rõ bằng
+   * mã trên URL — `needs-password` và `conflict` không được gộp vào nhau.
+   */
+  @Get('oauth/google/callback')
+  @UseGuards(ThrottleGuard)
+  @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
+  async googleCallback(
+    @Req() req: CookieRequest,
+    @Query('code') code: unknown,
+    @Query('state') state: unknown,
+    @Query('error') err: unknown,
+    @Res() res: CookieResponse,
+  ) {
+    if (err || !code) return res.redirect(302, frontendUrl('/sign-in?oauth=cancelled'));
+    const consumed = await this.auth.takeGoogleState(String(state ?? ''));
+    // State sai, hết hạn hoặc đã dùng: từ chối trước khi đụng tới Google.
+    if (!consumed) return res.redirect(302, frontendUrl('/sign-in?oauth=expired'));
+    // `googleProfile` trả `null` cho lỗi phía Google, nhưng `fetch` tới Google
+    // có thể **ném** (mạng, DNS). Không bắt thì callback trả 500 và người dùng
+    // thấy lỗi server thay vì câu "thử lại sau một lát".
+    const profile = await this.auth
+      .googleProfile(String(code), consumed.codeVerifier)
+      .catch(() => null);
+    if (!profile) return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
+
+    const r = await this.auth.linkOrCreateFromGoogle(profile, await signedInUserId(req));
+    if (r.kind === 'conflict') {
+      return res.redirect(302, frontendUrl('/sign-in?oauth=conflict'));
+    }
+    if (r.kind === 'unverified') {
+      return res.redirect(302, frontendUrl('/sign-in?oauth=unverified'));
+    }
+    if (r.kind === 'needs-password') {
+      return res.redirect(
+        302,
+        frontendUrl(`/sign-in?oauth=exists&email=${encodeURIComponent(r.email)}`),
+      );
+    }
+    const tokens = await this.auth.issueSessionForUserId(r.userId, userAgent(req));
+    if (!tokens) return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
+    setSessionCookies(res, tokens);
+    // Lần thứ hai trong hai lần kiểm: giá trị này đã nằm trong DB, tức dữ liệu
+    // bị sửa tay hay ghi bởi một bản cũ cũng bị chặn ở đây.
+    return res.redirect(302, frontendUrl(safeInternalPath(consumed.redirectTo)));
   }
 
   @Get('me')

@@ -20,8 +20,13 @@ export default function NavBar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
+  /*
+   * `whitespace-nowrap` ở mọi link của header: tiếng Việt có dấu nên "Đăng nhập",
+   * "Bài tập", "Dạng bài" rất dễ bị bẻ dòng đúng lúc header bị bóp còn thiếu chỗ,
+   * và một nút bị bẻ dòng trông hỏng hơn cả việc ẩn nó đi.
+   */
   const linkClass = (href: string) =>
-    `transition-colors py-1 ${
+    `whitespace-nowrap transition-colors py-1 ${
       pathname === href || pathname.startsWith(`${href}/`)
         ? "font-semibold text-zinc-950"
         : "text-zinc-600 hover:text-zinc-950"
@@ -30,11 +35,11 @@ export default function NavBar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-zinc-200/80 bg-white/95">
       <div className="mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-8">
+        <div className="flex shrink-0 items-center gap-8">
           <Logo withVersion />
 
           {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-6 text-sm">
+          <nav className="hidden md:flex shrink-0 items-center gap-6 text-sm">
             {LINKS.map((link) => (
               <Link
                 key={link.id}
@@ -48,14 +53,14 @@ export default function NavBar() {
             <SectionLink
               id="nav-topics"
               targetId="topics"
-              className="text-zinc-600 hover:text-zinc-950 transition-colors py-1"
+              className="whitespace-nowrap text-zinc-600 hover:text-zinc-950 transition-colors py-1"
             >
               Dạng bài
             </SectionLink>
             <Link
               id="nav-premium"
               href="/premium"
-              className={`font-medium transition-colors py-1 ${
+              className={`whitespace-nowrap font-medium transition-colors py-1 ${
                 pathname.startsWith("/premium")
                   ? "font-semibold text-amber-600"
                   : "text-amber-600/80 hover:text-amber-600"
@@ -67,17 +72,33 @@ export default function NavBar() {
         </div>
         {/* Right CTA / Quick Status */}
         <div className="hidden sm:flex items-center gap-4">
-          <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 px-2.5 py-1 rounded-full bg-zinc-100/80 border border-zinc-200/60">
+          {/*
+           * Hai badge trạng thái là thông tin phụ, và chúng là hai khối rộng nhất
+           * trong header (~130px mỗi cái): đo thật thì chúng đẩy tổng bề rộng cần
+           * lên ~920px, đủ làm nút "Đăng ký" bị bóp và bẻ chữ thành hai dòng ở
+           * mọi bề rộng hẹp hơn. Nên:
+           *
+           * - "n đang online" từ `lg`: nó mang thông tin sống, ưu tiên hơn, và vẫn
+           *   còn chỗ trống ở 1024.
+           * - "Engine < 25ms" từ `xl`: chỉ là câu quảng bá tĩnh, đẩy nó xuống
+           *   1280 giữ được 160px dư địa ở mọi bề rộng khác.
+           *
+           * Dưới `md` badge online nằm trong menu mobile, nên điện thoại không
+           * mất thông tin này (xem khối "Mobile panel" bên dưới).
+           */}
+          <div className="hidden shrink-0 whitespace-nowrap xl:flex items-center gap-2 text-xs font-mono text-zinc-500 px-2.5 py-1 rounded-full bg-zinc-100/80 border border-zinc-200/60">
             <span className="relative flex w-1.5 h-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-emerald-500" />
             </span>
-            <span>Engine &lt; 25ms</span>
+            <span className="whitespace-nowrap">Engine &lt; 25ms</span>
           </div>
-          <OnlineCounter />
+          <div className="hidden shrink-0 whitespace-nowrap lg:flex">
+            <OnlineCounter />
+          </div>
 
           <div
-            className="flex min-h-10 min-w-32 items-center justify-end"
+            className="flex min-h-10 min-w-32 shrink-0 items-center justify-end"
             aria-busy={loading}
           >
             {loading && (
@@ -94,17 +115,17 @@ export default function NavBar() {
                 <Link
                   id="nav-btn-login"
                   href="/sign-in"
-                  className="px-5 py-2.5 rounded-lg text-zinc-700 hover:text-zinc-950 hover:scale-105 hover:bg-zinc-100 text-xs font-medium transition-colors"
+                  className="px-5 py-2.5 rounded-lg text-zinc-700 hover:text-zinc-950 hover:scale-105 hover:bg-zinc-100 text-xs font-medium whitespace-nowrap shrink-0 transition-colors"
                 >
                   Đăng nhập
                 </Link>
                 <Link
                   id="nav-btn-register"
                   href="/sign-up"
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-zinc-950  text-white hover:scale-105  text-xs font-medium hover:bg-zinc-800 active:scale-[0.98] transition-all"
+                  className="inline-flex shrink-0 items-center gap-1.5 px-5 py-2.5 rounded-lg bg-zinc-950  text-white hover:scale-105  text-xs font-medium whitespace-nowrap hover:bg-zinc-800 active:scale-[0.98] transition-all"
                 >
                   <span>Đăng ký</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-3.5 h-3.5 shrink-0" />
                 </Link>
               </div>
             )}
@@ -151,16 +172,19 @@ export default function NavBar() {
             >
               Premium
             </Link>
+            <div className="mt-2 flex items-center gap-2 whitespace-nowrap border-t border-zinc-100 pt-3">
+              <OnlineCounter />
+            </div>
             <div className="mt-2 flex gap-2 border-t border-zinc-100 pt-3 sm:hidden">
               <Link
                 href="/sign-in"
-                className="flex-1 rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-medium text-zinc-700"
+                className="flex-1 rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-medium whitespace-nowrap text-zinc-700"
               >
                 Đăng nhập
               </Link>
               <Link
                 href="/sign-up"
-                className="flex-1 rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-medium text-white"
+                className="flex-1 rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-medium whitespace-nowrap text-white"
               >
                 Đăng ký
               </Link>

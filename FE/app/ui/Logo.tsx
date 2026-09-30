@@ -40,7 +40,10 @@ export default function Logo({
         GoCode
       </span>
       {withVersion && (
-        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
+        /* Chip phiên bản là thông tin phụ và là khối rộng nhất bên trái header:
+         * dưới `lg` nó là mảnh ghép thứ ba cùng nav và hai nút, nên ẩn đi và lấy
+         * lại ~48px cho phần còn lại. Từ `lg` trở lên thì giữ nguyên. */
+        <span className="hidden lg:inline-flex text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
           v1.0
         </span>
       )}

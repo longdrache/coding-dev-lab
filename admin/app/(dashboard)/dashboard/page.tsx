@@ -209,10 +209,10 @@ export default function DashboardPage() {
   const { data: stats, error } = useSWR<Stats>("/api/admin/stats", swrFetcher, {
     refreshInterval: 30000, // online counter tự tươi mỗi 30s
   });
-  const { data: views } = useSWR<ViewsAnalytics>("/api/admin/analytics/views", swrFetcher, {
+  const { data: views, error: viewsError } = useSWR<ViewsAnalytics>("/api/admin/analytics/views", swrFetcher, {
     refreshInterval: 60000,
   });
-  const { data: logins } = useSWR<LoginsAnalytics>("/api/admin/analytics/logins", swrFetcher, {
+  const { data: logins, error: loginsError } = useSWR<LoginsAnalytics>("/api/admin/analytics/logins", swrFetcher, {
     refreshInterval: 60000,
   });
 
@@ -221,6 +221,27 @@ export default function DashboardPage() {
       <div className="space-y-4">
         <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Dashboard</h1>
         <p className="text-sm text-red-600">{error instanceof Error ? error.message : "Failed to load stats"}</p>
+      </div>
+    );
+  }
+
+  // useSWR khong nem loi, no vao bien `error`. Bo qua no thi endpoint 500 bien
+  // mat va o duoi se hien ra thanh "— lượt xem" — trong nhu "hom nay chua ai xem".
+  if (viewsError || loginsError) {
+    const msg = (e: unknown) => (e instanceof Error ? e.message : "Không tải được dữ liệu");
+    return (
+      <div className="space-y-4">
+        <h1 className="font-display text-[32px] font-bold leading-tight text-slate-900">Dashboard</h1>
+        {viewsError && (
+          <p role="alert" className="text-sm text-red-600">
+            Không tải được lượt truy cập: {msg(viewsError)}
+          </p>
+        )}
+        {loginsError && (
+          <p role="alert" className="text-sm text-red-600">
+            Không tải được lượt đăng nhập: {msg(loginsError)}
+          </p>
+        )}
       </div>
     );
   }

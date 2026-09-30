@@ -76,10 +76,12 @@ export class ViewsService {
     // Unique = thiết bị/người khác nhau: ưu tiên userId (đăng nhập),
     // rồi visitorId (UUID theo trình duyệt), cuối cùng hash IP.
     // Cùng IP khác thiết bị vẫn đếm riêng từng người.
+    // `userId` phải `::text`: cột là integer còn hai nhánh kia là text, mà
+    // Postgres không tự cast các nhánh COALESCE nên trộn kiểu là lỗi 500.
     type UniqueRow = { uniques: number };
     const uniqueSince = (start: Date) =>
       this.db.$queryRaw<UniqueRow[]>`
-        SELECT COUNT(DISTINCT COALESCE("userId", "visitorId", "ipHash"))::int AS uniques
+        SELECT COUNT(DISTINCT COALESCE("userId"::text, "visitorId", "ipHash"))::int AS uniques
         FROM "PageView"
         WHERE "createdAt" >= ${start}
       `.then((rows) => rows[0]?.uniques ?? 0);
@@ -91,7 +93,7 @@ export class ViewsService {
       this.db.$queryRaw<DayRow[]>`
         SELECT to_char((("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'YYYY-MM-DD') AS date,
                COUNT(*)::int AS views,
-               COUNT(DISTINCT COALESCE("userId", "visitorId", "ipHash"))::int AS uniques
+               COUNT(DISTINCT COALESCE("userId"::text, "visitorId", "ipHash"))::int AS uniques
         FROM "PageView"
         WHERE "createdAt" >= ${seriesStart}
         GROUP BY 1

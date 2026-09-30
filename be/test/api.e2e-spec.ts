@@ -243,6 +243,64 @@ describe('API (e2e)', () => {
     await request(app.getHttpServer()).get('/api/admin/stats').expect(401);
   });
 
+  /**
+   * Regression: `COALESCE("userId", "visitorId", "ipHash")` trong
+   * `views.service.ts` trộn `integer` (`PageView.userId`) với `text`
+   * (`visitorId`, `ipHash`). Postgres **không** tự cast các nhánh `COALESCE`,
+   * nên câu hỏng ngay lúc lập kế hoạch -> endpoint 500. Nguồn gốc: commit đổi
+   * cột `clerkId` (text) -> `userId` (integer) mà không sửa SQL thô theo.
+   *
+   * Vì sao cần tầng này: `views.service.spec.ts` mock `$queryRaw` bằng
+   * `vi.fn()` nên **không SQL nào chạy thật**, còn `tsc`/`nest build` không
+   * đụng tới SQL. Chỉ Postgres mới bắt được lỗi này — và CI có Postgres thật
+   * (service `postgres:16-alpine`, `prisma migrate deploy` trước `test:e2e`).
+   *
+   * Bộ quét tĩnh ở `src/database/raw-sql-coalesce.spec.ts` là tầng thứ hai, chạy
+   * ở `pnpm test` không cần DB. Hai tầng bổ sung cho nhau: quét tĩnh chặn lỗi
+   * kiểu ngay ở source, tầng này chạy SQL thật nên bắt cả lỗi mà quét tĩnh
+   * không nhìn thấy (cột không tồn tại, hàm Postgres không có, cú pháp sai).
+   */
+  describe('analytics views: SQL thô phải chạy được trên Postgres thật', () => {
+    /** Token admin ký bằng đúng khoá mà `AdminGuard` dùng để verify. */
+    function adminCookie(): string {
+      const t = jwt.sign({ sub: 'admin', role: 'admin' }, process.env.ADMIN_JWT_PRIVATE_KEY!, {
+        algorithm: 'RS256',
+        expiresIn: '30m',
+      });
+      return `admin_token=${t}`;
+    }
+
+    it('GET /api/admin/analytics/views 200 - COALESCE không trộn kiểu', async () => {
+      // Có dữ liệu thật để chứng minh SQL không chỉ "parse được" mà còn **trả
+      // đúng số**. Dùng đúng path `/e2e-probe` để `afterAll` dọn giúp.
+      await db.pageView.create({
+        data: { ipHash: 'e2e-probe-hash', path: '/e2e-probe', visitorId: 'e2e-probe-visitor' },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/api/admin/analytics/views')
+        .set('Cookie', adminCookie())
+        .expect(200);
+
+      for (const moc of ['today', 'month', 'year'] as const) {
+        expect(typeof res.body[moc].views, `${moc}.views`).toBe('number');
+        expect(typeof res.body[moc].uniques, `${moc}.uniques`).toBe('number');
+      }
+      // Dòng vừa tạo nằm trong hôm nay => đếm được, không phải 0 rỗng.
+      expect(res.body.today.views).toBeGreaterThan(0);
+      expect(res.body.today.uniques).toBeGreaterThan(0);
+      expect(Array.isArray(res.body.series30d)).toBe(true);
+      expect(Array.isArray(res.body.byCountry)).toBe(true);
+    });
+
+    it('GET /api/admin/analytics/views/recent 200', async () => {
+      await request(app.getHttpServer())
+        .get('/api/admin/analytics/views/recent')
+        .set('Cookie', adminCookie())
+        .expect(200);
+    });
+  });
+
   it('POST /api/history 401 khi thiếu token', async () => {
     await request(app.getHttpServer())
       .post('/api/history')

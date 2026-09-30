@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test proxy-redirect-targets.test.mjs"
+    "test": "node --test proxy-redirect-targets.test.mjs dashboard-analytics-error.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

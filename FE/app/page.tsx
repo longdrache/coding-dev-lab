@@ -167,7 +167,7 @@ export default function Home() {
               {/* Phủ trắng nhẹ bên trái để chữ luôn đọc được */}
               <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.85)_0%,rgba(255,255,255,0.25)_40%,rgba(255,255,255,0)_65%)]" />
             </div>
-            <div id="hero-copy" className="relative z-10 max-w-3xl">
+            <div id="hero-copy" className="relative z-10 min-w-0 max-w-3xl">
               <motion.div variants={copyContainer} initial="hidden" animate="show">
               {/* Minimalist Top Eyebrow Tag */}
               <motion.div variants={copyItem} className="flex justify-center mb-6">
@@ -176,8 +176,7 @@ export default function Home() {
                   <span>Local Native Engine</span>
                   <span className="text-zinc-300">/</span>
                   <span>
-                    TypeScript 3.7 • Python 3.8 • Go 1.23 • Swift 5.2 • C++ (GCC
-                    9.2.0)
+                    Python 3 • JavaScript • TypeScript • C++ 17 • PHP • Java • C# • Go
                   </span>
                 </div>
               </motion.div>
@@ -189,9 +188,10 @@ export default function Home() {
                   </span>
                 </motion.h1>
                 <motion.p variants={copyItem} className="text-base sm:text-lg text-zinc-700 leading-relaxed max-w-2xl mx-auto font-medium">
-                  Hệ thống chấm mã nguồn độc lập chạy trực tiếp trong vài
-                  mili-giây. Tuyển chọn bài toán cấu trúc dữ liệu và giải thuật
-                  cốt lõi, không rườm rà, tập trung 100% vào năng lực kỹ thuật.
+                  Code bạn nộp được gửi lên Judge0 và chạy trong container riêng,
+                  mỗi test tối đa 2 giây CPU và 128MB RAM. 56 bài cấu trúc dữ
+                  liệu và giải thuật tuyển chọn sẵn, không rườm rà, tập trung
+                  100% vào năng lực kỹ thuật.
                 </motion.p>
                 <motion.div variants={copyItem} className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                   <motion.span whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="inline-flex w-full sm:w-auto">
@@ -224,7 +224,7 @@ export default function Home() {
               </motion.div>
             </div>
 
-            <div id="hero-terminal" className="relative z-10 mx-auto w-full max-w-md lg:justify-self-end" onMouseMove={handleTilt} onMouseLeave={resetTilt}>
+            <div id="hero-terminal" className="relative z-10 mx-auto min-w-0 w-full max-w-md lg:justify-self-end" onMouseMove={handleTilt} onMouseLeave={resetTilt}>
               {/* Chips code bay quanh terminal (desktop) */}
               <motion.span aria-hidden className="pointer-events-none absolute -left-10 top-6 hidden rounded-lg border border-emerald-200 bg-white/90 px-2.5 py-1 font-mono text-xs font-bold text-emerald-600 shadow-sm backdrop-blur lg:block"
                 animate={{ y: [0, -12, 0], rotate: [0, -4, 0] }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}>

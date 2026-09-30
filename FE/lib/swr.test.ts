@@ -110,4 +110,28 @@ describe('authedFetcher', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
     await expect(authedFetcher('/x')).rejects.toThrow('401');
   });
+
+  it('401 → refresh thành công → retry 200', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 401 })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.doMock('./api', () => ({
+      refreshSession: () => Promise.resolve({ kind: 'ok', session: { user: {}, expiresIn: 900 } }),
+    }));
+    const { authedFetcher: fetcher } = await import('./swr');
+    await expect(fetcher('/x')).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.doUnmock('./api');
+  });
+
+  it('401 → refresh thất bại → ném 401', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    vi.doMock('./api', () => ({
+      refreshSession: () => Promise.resolve({ kind: 'expired' }),
+    }));
+    const { authedFetcher: fetcher } = await import('./swr');
+    await expect(fetcher('/x')).rejects.toThrow('401');
+    vi.doUnmock('./api');
+  });
 });

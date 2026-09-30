@@ -70,6 +70,18 @@ export async function swrFetcher<T = unknown>(url: string): Promise<T> {
  */
 export function authedFetcher<T = unknown>(url: string): Promise<T> {
   return fetch(url, { credentials: "include" }).then(async (res) => {
+    if (res.status === 401) {
+      // Access token hết hạn — thử refresh rồi retry một lần
+      const { refreshSession } = await import("./api");
+      const r = await refreshSession();
+      if (r.kind === "ok") {
+        const retry = await fetch(url, { credentials: "include" });
+        if (retry.ok) return retry.json() as Promise<T>;
+        throw new ApiError(retry.status, await readErrorCode(retry));
+      }
+      // Refresh thất bại — ném 401 gốc để AuthProvider xử lý
+      throw new ApiError(401);
+    }
     if (!res.ok) throw new ApiError(res.status, await readErrorCode(res));
     return res.json() as Promise<T>;
   });

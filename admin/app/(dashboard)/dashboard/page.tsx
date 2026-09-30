@@ -315,7 +315,7 @@ export default function DashboardPage() {
               </div>
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
                 <span className="size-2 rounded-full bg-emerald-600" /> Lượt xem trang  
-                <span className="size-2 rounded-full bg-sky-500" /> Thiết bị truy cập
+                <span className="size-2 rounded-full bg-sky-500" /> Người dùng truy cập
               </span>
             </div>
           </CardHeader>

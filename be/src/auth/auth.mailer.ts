@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import nodemailer from 'nodemailer';
 import type { AuthMailPort, Mail } from './auth.service.ts';
 
@@ -37,8 +37,8 @@ export class AuthMailer implements AuthMailPort {
    * người đọc log phải biết chính xác cần điền gì, không phải đoán.
    */
   private readConfig(): { login: string; key: string; from: string } {
-    const login = (process.env.BREVO_SMTP_LOGIN ?? '').trim();
-    const key = (process.env.BREVO_SMTP_KEY ?? '').trim();
+    const login = (process.env.SMTP_USER ?? '').trim();
+    const key = (process.env.SMTP_PASS ?? '').trim();
     const from = (process.env.MAIL_FROM ?? '').trim();
     const thieu = [
       ...(login ? [] : ['BREVO_SMTP_LOGIN']),
@@ -73,7 +73,7 @@ export class AuthMailer implements AuthMailPort {
         auth: { user: login, pass: key },
       });
       await transport.sendMail({
-        from: `GoCode <${from}>`,
+        from: from,
         to: [{ address: m.to }],
         subject: m.subject,
         text: m.text,

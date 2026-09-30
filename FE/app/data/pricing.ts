@@ -25,8 +25,8 @@ export const pricingPlans = [
       },
       {
         id: "d2",
-        textVi: "Toàn bộ 56 bài + 8 ngôn ngữ Judge0",
-        textEn: "All 56 problems + 8 Judge0 languages",
+        textVi: "20 bài VIP + 8 ngôn ngữ Judge0",
+        textEn: "20 VIP problems + 8 Judge0 languages",
         isHighlight: true,
       },
       {
@@ -47,8 +47,8 @@ export const pricingPlans = [
     id: "monthly",
     nameVi: "Gói Hàng Tháng",
     nameEn: "Monthly Subscription",
-    badgeVi: "Linh hoạt • 56 bài",
-    badgeEn: "Flexible • 56 problems",
+    badgeVi: "Linh hoạt • 20 bài VIP",
+    badgeEn: "Flexible • 20 VIP problems",
     monthlyEquivalentUSD: 35,
     monthlyEquivalentVND: 1000,
     totalBilledUSD: 35,
@@ -65,8 +65,8 @@ export const pricingPlans = [
     features: [
       {
         id: "m1",
-        textVi: "Toàn bộ 56 bài (Dễ/Trung bình/Khó) + 8 ngôn ngữ Judge0",
-        textEn: "All 56 problems (Easy/Medium/Hard) + 8 Judge0 languages",
+        textVi: "20 bài VIP (Dễ/Trung bình/Khó) + 8 ngôn ngữ Judge0",
+        textEn: "20 VIP problems (Easy/Medium/Hard) + 8 Judge0 languages",
         isHighlight: true,
       },
       {

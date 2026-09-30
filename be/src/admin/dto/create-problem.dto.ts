@@ -16,7 +16,7 @@ import { Type } from 'class-transformer';
 
 export class TestDto {
   @IsString()
-  @IsNotEmpty({ message: 'input không được rỗng' })
+  // @IsNotEmpty({ message: 'input không được rỗng' })
   input!: string;
 
   @IsString()

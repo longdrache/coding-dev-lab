@@ -91,7 +91,7 @@ export default function NavBar() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-emerald-500" />
             </span>
-            <span className="whitespace-nowrap">Engine &lt; 25ms</span>
+            <span className="whitespace-nowrap">Chấm bằng Judge0</span>
           </div>
           <div className="hidden shrink-0 whitespace-nowrap lg:flex">
             <OnlineCounter />

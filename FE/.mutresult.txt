@@ -1,0 +1,57 @@
+BASELINE (khong mutate): 0/27 do
+MUT   B1 bo chan `lock.locked` trong onSubmit
+  => 1/27 do
+     - component nối đúng vào giới hạn chặn bấm ngay trong handler, không chỉ khoá nút
+MUT   B2 bo `lock.locked` khoi `disabled` cua nut
+  => 1/27 do
+     - component nối đúng vào giới hạn nút khoá theo `locked` chứ không chỉ theo `busy`
+MUT   B3 bo so lan (khong bao gio khoa)
+  => 9/27 do
+     - cửa sổ trượt: bấm tới giới hạn thì khoá bấm đúng số lần giới hạn thì khoá ngay lần bấm đó
+     - cửa sổ trượt: bấm tới giới hạn thì khoá cửa sổ trượt theo lần bấm cuối chứ không phải lần bấm đầu
+     - cửa sổ trượt: bấm tới giới hạn thì khoá đồng hồ đếm ngược đúng từng mili giây, không lệch
+     - cửa sổ trượt: bấm tới giới hạn thì khoá hết cửa sổ thì số lần chạy lại từ đầu, không cộng dồn
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route tạm chuyển tab: thời gian trôi mà không render thì số còn lại vẫn đúng
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route đổi route rồi quay lại: mount mới đọc đúng trạng thái cũ
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route đồng hồ không bao giờ âm hay bằng 0 lúc đang khoá
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route đồng hồ máy nhảy ngược thì không sinh ra số âm
+     - lưu bền: F5 không reset được số lần mount lại vẫn thấy đủ số lần đã bấm
+MUT   B4 dem nguoc lech 60s
+  => 3/27 do
+     - cửa sổ trượt: bấm tới giới hạn thì khoá đồng hồ đếm ngược đúng từng mili giây, không lệch
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route tạm chuyển tab: thời gian trôi mà không render thì số còn lại vẫn đúng
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route đồng hồ máy nhảy ngược thì không sinh ra số âm
+MUT   B5 cua so khong truot (co dinh danh sach)
+  => 4/27 do
+     - cửa sổ trượt: bấm tới giới hạn thì khoá cửa sổ trượt theo lần bấm cuối chứ không phải lần bấm đầu
+     - cửa sổ trượt: bấm tới giới hạn thì khoá đồng hồ đếm ngược đúng từng mili giây, không lệch
+     - cửa sổ trượt: bấm tới giới hạn thì khoá hết cửa sổ thì số lần chạy lại từ đầu, không cộng dồn
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route tạm chuyển tab: thời gian trôi mà không render thì số còn lại vẫn đúng
+MUT   B6 bo ghi so lan vao storage (F5 reset duoc)
+  => 11/27 do
+     - cửa sổ trượt: bấm tới giới hạn thì khoá bấm liên tiếp dưới giới hạn thì không bao giờ khoá
+     - cửa sổ trượt: bấm tới giới hạn thì khoá bấm đúng số lần giới hạn thì khoá ngay lần bấm đó
+     - cửa sổ trượt: bấm tới giới hạn thì khoá cửa sổ trượt theo lần bấm cuối chứ không phải lần bấm đầu
+     - cửa sổ trượt: bấm tới giới hạn thì khoá đồng hồ đếm ngược đúng từng mili giây, không lệch
+     - cửa sổ trượt: bấm tới giới hạn thì khoá hết cửa sổ thì số lần chạy lại từ đầu, không cộng dồn
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route tạm chuyển tab: thời gian trôi mà không render thì số còn lại vẫn đúng
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route đổi route rồi quay lại: mount mới đọc đúng trạng thái cũ
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route đồng hồ không bao giờ âm hay bằng 0 lúc đang khoá
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route đồng hồ máy nhảy ngược thì không sinh ra số âm
+     - lưu bền: F5 không reset được số lần mount lại vẫn thấy đủ số lần đã bấm
+     - lưu bền: F5 không reset được số lần dữ liệu lưu là mốc thời gian tuyệt đối, không phải số đếm
+MUT   B8 bo aria-hidden khoi dong ho (spam trinh doc man hinh)
+  => 1/27 do
+     - component nối đúng vào giới hạn đồng hồ từng giây nằm NGOÀI vùng status, để không spam trình đọc màn hình
+MUT   B9 bo role=status (thong bao khong toi trinh doc man hinh)
+  => 1/27 do
+     - component nối đúng vào giới hạn thông báo hết hạn tới được trình đọc màn hình
+MUT   B10 bo aria-live=polite (doc cat ngan)
+  => 1/27 do
+     - component nối đúng vào giới hạn thông báo hết hạn tới được trình đọc màn hình
+MUT   B11 dem nguoc lay Math.max cua ca danh sach thay vi nho nhat
+  => 3/27 do
+     - cửa sổ trượt: bấm tới giới hạn thì khoá đồng hồ đếm ngược đúng từng mili giây, không lệch
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route tạm chuyển tab: thời gian trôi mà không render thì số còn lại vẫn đúng
+     - đếm ngược đúng sau khi tạm chuyển tab hoặc đổi route đồng hồ máy nhảy ngược thì không sinh ra số âm
+Khoi phuc xong: 0/27 do

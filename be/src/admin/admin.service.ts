@@ -367,7 +367,7 @@ export class AdminService {
     let info: { messageId?: string };
     try {
       info = (await transporter.sendMail({
-        from: `GoCode <${from}>`,
+        from: from,
         to: q.email,
         subject,
         text,

@@ -155,7 +155,29 @@ export default function AccountMenu() {
         aria-expanded={state.open}
         aria-controls={menuId}
         aria-label={label}
-        className="relative flex size-9 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 focus-visible:ring-offset-2"
+        /*
+         * Phản hồi khi rê chuột, theo ba ràng buộc cứng:
+         *
+         * 1. **`transform` không làm hỏng dropdown.** `scale` là `transform` nên
+         *    nó tạo stacking context mới cho nút — nhưng panel nằm ở `z-50`
+         *    (`absolute right-0 top-11 z-50`) nên vẫn vẽ đè lên nút, không bị
+         *    nút chặn. Nút **không** thêm `z-*`: thêm là mới thật sự đẩy nó lên
+         *    trước panel. Cũng không đổi kích thước: `scale` không nằm trong
+         *    layout nên header không nhảy.
+         * 2. **Bàn phím thấy tương đương.** Mỗi phần của hover đều có bản
+         *    `focus-visible:` ngay bên cạnh, với **cùng giá trị** — hover dùng
+         *    value khác thì khi vừa rê vừa focus, cái nào thắng tuỳ thứ tự CSS
+         *    và ring focus có thể mờ đi. Ring `zinc-900/30` + offset trắng là ring
+         *    focus sẵn có của dự án, không phát minh style mới.
+         * 3. **`prefers-reduced-motion`.** Chỉ phần *nâng* (scale) là
+         *    chuyển động, nên nó nằm sau `motion-safe:`. Ring thì hiện tức thì,
+         *    người bật giảm chuyển động vẫn thấy nút phản hồi — chỉ mất cú nâng.
+         *
+         * `active:` là kênh phản hồi thứ ba: Tailwind v4 bọc `hover:` trong
+         * `@media (hover: hover)` nên điện thoại **không** có hover, và nếu chỉ
+         * dựa vào nó thì nút này không có gì báo hiệu được bấm khi chạm.
+         */
+        className="relative flex size-9 items-center justify-center rounded-full transition-transform duration-200 hover:ring-2 hover:ring-zinc-900/30 hover:ring-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 focus-visible:ring-offset-2 motion-safe:hover:scale-105 motion-safe:focus-visible:scale-105 motion-safe:active:scale-95"
       >
         {/* Vòng tròn gradient/avatar. `aria-hidden` vì nút đã có `aria-label`:
             để lại nhãn ở đây sẽ khiến screen reader đọc trùng. */}

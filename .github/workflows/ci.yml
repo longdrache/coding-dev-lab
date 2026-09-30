@@ -71,8 +71,8 @@ jobs:
 
       # Next 16 sinh kiểu `LayoutProps`/`PageProps` vào `.next/types/`. Checkout
       # sạch chưa có thư mục này nên `tsc` sẽ báo TS2304 nếu typecheck chạy trước.
-      # - name: Generate route types
-      #   run: pnpm exec next typegen
+      - name: Generate route types
+        run: pnpm exec next typegen
 
       - name: Lint
         run: pnpm lint

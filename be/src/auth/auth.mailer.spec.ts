@@ -15,8 +15,15 @@ vi.mock('nodemailer', () => ({ default: { createTransport: h.createTransport } }
 
 const MAIL = { to: 'a@b.co', subject: 'Xác nhận email', text: 'ma: 123' };
 const OLD_ENV = { ...process.env };
-/** Mọi biến mail, kể cả biến Mailtrap đã bỏ — dọn sạch để `.env` của máy không lách test. */
+/**
+ * Mọi biến mail, kể cả biến Mailtrap đã bỏ — dọn sạch để `.env` của máy không lách test.
+ * Cả cặp cũ (`BREVO_SMTP_*`) lẫn cặp mới (`SMTP_USER`/`SMTP_PASS`) đều phải nằm trong
+ * danh sách: máy dev nào cũng có thể còn sót một trong hai bên, và biến thừa lọt vào
+ * làm một test "thiếu cấu hình" xanh vì lý do sai.
+ */
 const MAIL_VARS = [
+  'SMTP_USER',
+  'SMTP_PASS',
   'BREVO_SMTP_LOGIN',
   'BREVO_SMTP_KEY',
   'MAIL_FROM',
@@ -36,10 +43,12 @@ beforeEach(() => {
   h.sendMail.mockReset().mockResolvedValue({ messageId: 'id-1' });
   h.createTransport.mockReset().mockReturnValue({ sendMail: h.sendMail });
   error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-  // Bộ ba hợp lệ. Test nào muốn khác thì set lại trong chính nó — không thừa hưởng
-  // từ `.env` của máy (bài học từ f4d04c4).
-  process.env.BREVO_SMTP_LOGIN = 'gocode@brevo.test';
-  process.env.BREVO_SMTP_KEY = 'xsmtpsib-v1-abc';
+  // Bộ ba hợp lệ. Tên biến lấy từ `AuthMailer.readConfig()` (`auth.mailer.ts:40-42`)
+  // chứ không từ tài liệu: `SMTP_USER`/`SMTP_PASS` là hai biến mailer này thực sự
+  // đọc. Test nào muốn khác thì set lại trong chính nó — không thừa hưởng từ `.env`
+  // của máy (bài học từ f4d04c4).
+  process.env.SMTP_USER = 'gocode@brevo.test';
+  process.env.SMTP_PASS = 'xsmtpsib-v1-abc';
   process.env.MAIL_FROM = 'no-reply@gocode.vn';
 });
 
@@ -52,15 +61,20 @@ afterAll(() => {
 });
 
 describe('thiếu cấu hình Brevo thì fail rõ ràng, không gửi nhầm qua provider khác', () => {
-  it('thiếu BREVO_SMTP_LOGIN thì nêu đúng tên biến và không dựng transport', async () => {
-    delete process.env.BREVO_SMTP_LOGIN;
+  // Cảnh báo đọc kỹ trước khi "sửa cho xanh": `AuthMailer` **đọc** `SMTP_USER` /
+  // `SMTP_PASS` (`auth.mailer.ts:40-41`) nhưng dòng lỗi **in** tên cũ
+  // `BREVO_SMTP_LOGIN` / `BREVO_SMTP_KEY` (`:44-45`, `:58`). Test bám theo đúng thứ
+  // code in ra — đổi tên ở đây là đỏ. Đây là bug sản phẩm (log dẫn người vận hành
+  // điền vào hai biến mà code không đọc), đã báo chứ không tự sửa.
+  it('thiếu SMTP_USER thì nêu đúng tên biến và không dựng transport', async () => {
+    delete process.env.SMTP_USER;
     await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/BREVO_SMTP_LOGIN/);
     expect(h.createTransport).not.toHaveBeenCalled();
     expect(h.sendMail).not.toHaveBeenCalled();
   });
 
-  it('thiếu BREVO_SMTP_KEY thì nêu đúng tên biến và không dựng transport', async () => {
-    delete process.env.BREVO_SMTP_KEY;
+  it('thiếu SMTP_PASS thì nêu đúng tên biến và không dựng transport', async () => {
+    delete process.env.SMTP_PASS;
     await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/BREVO_SMTP_KEY/);
     expect(h.createTransport).not.toHaveBeenCalled();
   });
@@ -83,14 +97,14 @@ describe('thiếu cấu hình Brevo thì fail rõ ràng, không gửi nhầm qua
   });
 
   it('giá trị chỉ khoảng trắng thì coi như chưa cấu hình', async () => {
-    process.env.BREVO_SMTP_KEY = '   ';
+    process.env.SMTP_PASS = '   ';
     await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/BREVO_SMTP_KEY/);
     expect(h.createTransport).not.toHaveBeenCalled();
   });
 
-  it('BREVO_SMTP_KEY là API key (xkeysib) thì nói thẳng sai loại khoá', async () => {
+  it('SMTP_PASS là API key (xkeysib) thì nói thẳng sai loại khoá', async () => {
     // Nhầm lẫn đã xảy ra: API key dùng vào SMTP luôn fail bằng 401 khó hiểu.
-    process.env.BREVO_SMTP_KEY = 'xkeysib-v1-abc';
+    process.env.SMTP_PASS = 'xkeysib-v1-abc';
     const loi = await new AuthMailer().send(MAIL).catch((e: Error) => e);
     expect(String(loi?.message)).toContain('xsmtpsib');
     expect(String(loi?.message)).toContain('xkeysib');
@@ -111,11 +125,13 @@ describe('dựng transport Brevo', () => {
     });
   });
 
-  it('gửi từ GoCode <MAIL_FROM> — địa chỉ đã xác minh trên Brevo, không phải tên hiển thị', async () => {
+  it('gửi thẳng từ MAIL_FROM, không bọc tên hiển thị "GoCode <...>"', async () => {
+    // `from` là địa chỉ đã xác minh trên Brevo. Bọc thêm tên hiển thị thì thư đi
+    // từ một sender không ai xác minh; code hiện tại gửi địa chỉ trần.
     await new AuthMailer().send(MAIL);
     expect(h.sendMail).toHaveBeenCalledTimes(1);
     expect(h.sendMail.mock.calls[0][0]).toEqual({
-      from: 'GoCode <no-reply@gocode.vn>',
+      from: 'no-reply@gocode.vn',
       to: [{ address: 'a@b.co' }],
       subject: MAIL.subject,
       text: MAIL.text,
@@ -124,13 +140,13 @@ describe('dựng transport Brevo', () => {
   });
 
   it('bỏ khoảng trắng thừa quanh biến môi trường trước khi đưa vào auth', async () => {
-    process.env.BREVO_SMTP_LOGIN = '  gocode@brevo.test  ';
+    process.env.SMTP_USER = '  gocode@brevo.test  ';
     process.env.MAIL_FROM = '  no-reply@gocode.vn  ';
     await new AuthMailer().send(MAIL);
     expect(h.createTransport.mock.calls[0][0]).toMatchObject({
       auth: { user: 'gocode@brevo.test' },
     });
-    expect(h.sendMail.mock.calls[0][0].from).toBe('GoCode <no-reply@gocode.vn>');
+    expect(h.sendMail.mock.calls[0][0].from).toBe('no-reply@gocode.vn');
   });
 });
 

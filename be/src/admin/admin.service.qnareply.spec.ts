@@ -18,6 +18,11 @@ const OLD_ENV = { ...process.env };
 const MAIL_VARS = [
   'BREVO_SMTP_LOGIN',
   'BREVO_SMTP_KEY',
+  // `AdminService.replyQna` đọc `BREVO_SMTP_*` (`admin.service.ts:339-340`), khác
+  // `AuthMailer` đã đổi sang `SMTP_USER`/`SMTP_PASS`. Dọn cả hai cặp để test không
+  // phụ thuộc máy dev đang đặt bên nào trong `.env`.
+  'SMTP_USER',
+  'SMTP_PASS',
   'MAIL_FROM',
   'MAIL_API_TOKEN',
   'EMAIL_HOST',
@@ -41,7 +46,9 @@ beforeEach(() => {
   h.sendMail.mockReset().mockResolvedValue({ messageId: 'id-1' });
   h.createTransport.mockReset().mockReturnValue({ sendMail: h.sendMail });
   log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-  // Bộ ba hợp lệ. Test nào muốn khác thì set lại trong chính nó — không thừa hưởng
+  // Bộ ba hợp lệ. Tên biến lấy từ `AdminService.replyQna` (`admin.service.ts:339-341`):
+  // luồng này vẫn đọc `BREVO_SMTP_*` (chỉ `AuthMailer` đã đổi sang `SMTP_USER`/
+  // `SMTP_PASS`). Test nào muốn khác thì set lại trong chính nó — không thừa hưởng
   // từ `.env` của máy (bài học từ f4d04c4).
   process.env.BREVO_SMTP_LOGIN = 'gocode@brevo.test';
   process.env.BREVO_SMTP_KEY = 'xsmtpsib-v1-abc';
@@ -64,7 +71,8 @@ describe('AdminService.replyQna gửi mail qua Brevo', () => {
       requireTLS: true,
       auth: { user: 'gocode@brevo.test', pass: 'xsmtpsib-v1-abc' },
     });
-    expect(h.sendMail.mock.calls[0][0].from).toBe('GoCode <no-reply@gocode.vn>');
+    // `from` là địa chỉ đã xác minh trên Brevo, gửi trần — không bọc `GoCode <...>`.
+    expect(h.sendMail.mock.calls[0][0].from).toBe('no-reply@gocode.vn');
     expect(h.sendMail.mock.calls[0][0].to).toBe('han@gocode.vn');
     expect(r).toEqual({ ok: true, to: 'han@gocode.vn', messageId: 'id-1' });
   });

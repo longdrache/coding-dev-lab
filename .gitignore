@@ -10,6 +10,9 @@ build/
 coverage/
 *.tsbuildinfo
 
+# Scratch scripts
+.mut.cjs
+
 # Vercel
 .vercel/
 

@@ -3,6 +3,7 @@ import { pricingPlans } from "../data/pricing";
 import { useSession } from "./AuthProvider";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { safeCheckoutUrl } from "@/lib/checkout-url";
 import {
   Check,
   Sparkles,
@@ -48,7 +49,15 @@ export default function PricingCards() {
       if (!response.ok || !result.url) {
         throw new Error(result.message ?? "Không thể tạo phiên thanh toán.");
       }
-      window.location.assign(result.url);
+      // `result.url` là URL trình duyệt sẽ **đi tới**, nên nó phải qua kiểm chứng
+      // scheme + host thay vì tin thô. Đây là khoảnh khắc người dùng dễ bị dắt
+      // sang trang giả mạo nhất trong cả app, nên để `assign` chạy với một chuỗi
+      // bất kỳ từ network response là mở lại đúng lỗ hổng đó. Quyết định nằm ở
+      // `@/lib/checkout-url` để test được — xoá phần kiểm ở đây thì test vẫn
+      // xanh, xoá hàm thì đỏ.
+      const target = safeCheckoutUrl(result.url);
+      if (target.kind === "error") throw new Error(target.message);
+      window.location.assign(target.url);
     } catch (checkoutError) {
       setError(
         checkoutError instanceof Error

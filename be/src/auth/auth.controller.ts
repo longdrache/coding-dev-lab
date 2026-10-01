@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
+import { Throttle } from '../common/throttle.guard.ts';
 import { AuthService, REFRESH_TTL_MS } from './auth.service.ts';
 import { AuthGuard } from './auth.guard.ts';
 import { readCookie } from './auth.cookies.ts';
@@ -190,7 +190,6 @@ export class AuthController {
   /** Chỉ tạo tài khoản chưa xác minh và gửi mã, **không** cấp phiên. */
   @Post('register')
   @HttpCode(200)
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   register(@Req() req: AuthenticatedRequest, @Body() b: { email?: unknown; password?: unknown }) {
     return this.auth.register(
@@ -207,7 +206,6 @@ export class AuthController {
    * luôn ra `undefined` và không mã xác nhận nào xác minh được.
    */
   @Get('verify')
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
   async verify(
     @Query('token') token: unknown,
@@ -224,7 +222,6 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 30, ttl: 15 * 60 * 1000 } })
   async login(
     @Req() req: AuthenticatedRequest,
@@ -246,8 +243,11 @@ export class AuthController {
    */
   @Post('refresh')
   @HttpCode(200)
-  @UseGuards(ThrottleGuard)
-  @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
+  // Trước đây khai 120/phút nhưng đó là **code chết**: `express-rate-limit` chặn
+  // cả dựng ở 100/phút cho mọi route nên 120 không bao giờ có tác dụng. Gỡ
+  // middleware rồi thì con số này sẽ thành số thật và **nới** ngưỡng so với hành vi
+  // đang chạy. Hạ về 100 để mức thực tế giữ nguyên như trước khi gỡ.
+  @Throttle({ default: { limit: 100, ttl: 60 * 1000 } })
   async refresh(@Req() req: CookieRequest, @Res({ passthrough: true }) res: CookieResponse) {
     const token = readRefresh(req);
     if (!token) {
@@ -303,7 +303,6 @@ export class AuthController {
    */
   @Post('forgot-password')
   @HttpCode(200)
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   forgot(@Body() b: { email?: unknown }) {
     // Chuyển tiếp nguyên văn: mọi quyết định về việc có tồn tại hay không nằm ở
@@ -322,7 +321,6 @@ export class AuthController {
    */
   @Post('resend-verification')
   @HttpCode(200)
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   resend(@Req() req: AuthenticatedRequest, @Body() b: { email?: unknown }) {
     return this.auth.resendVerification(
@@ -339,7 +337,6 @@ export class AuthController {
    */
   @Post('reset-password')
   @HttpCode(200)
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   async reset(@Body() b: { token?: unknown; password?: unknown }) {
     const ok = await this.auth.resetPassword(String(b?.token ?? ''), String(b?.password ?? ''));
@@ -356,7 +353,6 @@ export class AuthController {
    * cần nhất. `ThrottleGuard` thì có: đây là cửa để bị dùng để spam Google.
    */
   @Get('oauth/google/start')
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   async googleStart(@Query('redirect_to') redirectTo: unknown, @Res() res: CookieResponse) {
     // Chưa cấu hình thì đừng đẩy người dùng sang trang lỗi của Google với
@@ -426,7 +422,6 @@ export class AuthController {
    * — `needs-password` và `conflict` không được gộp vào nhau.
    */
   @Get('oauth/google/callback')
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   async googleCallback(
     @Req() req: CookieRequest,

@@ -1,5 +1,5 @@
-import { Module, NestModule } from '@nestjs/common';
-import rateLimit from 'express-rate-limit';
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller.ts';
 import { AppService } from './app.service.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
@@ -16,14 +16,7 @@ import { QnaModule } from './qna/qna.module.ts';
 import { AdminModule } from './admin/admin.module.ts';
 import { Judge0Module } from './judge0/judge0.module.ts';
 import { PremiumModule } from './premium/premium.module.ts';
-
-const rateLimiter = rateLimit({
-  windowMs: 60_000,
-  limit: 100,
-  message: 'Quá nhiều yêu cầu, vui lòng thử lại sau',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+import { ThrottleGuard } from './common/throttle.guard.ts';
 
 @Module({
   imports: [
@@ -45,17 +38,16 @@ const rateLimiter = rateLimit({
   providers: [
     AppService,
     RolesGuard,
+    // Tầng giới hạn tần suất duy nhất, thay cho `express-rate-limit` đã gỡ.
+    //
+    // Phải đăng ký ở tầng `APP_GUARD` chứ không gắn `@UseGuards` rải rác: (1) để
+    // ngưỡng mặc định 100/phút phủ được cả những route không gắn `@Throttle` —
+    // trước đó chúng chỉ được bảo vệ bởi middleware; (2) vì guard toàn cục luôn
+    // chạy **trước** guard của route. Nếu vừa đăng ký ở đây vừa còn
+    // `@UseGuards(ThrottleGuard)` trên route thì Nest chạy nó hai lần mỗi request
+    // và mọi ngưỡng bị chia đôi (20/giờ -> 10/giờ). Vì vậy decorator
+    // `@UseGuards(ThrottleGuard)` đã bị gỡ khỏi toàn bộ controller.
+    { provide: APP_GUARD, useClass: ThrottleGuard },
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: any) {
-    // Tắt limiter toàn cục. Chỉ dùng cho test e2e: cả suite bắn hàng trăm
-    // request trong vài giây từ **cùng một IP** (127.0.0.1), nên ngưỡng
-    // 100/phút sẽ chặn chính test của ta và mọi assert về mã lỗi bài VIP sẽ đỏ
-    // vì nhầm là 429 — tức test không còn kiểm tra cái nó tên.
-    // `vitest.config.e2e.ts` bật cờ này; ở mọi nơi khác cờ vắng mặt thì hành vi
-    // y hệt trước đây.
-    if (process.env.DISABLE_RATE_LIMIT === '1') return;
-    consumer.apply(rateLimiter).forRoutes('*');
-  }
-}
+export class AppModule {}

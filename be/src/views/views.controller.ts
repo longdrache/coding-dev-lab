@@ -1,6 +1,6 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Req } from '@nestjs/common';
 import { clientIp } from '../common/geo.ts';
-import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
+import { Throttle } from '../common/throttle.guard.ts';
 import { ViewsService } from './views.service.ts';
 
 type TrackRequest = {
@@ -14,7 +14,6 @@ export class ViewsController {
   constructor(private readonly views: ViewsService) {}
 
   @Post('track')
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async track(
     @Req() req: TrackRequest,

@@ -9,7 +9,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
+import { Throttle } from '../common/throttle.guard.ts';
 import { ProblemsService } from './problems.service.ts';
 import { AuthGuard } from '../auth/auth.guard.ts';
 import { OptionalAuthGuard } from '../auth/optional-auth.guard.ts';
@@ -102,7 +102,7 @@ export class ProblemsController {
   }
 
   @Post(':slug/submit')
-  @UseGuards(AuthGuard, ThrottleGuard)
+  @UseGuards(AuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async submit(
     @Param('slug') slug: string,

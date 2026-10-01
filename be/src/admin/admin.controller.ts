@@ -16,7 +16,7 @@ import {
 import { AdminService } from './admin.service.ts';
 import { AdminGuard } from './admin.guard.ts';
 import { ViewsService } from '../views/views.service.ts';
-import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
+import { Throttle } from '../common/throttle.guard.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
 import { SetProblemVipDto } from './dto/set-problem-vip.dto.ts';
 
@@ -46,7 +46,6 @@ export class AdminController {
   ) {}
 
   @Post('login')
-  @UseGuards(ThrottleGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async login(@Body() b: { email: string; password: string }, @Res({ passthrough: true }) res: CookieResponse) {
     const token = await this.svc.login(b.email, b.password);

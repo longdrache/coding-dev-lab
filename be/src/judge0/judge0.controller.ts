@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle, ThrottleGuard } from '../common/throttle.guard.ts';
+import { Throttle } from '../common/throttle.guard.ts';
 import { Judge0Service } from './judge0.service.ts';
 import type {
   BatchSubmissionItem,
@@ -35,7 +35,7 @@ function assertValidItem(item: BatchSubmissionItem) {
 }
 
 @Controller('api/submissions')
-@UseGuards(AuthGuard, RolesGuard, ThrottleGuard)
+@UseGuards(AuthGuard, RolesGuard)
 @Roles('user', 'admin', 'vip')
 export class Judge0Controller {
   constructor(private readonly judge0Service: Judge0Service) {}
@@ -71,7 +71,10 @@ export class Judge0Controller {
   }
 
   @Get('batch')
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  // Xem ghi chú ở `auth.controller.ts` (`refresh`): 120/phút từng là code chết vì
+  // `express-rate-limit` chặn ở 100 cho mọi route. Hạ về 100 để không nới ngưỡng
+  // khi tầng đó biến mất.
+  @Throttle({ default: { limit: 100, ttl: 60_000 } })
   getBatchSubmissions(@Query('tokens') tokens?: string) {
     const list = (tokens ?? '')
       .split(',')

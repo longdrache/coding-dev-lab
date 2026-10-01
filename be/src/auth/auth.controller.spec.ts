@@ -1010,23 +1010,35 @@ describe('guard và giới hạn tần suất', () => {
     expect(guardsOf(AuthController.prototype.logoutAll)).toContain(AuthGuard);
   });
 
-  it('register, verify, login, refresh dùng ThrottleGuard', () => {
+  it('register, verify, login, refresh mang @Throttle và không còn decorator ThrottleGuard', () => {
+    // `ThrottleGuard` đã chuyển từ `@UseGuards` rải rác sang đăng ký **một lần**
+    // ở tầng `APP_GUARD` (`app.module.ts`), để ngưỡng mặc định 100/phút phủ được
+    // cả những route không gắn `@Throttle` sau khi gỡ `express-rate-limit`.
+    // Nếu vừa đăng ký ở tầng đó vừa giữ `@UseGuards(ThrottleGuard)` thì Nest
+    // chạy guard **hai lần mỗi request** và ngưỡng bị chia đôi (20/giờ -> 10).
+    //
+    // Vì vậy ở đây kiểm tra **metadata `@Throttle`** (ngưỡng riêng của route) và
+    // kiểm tra decorator đã được gỡ. Việc guard có thật sự chạy và chạy đúng một
+    // lần thì các test hành vi ngay dưới đây và `throttle.default.spec.ts` lo.
     for (const h of ['register', 'verify', 'login', 'refresh'] as const) {
-      expect(guardsOf(AuthController.prototype[h])).toContain(ThrottleGuard);
+      expect(throttleOf(h)).toBeDefined();
+      expect(guardsOf(AuthController.prototype[h])).not.toContain(ThrottleGuard);
     }
   });
 
-  it('forgot-password và reset-password dùng ThrottleGuard', () => {
+  it('forgot-password và reset-password mang @Throttle, không còn decorator ThrottleGuard', () => {
     // Hai route này là đầu vào để bơm mail và dò mã, không thể thiếu chặn tần suất.
     for (const h of ['forgot', 'reset'] as const) {
-      expect(guardsOf(AuthController.prototype[h])).toContain(ThrottleGuard);
+      expect(throttleOf(h)).toBeDefined();
+      expect(guardsOf(AuthController.prototype[h])).not.toContain(ThrottleGuard);
     }
   });
 
-  it('resend-verification dùng ThrottleGuard, không dùng AuthGuard', () => {
+  it('resend-verification mang @Throttle, không dùng AuthGuard', () => {
     // Đầu vào để bơm mail xác nhận y hệt `register`, nên chặn tần suất là bắt buộc.
     // Không `AuthGuard`: người bấm nút này đang ở giữa lúc đăng ký, chưa có phiên.
-    expect(guardsOf(AuthController.prototype.resend)).toContain(ThrottleGuard);
+    expect(throttleOf('resend')).toBeDefined();
+    expect(guardsOf(AuthController.prototype.resend)).not.toContain(ThrottleGuard);
     expect(guardsOf(AuthController.prototype.resend)).not.toContain(AuthGuard);
   });
 
@@ -1036,9 +1048,10 @@ describe('guard và giới hạn tần suất', () => {
     }
   });
 
-  it('hai route OAuth dùng ThrottleGuard — không để bị dùng để spam Google', () => {
+  it('hai route OAuth mang @Throttle — không để bị dùng để spam Google', () => {
     for (const h of ['googleStart', 'googleCallback'] as const) {
-      expect(guardsOf(AuthController.prototype[h])).toContain(ThrottleGuard);
+      expect(throttleOf(h)).toBeDefined();
+      expect(guardsOf(AuthController.prototype[h])).not.toContain(ThrottleGuard);
     }
   });
 
@@ -1074,7 +1087,11 @@ describe('guard và giới hạn tần suất', () => {
     expect(throttleOf('register')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
     expect(throttleOf('login')).toEqual({ limit: 30, ttl: 15 * 60 * 1000 });
     expect(throttleOf('verify')).toEqual({ limit: 20, ttl: 60 * 1000 });
-    expect(throttleOf('refresh')).toEqual({ limit: 120, ttl: 60 * 1000 });
+    // `refresh` trước đây khai 120/phút, nhưng đó là **code chết**:
+    // `express-rate-limit` chặn ở 100/phút cho *mọi* route nên 120 không bao giờ
+    // có tác dụng. Gỡ tầng đó thì 120 sẽ thành số thật và **nới** ngưỡng so với
+    // hành vi đang chạy, nên đã hạ về 100 cho khớp đúng mức thực tế cũ.
+    expect(throttleOf('refresh')).toEqual({ limit: 100, ttl: 60 * 1000 });
     // Hai route mới ở đúng mức `register`: 20 lần/giờ. IP dùng chung ở Việt Nam
     // rất phổ biến nên không thể siết thêm mà không chặn nhầm người thật.
     expect(throttleOf('forgot')).toEqual({ limit: 20, ttl: 60 * 60 * 1000 });
@@ -1126,10 +1143,10 @@ describe('guard và giới hạn tần suất', () => {
     expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
 
-  it('refresh bị chặn sau 120 lần trong 1 phút', () => {
+  it('refresh bị chặn sau 100 lần trong 1 phút', () => {
     const g = new ThrottleGuard(new Reflector());
     const ctx = ctxFor(AuthController.prototype.refresh as never, '10.0.0.4');
-    for (let i = 0; i < 120; i += 1) expect(g.canActivate(ctx)).toBe(true);
+    for (let i = 0; i < 100; i += 1) expect(g.canActivate(ctx)).toBe(true);
     expect(statusOf(() => g.canActivate(ctx))).toBe(429);
   });
 

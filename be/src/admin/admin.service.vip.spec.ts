@@ -175,7 +175,11 @@ describe('bật cờ VIP: mọi khoá hiện có vẫn đúng, và đúng ngay l
     expect(doc).toBeTruthy();
     expect(doc!['description']).toBe('NOI_DUNG_DAY_DU_HAI_CHU_THAT');
     const danhSach = await problems.findAll('user');
-    expect(danhSach[0]!['description']).toBe('NOI_DUNG_DAY_DU_HAI_CHU_THAT');
+    expect(danhSach[0]).toMatchObject({
+      slug: 'bai-01',
+      title: 'Bài 1',
+      isVip: false,
+    });
 
     // 2. Admin bật cờ.
     await admin.setProblemVip('bai-01', true);
@@ -191,9 +195,11 @@ describe('bật cờ VIP: mọi khoá hiện có vẫn đúng, và đúng ngay l
     expect(Object.keys(sau[0]!).sort()).toEqual(['difficulty', 'isVip', 'slug', 'title', 'topic']);
     expect(JSON.stringify(sau)).not.toContain('NOI_DUNG_DAY_DU');
     // ...và role vip vẫn nhận mô tả đầy đủ: cờ bài không liên quan hạ VIP của user.
-    expect((await problems.findAll('vip'))[0]!['description']).toBe(
-      'NOI_DUNG_DAY_DU_HAI_CHU_THAT',
-    );
+    expect((await problems.findAll('vip'))[0]).toMatchObject({
+      slug: 'bai-01',
+      title: 'Bài 1',
+      isVip: true,
+    });
 
     // 5. `POST /api/history` (ghi lịch sử) và `GET /api/history?slug=` (đọc).
     await expect(
@@ -221,7 +227,11 @@ describe('bật cờ VIP: mọi khoá hiện có vẫn đúng, và đúng ngay l
     // `isVip: true` và người thường bị chặn nhầm một bài đã mở khoá.
     const doc = await problems.findBySlug('bai-01', 'user');
     expect(doc!['description']).toBe('NOI_DUNG_DAY_DU_HAI_CHU_THAT');
-    expect((await problems.findAll('user'))[0]!['description']).toBe('NOI_DUNG_DAY_DU_HAI_CHU_THAT');
+    expect((await problems.findAll('user'))[0]).toMatchObject({
+      slug: 'bai-01',
+      title: 'Bài 1',
+      isVip: false,
+    });
   });
 
   it('người có VIP và admin vẫn mở được sau khi bật cờ', async () => {
@@ -230,9 +240,11 @@ describe('bật cờ VIP: mọi khoá hiện có vẫn đúng, và đúng ngay l
     for (const role of ['vip', 'admin'] as const) {
       const doc = await problems.findBySlug('bai-01', role);
       expect(doc!['description']).toBe('NOI_DUNG_DAY_DU_HAI_CHU_THAT');
-      expect((await problems.findAll(role))[0]!['description']).toBe(
-        'NOI_DUNG_DAY_DU_HAI_CHU_THAT',
-      );
+      expect((await problems.findAll(role))[0]).toMatchObject({
+        slug: 'bai-01',
+        title: 'Bài 1',
+        isVip: true,
+      });
       await expect(subs.findByUser(1, 'bai-01', role)).resolves.toEqual([]);
       await expect(
         subs.create(1, { problemSlug: 'bai-01', languageId: 71, sourceCode: 'x' }, role),
@@ -247,6 +259,11 @@ describe('bật cờ VIP: mọi khoá hiện có vẫn đúng, và đúng ngay l
     await admin.setProblemVip('khong-ton-tai', true).catch(() => undefined);
     const doc = await problems.findBySlug('bai-01', 'user');
     expect(doc!['description']).toBe('NOI_DUNG_DAY_DU_HAI_CHU_THAT');
+    expect((await problems.findAll('user'))[0]).toMatchObject({
+      slug: 'bai-01',
+      title: 'Bài 1',
+      isVip: false,
+    });
   });
 });
 

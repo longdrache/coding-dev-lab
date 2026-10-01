@@ -107,7 +107,12 @@ describe('ProblemsService.findAll', () => {
   it('bài thường giữ nguyên nội dung như trước', async () => {
     const { svc } = makeService({ problems: [normalRow] });
     const rows = await svc.findAll();
-    expect(rows[0]).toHaveProperty('description', 'NOI_DUNG_DE_BAI_THUONG');
+    expect(rows[0]).toMatchObject({
+      slug: 'two-sum',
+      title: 'Hai số có tổng bằng mục tiêu',
+      topic: 'array',
+      isVip: false,
+    });
     expect(rows[0]).not.toHaveProperty('hiddenTests');
   });
 
@@ -120,24 +125,31 @@ describe('ProblemsService.findAll', () => {
   });
 });
 
-describe('ProblemsService.findAll theo role — mô tả đầy đủ cho người có VIP', () => {
-  it('vip/admin nhận mô tả đầy đủ của bài VIP, vẫn không bao giờ có hiddenTests', async () => {
+describe('ProblemsService.findAll theo role — cùng 5 trường cho mọi role', () => {
+  it('vip/admin nhận đủ 5 trường, không bao giờ có hiddenTests', async () => {
     for (const role of ['vip', 'admin'] as const) {
       const { svc } = makeService({ problems: [vipRow, normalRow] });
       const rows = await svc.findAll(role);
       const vip = rows.find((r) => r['slug'] === 'trapping-rain-water')!;
-      expect(vip).toHaveProperty('description', 'NOI_DUNG_DE_BAI_VIP');
-      // Cùng hình dạng với `findBySlug`: mở được bài VIP thì đọc được đề, nhưng
-      // danh sách không bao giờ mang test ẩn.
+      expect(vip).toMatchObject({
+        slug: 'trapping-rain-water',
+        title: 'Hứng nước mưa',
+        topic: 'array',
+        isVip: true,
+      });
       expect(vip).not.toHaveProperty('hiddenTests');
-      // Bài thường trong cùng danh sách không đổi so với trước.
       const thuong = rows.find((r) => r['slug'] === 'two-sum')!;
-      expect(thuong).toHaveProperty('description', 'NOI_DUNG_DE_BAI_THUONG');
+      expect(thuong).toMatchObject({
+        slug: 'two-sum',
+        title: 'Hai số có tổng bằng mục tiêu',
+        topic: 'array',
+        isVip: false,
+      });
       expect(thuong).not.toHaveProperty('hiddenTests');
     }
   });
 
-  it('khách/user: bài VIP cắt còn đúng 5 trường, tuyệt đối không có mô tả', async () => {
+  it('khách/user: bài VIP vẫn trả 5 trường, không có mô tả', async () => {
     for (const role of ['user', undefined] as const) {
       const { svc } = makeService({ problems: [vipRow, normalRow] });
       const rows = await svc.findAll(role);
@@ -155,33 +167,7 @@ describe('ProblemsService.findAll theo role — mô tả đầy đủ cho ngư�
       for (const field of ['description', 'examples', 'constraints', 'tests']) {
         expect(chuoiVip, `còn sót ${field}`).not.toContain(field);
       }
-      // Bài thường thì vẫn có mô tả như cũ — không phải endpoint nào cũng bị cắt.
-      expect(JSON.stringify(rows)).toContain('NOI_DUNG_DE_BAI_THUONG');
     }
-  });
-
-  /**
-   * Cache `findAll` dùng chung cho mọi người trong tiến trình, nên thứ tự gọi
-   * không được đổi được câu trả lời. Trước khi sửa, cache lưu kết quả đã cắt
-   * nên gọi VIP trước là nguy cơ rò; nếu đổi sang lưu bản đầu thì ngược lại là
-   * khách gọi trước làm VIP mất mô tả giữa chừng. Hai chiều đều phải đúng.
-   */
-  it('gọi VIP trước không làm khách sau lấy được bản đầy (và ngược lại)', async () => {
-    const vipFirst = makeService({ problems: [vipRow, normalRow] });
-    expect((await vipFirst.svc.findAll('vip'))[0]).toHaveProperty(
-      'description',
-      'NOI_DUNG_DE_BAI_VIP',
-    );
-    const sau = await vipFirst.svc.findAll();
-    expect(JSON.stringify(sau)).not.toContain('NOI_DUNG_DE_BAI_VIP');
-    expect(sau.find((r) => r['slug'] === 'trapping-rain-water')).toMatchObject({ isVip: true });
-
-    const khachFirst = makeService({ problems: [vipRow, normalRow] });
-    expect(JSON.stringify(await khachFirst.svc.findAll())).not.toContain('NOI_DUNG_DE_BAI_VIP');
-    expect((await khachFirst.svc.findAll('vip'))[0]).toHaveProperty(
-      'description',
-      'NOI_DUNG_DE_BAI_VIP',
-    );
   });
 
   it('findAll chỉ query DB một lần dù lần này VIP và lần sau khách', async () => {

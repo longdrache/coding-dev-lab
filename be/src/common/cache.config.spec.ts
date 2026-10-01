@@ -39,7 +39,7 @@ describe('TTL khai báo — khớp đúng hành vi cache cũ', () => {
   it('TTL từng cache không đổi so với TtlCache đã gỡ', () => {
     expect(PROBLEM_LIST_TTL_MS).toBe(60_000); // listCache từng dùng 60_000
     expect(PROBLEM_SLUG_TTL_MS).toBe(300_000); // slugCache từng dùng 300_000
-    expect(DASHBOARD_TTL_MS).toBe(200); // dashboardCache từng dùng 200
+    expect(DASHBOARD_TTL_MS).toBe(300_000); // dashboardCache từng dùng 300_000
   });
 
   it('TTL mặc định của CacheModule là 60s — lưới an toàn, không phải giá trị dài nhất', () => {

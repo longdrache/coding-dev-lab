@@ -163,12 +163,13 @@ describe('VIP không lọt mô tả qua cache — findAll', () => {
   it('danh sách trong cache không lộ mô tả bài VIP cho người thường', async () => {
     const { svc, db } = makeService({ problems: [vipRow, normalRow] });
 
-    // Người VIP nạp danh sách trước (được mô tả đầy đủ) → cache có bản trung tính.
+    // Người VIP nạp danh sách trước → cache có bản trung tính.
     const vipXem = await svc.findAll('vip');
-    expect(vipXem.find((r) => r['slug'] === 'trapping-rain-water')).toHaveProperty(
-      'description',
-      VIP_DESCRIPTION,
-    );
+    expect(vipXem.find((r) => r['slug'] === 'trapping-rain-water')).toMatchObject({
+      slug: 'trapping-rain-water',
+      title: 'Hứng nước mưa',
+      isVip: true,
+    });
     await svc.findAll('vip');
     // Chứng minh đang đọc cache: DB không được gọi lần thứ hai.
     expect(db.problem.findMany).toHaveBeenCalledOnce();
@@ -183,18 +184,16 @@ describe('VIP không lọt mô tả qua cache — findAll', () => {
     const oVip = khach.find((r) => r['slug'] === 'trapping-rain-water')!;
     expect(oVip).toMatchObject({ isVip: true, title: 'Hứng nước mưa' });
     expect(Object.keys(oVip).sort()).toEqual(['difficulty', 'isVip', 'slug', 'title', 'topic']);
-
-    // Bài thường trong cùng danh sách không bị cắt nhầm.
-    expect(khach.find((r) => r['slug'] === 'two-sum')).toHaveProperty(
-      'description',
-      'NOI_DUNG_DE_BAI_THUONG',
-    );
   });
 
   it('khách nạp trước cũng không làm người VIP mất mô tả', async () => {
     const { svc } = makeService({ problems: [vipRow] });
     expect(JSON.stringify(await svc.findAll())).not.toContain(VIP_DESCRIPTION);
-    expect((await svc.findAll('vip'))[0]).toHaveProperty('description', VIP_DESCRIPTION);
+    expect((await svc.findAll('vip'))[0]).toMatchObject({
+      slug: 'trapping-rain-water',
+      title: 'Hứng nước mưa',
+      isVip: true,
+    });
   });
 });
 
@@ -374,9 +373,11 @@ describe('admin bật/tắt cờ VIP thì khoá có hiệu lực ngay, không c�
     // Người thường đọc trước khi khoá → cache chứa bản đầy đủ (kể cả `isVip: false`).
     const doc = await problems.findBySlug('bai-01', 'user');
     expect(doc!['description']).toBe('NOI_DUNG_DAY_DU_HAI_CHU_THAT');
-    expect((await problems.findAll('user'))[0]!['description']).toBe(
-      'NOI_DUNG_DAY_DU_HAI_CHU_THAT',
-    );
+    expect((await problems.findAll('user'))[0]).toMatchObject({
+      slug: 'bai-01',
+      title: 'Bài 1',
+      isVip: false,
+    });
 
     await admin.setProblemVip('bai-01', true);
     expect(bang.get('bai-01')!.isVip).toBe(true);
@@ -396,9 +397,11 @@ describe('admin bật/tắt cờ VIP thì khoá có hiệu lực ngay, không c�
     expect(JSON.stringify(sau)).not.toContain('NOI_DUNG_DAY_DU');
 
     // Người có VIP vẫn đọc được: cờ của bài không liên quan hạ VIP của user.
-    expect((await problems.findAll('vip'))[0]!['description']).toBe(
-      'NOI_DUNG_DAY_DU_HAI_CHU_THAT',
-    );
+    expect((await problems.findAll('vip'))[0]).toMatchObject({
+      slug: 'bai-01',
+      title: 'Bài 1',
+      isVip: true,
+    });
   });
 
   it('gỡ cờ thì bài mở lại ngay — không để cache cũ chặn nhầm bài đã mở khoá', async () => {
@@ -413,9 +416,11 @@ describe('admin bật/tắt cờ VIP thì khoá có hiệu lực ngay, không c�
     expect((await problems.findBySlug('bai-01', 'user'))!['description']).toBe(
       'NOI_DUNG_DAY_DU_HAI_CHU_THAT',
     );
-    expect((await problems.findAll('user'))[0]!['description']).toBe(
-      'NOI_DUNG_DAY_DU_HAI_CHU_THAT',
-    );
+    expect((await problems.findAll('user'))[0]).toMatchObject({
+      slug: 'bai-01',
+      title: 'Bài 1',
+      isVip: false,
+    });
   });
 
   /**

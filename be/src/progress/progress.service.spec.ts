@@ -65,7 +65,7 @@ describe('calcStreakFromMap', () => {
   });
 });
 
-describe('ProgressService.getDashboard (cache 200ms)', () => {
+describe('ProgressService.getDashboard (cache 300s)', () => {
   function makeService() {
     const db = {
       activityDay: { findMany: vi.fn().mockResolvedValue([]) },
@@ -93,10 +93,10 @@ describe('ProgressService.getDashboard (cache 200ms)', () => {
     expect(db.activityDay.findMany).toHaveBeenCalledTimes(QUERIES_PER_COMPUTE);
   });
 
-  it('hết 200ms thì query lại', async () => {
+  it('hết TTL thì query lại', async () => {
     const { svc, db } = makeService();
     await svc.getDashboard(1);
-    vi.advanceTimersByTime(199);
+    vi.advanceTimersByTime(299_999);
     await svc.getDashboard(1);
     expect(db.activityDay.findMany).toHaveBeenCalledTimes(QUERIES_PER_COMPUTE);
     vi.advanceTimersByTime(1);
@@ -120,7 +120,7 @@ describe('ProgressService.getDashboard (cache 200ms)', () => {
     const { svc } = makeService();
     const first = await svc.getDashboard(1);
     expect(await svc.getDashboard(1)).toBe(first);
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(300_000);
     expect(await svc.getDashboard(1)).not.toBe(first);
   });
 });

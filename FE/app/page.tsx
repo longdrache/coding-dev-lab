@@ -188,9 +188,8 @@ export default function Home() {
                   </span>
                 </motion.h1>
                 <motion.p variants={copyItem} className="text-base sm:text-lg text-zinc-700 leading-relaxed max-w-2xl mx-auto font-medium">
-                  Code bạn nộp được gửi lên Judge0 và chạy trong container riêng,
-                  mỗi test tối đa 2 giây CPU và 128MB RAM. 56 bài cấu trúc dữ
-                  liệu và giải thuật tuyển chọn sẵn, không rườm rà, tập trung
+                  56 bài cấu trúc dữ liệu và giải thuật tuyển chọn sẵn để rèn
+                  tư duy: không rườm rà, mỗi bài đều thuần khiết, tập trung
                   100% vào năng lực kỹ thuật.
                 </motion.p>
                 <motion.div variants={copyItem} className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">

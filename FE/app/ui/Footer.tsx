@@ -19,7 +19,6 @@ const COLUMNS: Array<{
     links: [
       { label: "Premium", href: "/premium" },
       { label: "Hỏi đáp", href: "/qna" },
-      { label: "Đăng nhập", href: "/sign-in" },
     ],
   },
 ];
@@ -80,9 +79,14 @@ export default function Footer() {
         {/* Bottom copyright and legal */}
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-zinc-100 pt-6 font-mono text-[12px] text-zinc-400 sm:flex-row">
           <p>© 2026 GoCode. Tối giản, thuần khiết &amp; tức thì.</p>
-          <p className="flex items-center gap-1.5">
-            <span className="text-zinc-300">/</span> learn • build • solve
-          </p>
+          <div className="flex items-center gap-4">
+            <Link href="/privacy" className="transition-colors hover:text-zinc-600">
+              Chính sách bảo mật
+            </Link>
+            <p className="flex items-center gap-1.5">
+              <span className="text-zinc-300">/</span> learn • build • solve
+            </p>
+          </div>
         </div>
       </div>
     </footer>

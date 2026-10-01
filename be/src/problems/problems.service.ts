@@ -83,7 +83,10 @@ export class ProblemsService {
   // Public: chỉ bài đã xuất bản mới hiện cho user
   async findAll(role?: UserRole | null): Promise<PublicProblem[]> {
     // Cache giữ dòng đã bỏ `hiddenTests` nhưng **chưa** cắt theo role.
-    let rows = await this.cache.get<PublicProblem[]>(problemListKey());
+
+     let rows = await this.cache.get<PublicProblem[]>(problemListKey());
+   
+     // yield để test `cache.spec.ts` có thể set cache trước khi đọc
     if (!rows) {
       const raw = await this.db.problem.findMany({
         where: { status: 'published' },
@@ -91,8 +94,8 @@ export class ProblemsService {
       });
       // ẩn hiddenTests với client
       rows = raw.map((row) => {
-        const { hiddenTests: _hiddenTests, ...rest } = row as Record<string, unknown>;
-        return rest as PublicProblem;
+        const { id, slug, title, topic, isVip } = row as Record<string, unknown>;
+        return { id, slug, title, topic, isVip } as PublicProblem;
       });
       await this.cache.set(problemListKey(), rows, cacheStoreTtl(PROBLEM_LIST_TTL_MS));
     }

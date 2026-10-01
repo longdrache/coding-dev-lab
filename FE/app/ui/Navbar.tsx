@@ -87,11 +87,8 @@ export default function NavBar() {
            * mất thông tin này (xem khối "Mobile panel" bên dưới).
            */}
           <div className="hidden shrink-0 whitespace-nowrap xl:flex items-center gap-2 text-xs font-mono text-zinc-500 px-2.5 py-1 rounded-full bg-zinc-100/80 border border-zinc-200/60">
-            <span className="relative flex w-1.5 h-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            </span>
-            <span className="whitespace-nowrap">Chấm bằng Judge0</span>
+          
+         
           </div>
           <div className="hidden shrink-0 whitespace-nowrap lg:flex">
             <OnlineCounter />

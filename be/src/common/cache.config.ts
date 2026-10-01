@@ -53,7 +53,7 @@ export const PROBLEM_SLUG_TTL_MS = 300_000;
  * hiện dữ liệu cũ tối đa 200ms — không người dùng nào nhận ra. Rút ngắn thêm thì
  * mất hết tác dụng, dài thêm thì hiện dữ liệu cũ sau khi vừa giải xong.
  */
-export const DASHBOARD_TTL_MS = 200;
+export const DASHBOARD_TTL_MS = 300_000;
 
 /**
  * Tiền tố key của từng nhóm cache. Tách theo service để một service không bao giờ

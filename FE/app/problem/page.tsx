@@ -18,9 +18,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 // (có cookie) ngay sau khi hydrate để người có VIP thấy mô tả đầy đủ.
 async function getInitialProblems(): Promise<Problem[] | null> {
   try {
+    // await new Promise((resolve) => setTimeout(resolve, 10000)); // delay 50s để BE kịp log ra console
     const res = await fetch(`${API_URL}/api/problems`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(4000),
+      // signal: AbortSignal.timeout(4000),
     });
     if (!res.ok) return null;
     const data: unknown = await res.json();

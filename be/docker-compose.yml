@@ -6,19 +6,36 @@ services:
     env_file:
       - .env
     ports:
-      - "4000:4000"
+      - "4001:4000"
     environment:
       PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/gocode
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@postgres:5432/gocode
       JUDGE0_URL: http://judge0-server:2358
     depends_on:
+      - postgres
       - judge0-server
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gocode
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
   judge0-server:
     image: judge0/judge0:latest
     ports:
       - "2358:2358"
-  
+
   judge0-workers:
     image: judge0/judge0:latest
     command: ["./scripts/workers"]
-    scale: 3  # 3 workers cho concurrency
+    scale: 3
+
+volumes:
+  pgdata:

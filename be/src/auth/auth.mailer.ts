@@ -6,7 +6,7 @@ import type { AuthMailPort, Mail } from './auth.service.ts';
  * Hạ tầng gửi mail: **Brevo** qua SMTP.
  *
  * Một hệ thống, ba biến, không có đường vòng:
- * - `BREVO_SMTP_LOGIN` + `BREVO_SMTP_KEY` — tài khoản SMTP trên Brevo.
+ * - `USER_LOGIN` + `USER_PASS` — tài khoản SMTP trên Brevo.
  * - `MAIL_FROM` — địa chỉ **đã xác minh** trong Brevo → Senders & Domains. Brevo từ
  *   chối mail gửi từ địa chỉ chưa xác minh, và hệ thống bên nhận cũng có thể chặn.
  *
@@ -25,8 +25,8 @@ import type { AuthMailPort, Mail } from './auth.service.ts';
  * không ai nhìn thấy. `AuthService` bắt lỗi này ở cả ba luồng nên nó không nổi ra
  * ngoài HTTP; nó lên log ở mức `error`.
  */
-const BREVO_SMTP_HOST = 'smtp-relay.brevo.com';
-const BREVO_SMTP_PORT = 587;
+const SMTP_HOST = 'smtp-relay.brevo.com';
+const SMTP_PORT = 587;
 
 @Injectable()
 export class AuthMailer implements AuthMailPort {
@@ -37,12 +37,12 @@ export class AuthMailer implements AuthMailPort {
    * người đọc log phải biết chính xác cần điền gì, không phải đoán.
    */
   private readConfig(): { login: string; key: string; from: string } {
-    const login = (process.env.SMTP_USER ?? '').trim();
-    const key = (process.env.SMTP_PASS ?? '').trim();
+    const login = (process.env.USER_LOGIN ?? '').trim();
+    const key = (process.env.USER_PASS ?? '').trim();
     const from = (process.env.MAIL_FROM ?? '').trim();
     const thieu = [
-      ...(login ? [] : ['BREVO_SMTP_LOGIN']),
-      ...(key ? [] : ['BREVO_SMTP_KEY']),
+      ...(login ? [] : ['USER_LOGIN']),
+      ...(key ? [] : ['USER_PASS']),
       ...(from ? [] : ['MAIL_FROM']),
     ];
     if (thieu.length > 0) {
@@ -55,7 +55,7 @@ export class AuthMailer implements AuthMailPort {
     // biến "sai một dấu" thành một dòng log nói thẳng nguyên nhân.
     if (key.startsWith('xkeysib-')) {
       throw new Error(
-        'BREVO_SMTP_KEY đang là API key (xkeysib-…) chứ không phải SMTP key (xsmtpsib-…). '
+        'USER_PASS đang là API key (xkeysib-…) chứ không phải SMTP key (xsmtpsib-…). '
         + 'Hai loại khoá này không dùng thay nhau được — lấy đúng loại ở Brevo → SMTP & API.',
       );
     }
@@ -66,8 +66,8 @@ export class AuthMailer implements AuthMailPort {
     const { login, key, from } = this.readConfig();
     try {
       const transport = nodemailer.createTransport({
-        host: BREVO_SMTP_HOST,
-        port: BREVO_SMTP_PORT,
+        host: SMTP_HOST,
+        port: SMTP_PORT,
         secure: false,
         requireTLS: true,
         auth: { user: login, pass: key },

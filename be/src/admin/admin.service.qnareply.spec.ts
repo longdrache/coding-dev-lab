@@ -16,13 +16,8 @@ vi.mock('nodemailer', () => ({ default: { createTransport: h.createTransport } }
 const OLD_ENV = { ...process.env };
 /** Mọi biến mail, kể cả biến Mailtrap đã bỏ — dọn sạch để `.env` của máy không lách test. */
 const MAIL_VARS = [
-  'BREVO_SMTP_LOGIN',
-  'BREVO_SMTP_KEY',
-  // `AdminService.replyQna` đọc `BREVO_SMTP_*` (`admin.service.ts:339-340`), khác
-  // `AuthMailer` đã đổi sang `SMTP_USER`/`SMTP_PASS`. Dọn cả hai cặp để test không
-  // phụ thuộc máy dev đang đặt bên nào trong `.env`.
-  'SMTP_USER',
-  'SMTP_PASS',
+  'USER_LOGIN',
+  'USER_PASS',
   'MAIL_FROM',
   'MAIL_API_TOKEN',
   'EMAIL_HOST',
@@ -46,12 +41,9 @@ beforeEach(() => {
   h.sendMail.mockReset().mockResolvedValue({ messageId: 'id-1' });
   h.createTransport.mockReset().mockReturnValue({ sendMail: h.sendMail });
   log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-  // Bộ ba hợp lệ. Tên biến lấy từ `AdminService.replyQna` (`admin.service.ts:339-341`):
-  // luồng này vẫn đọc `BREVO_SMTP_*` (chỉ `AuthMailer` đã đổi sang `SMTP_USER`/
-  // `SMTP_PASS`). Test nào muốn khác thì set lại trong chính nó — không thừa hưởng
-  // từ `.env` của máy (bài học từ f4d04c4).
-  process.env.BREVO_SMTP_LOGIN = 'gocode@brevo.test';
-  process.env.BREVO_SMTP_KEY = 'xsmtpsib-v1-abc';
+  // Bộ ba hợp lệ. Tên biến lấy từ `AdminService.replyQna` (`admin.service.ts:339-341`).
+  process.env.USER_LOGIN = 'gocode@brevo.test';
+  process.env.USER_PASS = 'xsmtpsib-v1-abc';
   process.env.MAIL_FROM = 'no-reply@gocode.vn';
 });
 
@@ -87,15 +79,15 @@ describe('AdminService.replyQna gửi mail qua Brevo', () => {
     // Hồi quy thật: còn nhánh Mailtrap thì đặt `MAIL_API_TOKEN` là mail đi mà
     // không hề đi qua Brevo, tức test này xanh trong khi sản phẩm vẫn hỏng.
     process.env.MAIL_API_TOKEN = 'token-1';
-    delete process.env.BREVO_SMTP_LOGIN;
-    delete process.env.BREVO_SMTP_KEY;
-    await expect(makeSvc().replyQna('q1', 'Cảm ơn bạn')).rejects.toThrow(/BREVO_SMTP_LOGIN/);
+    delete process.env.USER_LOGIN;
+    delete process.env.USER_PASS;
+    await expect(makeSvc().replyQna('q1', 'Cảm ơn bạn')).rejects.toThrow(/USER_LOGIN/);
     expect(h.createTransport).not.toHaveBeenCalled();
     expect(h.sendMail).not.toHaveBeenCalled();
   });
 
-  it('BREVO_SMTP_KEY là API key (xkeysib) thì nói thẳng sai loại khoá', async () => {
-    process.env.BREVO_SMTP_KEY = 'xkeysib-v1-abc';
+  it('USER_PASS là API key (xkeysib) thì nói thẳng sai loại khoá', async () => {
+    process.env.USER_PASS = 'xkeysib-v1-abc';
     await expect(makeSvc().replyQna('q1', 'Cảm ơn bạn')).rejects.toThrow(/xsmtpsib/);
     expect(h.createTransport).not.toHaveBeenCalled();
   });

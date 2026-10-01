@@ -336,12 +336,12 @@ export class AdminService {
     // kiểu cấu hình mail trong cùng một backend. Nhánh Mailtrap Sending API
     // (`MAIL_API_TOKEN`) đã bỏ hẳn: domain demo chỉ gửi được tới email chủ tài
     // khoản, nên trả lời QNA "thành công" trong khi thư không bao giờ tới nơi.
-    const login = (process.env.BREVO_SMTP_LOGIN ?? '').trim();
-    const key = (process.env.BREVO_SMTP_KEY ?? '').trim();
+    const login = (process.env.USER_LOGIN ?? '').trim();
+    const key = (process.env.USER_PASS ?? '').trim();
     const from = (process.env.MAIL_FROM ?? '').trim();
     const thieu = [
-      ...(login ? [] : ['BREVO_SMTP_LOGIN']),
-      ...(key ? [] : ['BREVO_SMTP_KEY']),
+      ...(login ? [] : ['USER_LOGIN']),
+      ...(key ? [] : ['USER_PASS']),
       ...(from ? [] : ['MAIL_FROM']),
     ];
     if (thieu.length > 0) {
@@ -352,7 +352,7 @@ export class AdminService {
     }
     if (key.startsWith('xkeysib-')) {
       throw new BadRequestException(
-        'BREVO_SMTP_KEY đang là API key (xkeysib-…) chứ không phải SMTP key (xsmtpsib-…). '
+        'USER_PASS đang là API key (xkeysib-…) chứ không phải SMTP key (xsmtpsib-…). '
         + 'Hai loại khoá này không dùng thay nhau được.',
       );
     }

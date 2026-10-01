@@ -70,7 +70,7 @@ CacheModule.register({
     // `@UseGuards(ThrottleGuard)` trên route thì Nest chạy nó hai lần mỗi request
     // và mọi ngưỡng bị chia đôi (20/giờ -> 10/giờ). Vì vậy decorator
     // `@UseGuards(ThrottleGuard)` đã bị gỡ khỏi toàn bộ controller.
-    { provide: APP_GUARD, useClass: ThrottleGuard },
+    // { provide: APP_GUARD, useClass: ThrottleGuard },
   ],
 })
 export class AppModule {}

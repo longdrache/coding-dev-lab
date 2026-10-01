@@ -50,8 +50,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig
       value={{
-        provider: cacheProvider,
-        revalidateIfStale: false,
+        // provider: cacheProvider,
+        revalidateIfStale: true,
         dedupingInterval: 10_000,
         revalidateOnFocus: false,
         revalidateOnReconnect: true,

@@ -1,5 +1,7 @@
 # GoCode — nền tảng luyện thuật toán
 
+**Production:** https://go-code-vn.vercel.app/
+
 Chấm code tự động bằng Judge0: 56 bài tập cấu trúc dữ liệu và giải thuật (Dễ / Trung bình / Khó),
 8 ngôn ngữ, streak và bản đồ nhiệt tiến độ, gói Premium trả phí, cùng một trang quản trị riêng.
 Toàn bộ giao diện, tên bài và thông báo lỗi bằng tiếng Việt.
@@ -116,6 +118,16 @@ Toàn bộ giao diện, tên bài và thông báo lỗi bằng tiếng Việt.
 - Judge0: BE gắn header `X-Auth-Token` khi `JUDGE0_API_TOKEN` có giá trị. Để trống thì Judge0
   chạy public — ai cũng chấm được, nên production phải đặt token.
 
+## Tech stack
+
+| Layer | Công nghệ |
+| ----- | --------- |
+| FE | Next.js 16, React 19, TypeScript, Tailwind v4, shadcn, SWR, R3F, Framer Motion, GSAP, Monaco |
+| Admin | Next.js 16, React 19, TypeScript, Tailwind v4 |
+| BE | NestJS 12, Prisma 7, Neon Postgres, Stripe, Nodemailer/Brevo |
+| Infra | Vercel, pnpm, Judge0 Docker |
+| Auth | Custom JWT (RS256), Google OAuth 2.0 + PKCE S256, bcrypt |
+
 ## Chạy local
 
 Cần Node.js 22 (CI chạy 22), pnpm 10, và một Postgres. Judge0 chạy bằng Docker hoặc trỏ
@@ -169,36 +181,21 @@ nằm trong repo.
 
 | Biến | Bắt buộc | Lấy ở đâu / ghi chú |
 | --- | --- | --- |
-| `DATABASE_URL` | có | **Không có trong `.env.example`** nhưng code bắt buộc (`be/src/database/database.service.ts`). `prisma7.config.ts` cũng đọc biến này khi migrate. |
-| `DATABASE_URL_UNPOOLED` | nên có | Ưu tiên connection trực tiếp thay vì pooler. Thiếu thì rơi về `DATABASE_URL`. |
 | `PORT` | không | Mặc định 4000. |
-| `JUDGE0_URL` | có | URL Judge0, mặc định trong compose là `http://judge0-server:2358`. |
-| `JUDGE0_API_TOKEN` | có | Token mà lớp bảo vệ trước Judge0 kiểm tra qua header `X-Auth-Token` (với Judge0 đặt `AUTHN_TOKEN` trong `judge0.conf`). Rỗng = Judge0 public. |
 | `STRIPE_SECRET_KEY` | có | Bắt buộc cho trang Premium. |
-| `STRIPE_WEBHOOK_SECRET` | có | Xác thực chữ ký webhook. Thiếu thì mọi webhook bị từ chối với `STRIPE_WEBHOOK_SECRET chưa được cấu hình`. |
+| `STRIPE_WEBHOOK_SECRET` | có | Xác thực chữ ký webhook. Thiếu thì mọi webhook bị từ chối. |
 | `FRONTEND_URL` | có | Origin của FE, dùng cho CORS và link trong mail. |
-| `FRONTEND_ADMIN_URL` | không | Origin của Admin cho CORS. |
-| `BREVO_SMTP_LOGIN` | có | Brevo → **SMTP & API** (tab *SMTP*). |
-| `BREVO_SMTP_KEY` | có | Cùng trang đó. Xem cảnh báo bên dưới. |
-| `MAIL_FROM` | có | Chỉ địa chỉ, phải là sender **đã xác minh** ở Brevo → *Senders & Domains*. |
+| `JUDGE0_URL` | có | URL Judge0, mặc định trong compose là `http://judge0-server:2358`. |
+| `JUDGE0_API_TOKEN` | có | Token cho header `X-Auth-Token`. Rỗng = Judge0 public. |
+| `USER_LOGIN` | có | Tài khoản SMTP Brevo. |
+| `USER_PASS` | có | SMTP key Breho (`xsmtpsib-…`), không phải API key. |
+| `MAIL_FROM` | có | Địa chỉ sender **đã xác minh** trên Brevo. |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_PASSWORD_HASH` | có | Tài khoản admin. Bcrypt hash tạo bằng `bcrypt.hashSync`. |
 | `ADMIN_JWT_PRIVATE_KEY` / `ADMIN_JWT_PUBLIC_KEY` | có | Cặp RSA cho cookie admin (RS256). |
-| `JWT_SECRET` | không | Chỉ là fallback HS256 cho cookie admin cũ. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | có | Google Cloud Console → APIs & Services → Credentials → OAuth client ID loại *Web application*. |
-| `IP_HASH_SALT` | không | Muốn analytics đổi cột `ipHash` giữa các lần triển khai thì đặt. Không có thì dùng `gocode-views`. |
+| `JWT_SECRET` | không | Fallback HS256 cho cookie admin cũ. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | có | Google Cloud Console → Credentials → OAuth client ID loại *Web application*. |
 
-**Hai chỗ dễ sai nhất:**
 
-1. `BREVO_SMTP_KEY` phải là **SMTP key** dạng `xsmtpsib-…`, **không phải API key** dạng
-   `xkeysib-…`. Hai loại khoá này không dùng thay nhau được; dán nhầm API key thì SMTP fail bằng
-   `535 authentication failed`. BE có chặn tiền tố `xkeysib-` và log lỗi nêu thẳng trước khi gửi
-   (`be/src/auth/auth.mailer.ts`).
-2. `MAIL_FROM` phải là sender **đã xác minh** trên Brevo; Brevo từ chối gửi từ địa chỉ chưa xác minh.
-
-Thiếu bất kỳ biến mail nào thì lúc gửi BE log lỗi nêu đúng tên biến thiếu và **không gửi** — không
-có địa chỉ dự phòng, không im lặng bỏ qua. `register` vẫn trả 200 (tài khoản đã tạo, người dùng bấm
-"gửi lại link" được), `forgot-password` vẫn trả câu trả lời chung để không lộ email nào đã đăng ký.
-Tìm lỗi gửi mail thì grep `thất bại` trong log BE.
 
 ### FE (`FE/.env`)
 
@@ -214,6 +211,17 @@ Tìm lỗi gửi mail thì grep `thất bại` trong log BE.
 | `NEXT_PUBLIC_API_URL` | Dự phòng khi thiếu `BE_API_URL`. |
 | `JWT_SECRET` | Chỉ dùng làm fallback HS256 khi verify RS256 thất bại (chỉ ở dev). |
 | `ADMIN_JWT_PUBLIC_KEY` | Khoá công khai để `proxy.ts` verify cookie admin. |
+
+## Docker Compose
+
+Judge0 chạy bằng Docker Compose:
+
+```bash
+cd be && docker compose up -d      # judge0-server + 3 workers
+docker compose restart judge0-server
+```
+
+`docker-compose.yml` khai báo `judge0-server` + 3 workers, mặc định port 2358.
 
 ## Phụ thuộc ngoài
 
@@ -286,6 +294,226 @@ model stub chưa dùng.
 Quan hệ chính: `User` 1—N các bảng dữ liệu. `onDelete: Cascade` cho dữ liệu thuộc user;
 `QnaQuestion`, `PageView`, `LoginEvent` để lại dòng (nullable `userId`) khi user bị xoá.
 
+## ERD
+
+```mermaid
+erDiagram
+    User ||--o{ UserToken : "refresh tokens"
+    User ||--o{ UserAccount : "OAuth links"
+    User ||--o{ ActivityDay : "streak"
+    User ||--o{ SolvedProblem : "solved"
+    User ||--o{ FavoriteProblem : "favorites"
+    User ||--o{ UserBadge : "badges"
+    User ||--o{ Submission : "submissions"
+    User ||--o{ QnaQuestion : "questions"
+    User ||--o{ PageView : "views"
+    User ||--o{ LoginEvent : "logins"
+
+    User {
+        Int id PK
+        String email UK
+        String role
+        DateTime vipExpiresAt
+        String premiumPlan
+        String stripeSubscriptionId
+    }
+    UserToken {
+        String id PK
+        Int userId FK
+        String tokenHash
+        DateTime expiresAt
+    }
+    UserAccount {
+        Int id PK
+        Int userId FK
+        String provider
+        String providerUserId
+    }
+    ActivityDay {
+        String id PK
+        Int userId FK
+        DateTime date
+        Int count
+    }
+    SolvedProblem {
+        String id PK
+        Int userId FK
+        String slug
+        DateTime solvedAt
+    }
+    FavoriteProblem {
+        String id PK
+        Int userId FK
+        String slug
+    }
+    UserBadge {
+        String id PK
+        Int userId FK
+        String badgeId
+    }
+    Problem {
+        String id PK
+        String slug UK
+        String title
+        String difficulty
+        Boolean isVip
+        Json hiddenTests
+    }
+    Submission {
+        String id PK
+        Int userId FK
+        String problemSlug
+        Int languageId
+        String sourceCode
+        String status
+    }
+    QnaQuestion {
+        String id PK
+        Int userId FK
+        String email
+        String question
+    }
+    StripeEvent {
+        String eventId PK
+        String type
+    }
+    PageView {
+        String id PK
+        Int userId FK
+        String ipHash
+        String path
+    }
+    LoginEvent {
+        String id PK
+        Int userId FK
+        String ipHash
+        String country
+    }
+```
+
+## API Collection
+
+### Auth
+
+| Method | Path | Body | Response |
+| ------ | ---- | ---- | -------- |
+| `POST` | `/api/auth/register` | `{ email, password, name? }` | `200 { message }` |
+| `POST` | `/api/auth/login` | `{ email, password }` | `200 { user, expiresIn }` + cookies |
+| `POST` | `/api/auth/refresh` | — (cookie `refresh`) | `200 { user, expiresIn }` |
+| `POST` | `/api/auth/logout` | — (cookie `refresh`) | `200 { ok }` |
+| `GET` | `/api/auth/me` | — (cookie `session`) | `200 { user, expiresIn }` / `401` |
+| `GET` | `/api/auth/verify?token=` | — | `200 { user, expiresIn }` |
+| `POST` | `/api/auth/forgot-password` | `{ email }` | `200 { message }` |
+| `POST` | `/api/auth/reset-password` | `{ token, password }` | `200 { ok }` |
+
+### OAuth
+
+| Method | Path | Response |
+| ------ | ---- | -------- |
+| `GET` | `/api/auth/oauth/google/start?redirect_to=` | `302` → Google |
+| `GET` | `/api/auth/oauth/google/callback?code&state` | `302` → FE |
+
+### Problems
+
+| Method | Path | Auth | Response |
+| ------ | ---- | ---- | -------- |
+| `GET` | `/api/problems` | public | `200 Problem[]` |
+| `GET` | `/api/problems/:slug` | public | `200 Problem` / `404` |
+| `POST` | `/api/problems/:slug/submit` | JWT | `200 Submission` |
+
+### Submissions
+
+| Method | Path | Auth | Response |
+| ------ | ---- | ---- | -------- |
+| `POST` | `/api/submissions/batch` | JWT | `200 { tokens }` |
+| `GET` | `/api/submissions/batch?tokens=` | JWT | `200 Submission[]` |
+| `GET` | `/api/history` | JWT | `200 Submission[]` |
+| `POST` | `/api/history` | JWT | `200 Submission` |
+
+### Progress
+
+| Method | Path | Auth | Response |
+| ------ | ---- | ---- | -------- |
+| `GET` | `/api/progress/dashboard` | JWT | `200 { streak, heatmap, badges, solved }` |
+| `GET` | `/api/progress/solved` | JWT | `200 { slugs }` |
+| `GET` | `/api/progress/favorites` | JWT | `200 { slugs }` |
+| `POST` | `/api/progress/favorites` | JWT | `200 { ok }` |
+
+### Premium
+
+| Method | Path | Auth | Response |
+| ------ | ---- | ---- | -------- |
+| `POST` | `/api/premium/checkout` | JWT | `200 { url }` |
+| `GET` | `/api/premium/status` | JWT | `200 { role, vipExpiresAt }` |
+| `POST` | `/api/premium/webhook` | Stripe | `200 { received }` |
+
+### Admin
+
+| Method | Path | Auth | Response |
+| ------ | ---- | ---- | -------- |
+| `POST` | `/api/admin/login` | — | `200 { ok }` + cookie |
+| `GET` | `/api/admin/users` | admin | `200 User[]` |
+| `PATCH` | `/api/admin/problems/:slug/vip` | admin | `200 { ok }` |
+| `POST` | `/api/admin/qna/:id/reply` | admin | `200 { ok }` |
+
+### Other
+
+| Method | Path | Auth | Response |
+| ------ | ---- | ---- | -------- |
+| `GET` | `/api/presence/online` | public | `200 { count }` |
+| `POST` | `/api/qna` | public | `200 { ok }` |
+
+## Performance Testing
+
+Tool: k6
+Environment: NestJS, PostgreSQL (local)
+Machine: AMD Ryzen 7 5800U, 14GB RAM, Windows 11
+Test date: 2026-10-01
+Commit: [Git commit SHA]
+
+### Scenarios
+- Public read: 30 VUs, sustain for 120 seconds (3 runs)
+
+### Thresholds
+- HTTP error rate < 1%
+- API p95 latency < 500 ms
+- Checks pass rate > 99%
+
+### Results
+| Run | VUs | Duration | Requests | RPS | p50 | p90 | p95 | p99 | Error rate | Status |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | 30 | 120s | 2398 | 19.83 | 1.07ms | 1.73ms | 2.46ms | 614.03ms | 0% | PASS |
+| 2 | 30 | 120s | 2374 | 19.61 | 1.07ms | 1.73ms | 2.16ms | 990.57ms | 0% | PASS |
+| 3 | 30 | 120s | 2377 | 19.58 | 0.92ms | 1.58ms | 1.75ms | 797.27ms | 0% | PASS |
+| **Avg** | **30** | **120s** | **2383** | **19.67** | **1.02ms** | **1.68ms** | **2.12ms** | **800.62ms** | **0%** | **PASS** |
+
+### Reproduce
+```bash
+cd be && pnpm start:dev
+k6 run --vus 30 --duration 120s --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" -e BASE_URL=http://localhost:4000 tests/performance/problems-load-test.js
+```
+
+### Judge0 Load Test
+```bash
+# Cần Judge0 chạy (docker compose up -d trong be/)
+# Test user phải tồn tại trước (script tự register nếu chưa có)
+k6 run --vus 5 --duration 60s --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" -e BASE_URL=http://localhost:4000 -e TEST_EMAIL=k6@test.com -e TEST_PASSWORD=k6test123 tests/performance/judge0-load-test.js
+```
+
+### Judge0 Results
+| Metric | Value |
+|--------|-------|
+| VUs | 5 |
+| Duration | 60s |
+| Requests | 276 |
+| RPS | 4.41 |
+| p50 | 202ms |
+| p90 | 923ms |
+| p95 | 1.03s |
+| p99 | 1.62s |
+| Error rate | 0% |
+| Status | PASS |
+
 ## Chạy test
 
 ```bash
@@ -304,11 +532,25 @@ này chặn e2e khi `DATABASE_URL` trỏ vào Neon (`*.neon.tech`) trừ khi b�
 - FE, Admin, BE là ba project Vercel riêng. BE chạy qua `be/api/index.ts` (`be/vercel.json`).
 - Biến bắt buộc trên BE khi deploy: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `STRIPE_SECRET_KEY`,
   `STRIPE_WEBHOOK_SECRET`, `JUDGE0_URL`, `JUDGE0_API_TOKEN`, `ADMIN_*`, `FRONTEND_URL`,
-  `BREVO_SMTP_LOGIN`, `BREVO_SMTP_KEY`, `MAIL_FROM`, và ba biến `GOOGLE_*`.
+   `USER_LOGIN`, `USER_PASS`, `MAIL_FROM`, và ba biến `GOOGLE_*`.
 - `ADMIN_PASSWORD=admin` và `JWT_SECRET` mặc định **không được** để nguyên khi deploy.
 - Stripe webhook trỏ tới `https://<be-domain>/api/premium/webhook`.
 - Admin và BE khác domain nên cookie admin chạy `SameSite=None; Secure` khi
   `NODE_ENV=production` hoặc `VERCEL=1` (`be/src/admin/admin.controller.ts`).
+
+## Screenshots
+
+| Trang chủ | Danh sách bài | Trang bài |
+| --- | --- | --- |
+| ![Trang chủ](docs/images/trang-chu.png) | ![Danh sách bài](docs/images/danh-sach-bai.png) | ![Trang bài](docs/images/bai-tap-mon-code.png) |
+
+| Premium | Đăng nhập | Admin |
+| --- | --- | --- |
+| ![Premium](docs/images/premium.png) | ![Đăng nhập](docs/images/dang-nhap-google.png) | ![Admin](docs/images/admin-dashboard.png) |
+
+## API Documentation
+
+API collection đầy đủ xem ở section [API Collection](#api-collection) phía trên. Swagger UI chưa được tích hợp — dùng Postman hoặc curl với các endpoint đã liệt kê.
 
 ## Tài liệu khác
 

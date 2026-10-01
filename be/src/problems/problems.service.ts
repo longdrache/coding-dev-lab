@@ -1,7 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { DatabaseService } from '../database/database.service.ts';
 import { Judge0Service } from '../judge0/judge0.service.ts';
-import { TtlCache } from '../common/ttl-cache.ts';
+import {
+  PROBLEM_LIST_TTL_MS,
+  PROBLEM_SLUG_TTL_MS,
+  cacheStoreTtl,
+  createLocalCache,
+  problemListKey,
+  problemSlugKey,
+} from '../common/cache.config.ts';
 import type { UserRole } from '../auth/auth.types.ts';
 import {
   assertVipProblemAllowed,
@@ -12,12 +21,11 @@ import {
 
 type PublicProblem = Record<string, unknown>;
 
-const LIST_KEY = 'all';
-// Danh sách đổi thường xuyên hơn (bài mới publish) nên TTL ngắn; chi tiết
-// bài gần như bất biến nên để lâu. Không có invalidation thủ công: admin
-// sửa xong tối đa phải chờ TTL mới thấy.
-const LIST_TTL_MS = 60_000;
-const SLUG_TTL_MS = 300_000;
+// TTL và namespace không khai ở đây nữa — xem `common/cache.config.ts`. Danh sách
+// đổi thường xuyên hơn (bài mới publish) nên TTL ngắn; chi tiết bài gần như bất
+// biến nên để lâu. Không có invalidation thủ công cho mọi bài: admin sửa xong tối
+// đa phải chờ TTL mới thấy — riêng cờ VIP thì bắt buộc xoá ngay (xem
+// `invalidateProblemCache`).
 
 function normalizeOutput(value: string): string {
   return value
@@ -40,15 +48,26 @@ function rawOutputOf(s: Record<string, unknown>): string {
 
 @Injectable()
 export class ProblemsService {
-  // Field chứ không phải constructor dep: giữ nguyên lời gọi
-  // `new ProblemsService(db, judge0)` của test cũ.
-  private readonly listCache = new TtlCache<PublicProblem[]>(LIST_TTL_MS);
-  private readonly slugCache = new TtlCache<PublicProblem>(SLUG_TTL_MS);
-
   constructor(
     private readonly db: DatabaseService,
     private readonly judge0: Judge0Service,
-  ) {}
+    /**
+     * Cache nội dung do `@nestjs/cache-manager` quản lý.
+     *
+     * `@Optional` vì lý do đã ghi ở `problems.module.ts`: có những test dựng
+     * service bằng `new ProblemsService(db, judge0)` (hai tham số). Bỏ `@Optional`
+     * vào sẽ phải sửa hàng chục lời gọi trong test để lấy cache từ đâu đó, và
+     * mất tác dụng của việc test tự dựng service. Khi thiếu DI thì tự tạo cache
+     * in-memory cùng loại — **hành vi cache y hệt**, chỉ khác chỗ quản lý.
+     */
+    @Optional()
+    @Inject(CACHE_MANAGER)
+    cache?: Cache,
+  ) {
+    this.cache = cache ?? createLocalCache();
+  }
+
+  private readonly cache: Cache;
 
   /**
    * Danh sách bài đã publish.
@@ -64,7 +83,7 @@ export class ProblemsService {
   // Public: chỉ bài đã xuất bản mới hiện cho user
   async findAll(role?: UserRole | null): Promise<PublicProblem[]> {
     // Cache giữ dòng đã bỏ `hiddenTests` nhưng **chưa** cắt theo role.
-    let rows = this.listCache.get(LIST_KEY);
+    let rows = await this.cache.get<PublicProblem[]>(problemListKey());
     if (!rows) {
       const raw = await this.db.problem.findMany({
         where: { status: 'published' },
@@ -75,7 +94,7 @@ export class ProblemsService {
         const { hiddenTests: _hiddenTests, ...rest } = row as Record<string, unknown>;
         return rest as PublicProblem;
       });
-      this.listCache.set(LIST_KEY, rows);
+      await this.cache.set(problemListKey(), rows, cacheStoreTtl(PROBLEM_LIST_TTL_MS));
     }
     // Cắt **theo lần gọi**, không theo lúc nạp cache. Nếu cache lưu kết quả
     // đã cắt thì một người VIP gọi trước sẽ làm khách gọi sau nhận bản đầy;
@@ -93,8 +112,12 @@ export class ProblemsService {
    * claim trong access token, xem `vip-problem.policy.ts`.
    */
   async findBySlug(slug: string, role?: UserRole | null): Promise<PublicProblem | null> {
-    const hit = this.slugCache.get(slug);
+    const hit = await this.cache.get<PublicProblem>(problemSlugKey(slug));
     if (hit) {
+      // Chặn **trước** khi trả, kể cả khi dữ liệu đến từ cache: bản cache giữ
+      // nguyên cột `isVip`, nên đây là điểm quyết định duy nhất chặn được bài vừa
+      // khoá mà `findUnique` còn trả về `isVip: false` cũ. Bỏ dòng này thì người
+      // thường đọc được đề VIP trong suốt TTL — xem `problems.cache.spec.ts`.
       assertVipProblemAllowed(readIsVipFlag(hit['isVip']), role);
       return hit;
     }
@@ -106,7 +129,7 @@ export class ProblemsService {
     const { hiddenTests: _hiddenTests, ...rest } = row as Record<string, unknown>;
     // Không cache null: bài vừa publish sẽ thấy ngay ở request kế tiếp
     // thay vì phải chờ hết TTL.
-    this.slugCache.set(slug, rest);
+    await this.cache.set(problemSlugKey(slug), rest, cacheStoreTtl(PROBLEM_SLUG_TTL_MS));
     return rest;
   }
 
@@ -115,18 +138,24 @@ export class ProblemsService {
    *
    * Bắt buộc, không phải tối ưu: cache ở đây giữ **cả cột `isVip`**, và
    * `findBySlug` chấn chấn bằng `hit['isVip']` (xem dòng assert bên trên). Nên nếu
-   * admin bật cờ VIP cho một bài mà dòng đầy đủ của nó đang nằm trong
-   * `slugCache`, thì tới hết TTL (5 phút) mọi người vẫn đọc được đề bài đó — đúng
-   * lỗi rò nội dung VIP mà `problem_vip_only` sinh ra để chặn. TTL là biện pháp
-   * tạm thời cho dữ liệu gần như bất biến, không phải lưới an toàn; khoá bài thì
-   * phải có hiệu lực ngay.
+   * admin bật cờ VIP cho một bài mà dòng đầy đủ của nó đang nằm trong cache
+   * `problems:slug:<slug>`, thì tới hết TTL (5 phút) mọi người vẫn đọc được đề bài
+   * đó — đúng lỗi rò nội dung VIP mà `problem_vip_only` sinh ra để chặn. TTL là
+   * biện pháp tạm thời cho dữ liệu gần như bất biến, không phải lưới an toàn;
+   * khoá bài thì phải có hiệu lực ngay.
    *
-   * `listCache` xoá luôn vì danh sách chứa cột `isVip` của **mọi** bài, nên đổi
+   * Key danh sách xoá luôn vì danh sách chứa cột `isVip` của **mọi** bài, nên đổi
    * cờ của một bài làm cả danh sách cũ.
+   *
+   * `mdel` xoá cả hai key trong **một** lệnh thay vì hai lần `del`. Không chỉ để
+   * gọn: `cache-manager` là API bất đồng bộ, nên nếu hai lần `del` rời rạc thì
+   * có khoảng thời gian danh sách đã sạch còn chi tiết thì chưa, và request đúng
+   * khoảng giữa đó vẫn lấy được đề. `mdel` chỉ resolve khi cả hai đã xoá xong —
+   * đó là điều kiện để `AdminService.setProblemVip` `await` được và trả lời
+   * sau khi cache đã sạch thật.
    */
-  invalidateProblemCache(slug: string): void {
-    this.listCache.delete(LIST_KEY);
-    this.slugCache.delete(slug);
+  async invalidateProblemCache(slug: string): Promise<void> {
+    await this.cache.mdel([problemSlugKey(slug), problemListKey()]);
   }
 
   async submit(

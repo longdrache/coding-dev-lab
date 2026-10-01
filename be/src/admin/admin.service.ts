@@ -575,9 +575,13 @@ export class AdminService {
     });
 
     // Xoá cache **trước** khi trả lời: nếu để sót, người thường còn đọc được đề
-    // bài vừa khoá tới hết TTL. `slugCache` giữ nguyên cột `isVip` và
-    // `findBySlug` chấn chấn bằng đúng bản cache đó.
-    this.problems?.invalidateProblemCache(slug);
+    // bài vừa khoá tới hết TTL. Cache `problems:slug:<slug>` giữ nguyên cột
+    // `isVip` và `findBySlug` chấn chấn bằng đúng bản cache đó.
+    //
+    // `await` là bắt buộc, không phải cho đàng hoàng: `cache-manager` xoá bất
+    // đồng bộ, nên gọi mà không `await` thì hàm này trả lời admin trước khi cache
+    // thực sự sạch — request thường gửi ngay sau đó vẫn lấy được đề VIP.
+    await this.problems?.invalidateProblemCache(slug);
 
     const from = readIsVipFlag(existing.isVip);
     // Cột `isVip` trong JWT là chuyện của `User` — dòng log này chỉ ghi bài nào

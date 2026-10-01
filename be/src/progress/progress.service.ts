@@ -1,6 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { DatabaseService } from '../database/database.service.ts';
-import { TtlCache } from '../common/ttl-cache.ts';
+import {
+  DASHBOARD_TTL_MS,
+  cacheStoreTtl,
+  createLocalCache,
+  dashboardKey,
+} from '../common/cache.config.ts';
 import type { UserRole } from '../auth/auth.types.ts';
 import { VipProblemService } from '../problems/vip-problem.service.ts';
 
@@ -70,15 +77,23 @@ export function calcStreakFromMap(map: Record<string, number>): number {
 
 @Injectable()
 export class ProgressService {
-  // Khoá theo userId: dashboard là dữ liệu riêng của từng user, dùng chung
-  // một key sẽ lộ dữ liệu chéo. Field để giữ nguyên lời gọi
-  // `new ProgressService(db)` của test cũ.
-  private readonly dashboardCache = new TtlCache<Dashboard>(200);
-
   constructor(
     private readonly db: DatabaseService,
     private readonly vipProblems: VipProblemService,
-  ) {}
+    /**
+     * Cache do `@nestjs/cache-manager` quản lý. `@Optional` vì có test dựng
+     * service bằng `new ProgressService(db, vip)` (hai tham số) — xem lý do giống
+     * ở `ProblemsService`. Thiếu DI thì tự tạo cache in-memory cùng loại, hành
+     * vi không đổi.
+     */
+    @Optional()
+    @Inject(CACHE_MANAGER)
+    cache?: Cache,
+  ) {
+    this.cache = cache ?? createLocalCache();
+  }
+
+  private readonly cache: Cache;
 
   /**
    * Đánh dấu đã giải. Bài VIP thì chỉ `vip`/`admin` mới đánh dấu được — nếu không
@@ -196,10 +211,13 @@ export class ProgressService {
     // gọi lại liên tục. TTL rất ngắn chỉ để gom các lần gọi sát nhau, không
     // phải cache dài hạn — sau POST /solve có thể hiện dữ liệu cũ tối đa
     // 200ms, không người dùng nào nhận ra.
-    const hit = this.dashboardCache.get(String(userId));
+    //
+    // Khoá theo `userId` (xem `dashboardKey`): dashboard là dữ liệu riêng của
+    // từng user, dùng chung một key sẽ lộ dữ liệu chéo.
+    const hit = await this.cache.get<Dashboard>(dashboardKey(userId));
     if (hit) return hit;
     const out = await this.computeDashboard(userId);
-    this.dashboardCache.set(String(userId), out);
+    await this.cache.set(dashboardKey(userId), out, cacheStoreTtl(DASHBOARD_TTL_MS));
     return out;
   }
 

@@ -13,5 +13,16 @@ export default defineConfig({
     // 403 mới là kết quả đang cần chứng minh. Biến này **chỉ** có tác dụng với
     // e2e; production không đọc nó.
     env: { DISABLE_RATE_LIMIT: '1' },
+    /**
+     * Cùng phạm vi đo với `vitest.config.ts`: đây là **lần chạy khác**, nên số
+     * coverage của nó khác hẳn lần unit — không dùng chung một ngưỡng để gọi là
+     * "backend đạt mấy phần trăm".
+     */
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary'],
+      include: ['src/**/*.ts'],
+      exclude: ['**/*.spec.ts', '**/*.d.ts', 'src/generated/**', 'src/main.ts'],
+    },
   },
 });

@@ -129,8 +129,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # `test:cov` chính là `test` cộng thêm đo coverage — thay chứ không thêm một
+      # lần chạy nữa, nên ngưỡng trong `vitest.config.ts` được canh thật mà CI không
+      # chậm thêm. Xem `be/vitest.config.ts` (thresholds lines 80 / branches 75).
       - name: Test
-        run: pnpm test
+        run: pnpm test:cov
 
       # e2e: migration nen tao du 13 bang, can seed de co du lieu de test.
       # Spec tu sinh cap khoa RSA nen khong can ADMIN_JWT_* o day.

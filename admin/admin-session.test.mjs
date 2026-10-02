@@ -1,7 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 /**
  * Vòng đời phiên admin, đo bằng đồng hồ giả — không có `sleep` nào ở file này.
@@ -15,8 +13,6 @@ import { fileURLToPath } from "node:url";
  * File dùng `node --test` (không thêm dependency) nên đồng hồ giả đến từ
  * `mock.timers` của chính Node, không phải vitest.
  */
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Nạp `lib/api.ts`.

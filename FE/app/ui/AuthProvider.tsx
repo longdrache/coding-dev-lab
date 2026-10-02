@@ -74,9 +74,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * rồi commit* nằm trong `commitSession` vì chỗ đó test được; dòng
    * `mutate(...)` ở dưới là nối vào cache thật, và nó là dòng mà test không bảo
    * vệ được — nên nó phải là dòng duy nhất, không nhân bản.
+   *
+   * `notice` đi qua **cùng** callback `commit` chứ không phải `setNotice` ở nơi
+   * gọi: hai lý do. Một là nó thuộc cùng một giao dịch với user (đổi user là phải
+   * đổi luôn câu báo), hai là `react-hooks/set-state-in-effect` bắt `setState`
+   * gọi thẳng trong thân effect — mà `loadSession` chính là thứ effect mount gọi.
    */
   const applyUser = useCallback(
-    (next: PublicUser | null) => {
+    (next: PublicUser | null, notice = "") => {
       commitSession(
         lastUserRef.current,
         next,
@@ -88,6 +93,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           lastUserRef.current = u;
           setUser(u);
         },
+        // Truyền `setNotice` **dưới dạng giá trị**: `commitSession` gọi nó, chứ
+        // không phải component này. Gọi trực tiếp ở đây là `setState` trong thân
+        // effect và `react-hooks/set-state-in-effect` bắt — xem `commitSession`.
+        { text: notice, onNotice: setNotice },
       );
     },
     [mutate],
@@ -105,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // (đăng nhập lại, hoặc chính lần tự làm mới vừa thành công) — mở lại vòng
         // lặp làm mới.
         deadRef.current = false;
-        setNotice("");
+        // Câu báo cũ phải mất: đọc được phiên nghĩa là phiên đang sống.
         applyUser(r.session.user);
         const delay = refreshPlan(r.session.expiresIn);
         if (delay !== null) armRef.current?.(delay);
@@ -114,8 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         deadRef.current = true;
         // Chỉ nói khi phiên chết **giữa chừng** và không phải do chính người dùng
         // bấm đăng xuất — quyết định này thuộc `sessionEndedNotice` để test được.
-        setNotice(sessionEndedNotice(user, r.kind, opts?.deliberate === true) ?? "");
-        applyUser(null);
+        applyUser(null, sessionEndedNotice(user, r.kind, opts?.deliberate === true) ?? "");
       }
       // `retry`: lỗi mạng hoặc 5xx. `resolveSession` đã không ném, nên tới đây
       // ta **giữ nguyên** user đang có và chỉ ngừng báo "đang tải"; lần refresh/401
@@ -143,8 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // sẽ thử lại mãi một phiên đã hỏng. `loadSession` sẽ mở lại khi đăng nhập.
       deadRef.current = true;
       signedInRef.current = false;
-      setNotice(sessionEndedNotice(user, r.kind) ?? "");
-      applyUser(null);
+      applyUser(null, sessionEndedNotice(user, r.kind) ?? "");
       return;
     }
     signedInRef.current = true;
@@ -170,10 +177,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     armRef.current = arm;
 
-    // Không cần `eslint-disable` cho `react-hooks/set-state-in-effect` ở đây:
-    // `setUser` giờ nằm sau `commitSession` — một hàm thuần ở `@/lib/api` — nên
-    // rule không còn báo nhầm nữa. Lúc đầu `setUser` nằm trực tiếp trong
-    // `loadSession` và phải tắt rule có lý do, y hệt `useServerSolvedSlugs`.
+    // `react-hooks/set-state-in-effect` phải tắt ở đây, và comment cũ nói ngược
+    // lại ("không cần") là sai: rule vẫn báo, và `pnpm lint` của FE đã **đỏ** vì
+    // dòng này từ trước khi sửa session.
+    //
+    // Lý do tắt đúng: `loadSession` **không** setState đồng bộ. Câu lệnh đầu
+    // tiên của nó là `await resolveSession()` — tức mọi `setState` nằm sau một
+    // await, và render đầu tiên luôn ra với `loading: true` đúng như ý đồ. Rule
+    // không phân biệt được "setState sau await" với "setState đồng bộ", nên nó báo
+    // ở mọi lần gọi hàm bất đồng bộ trong effect.
+    //
+    // Cách sửa đúng không phải đẩy lệnh đi chỗ khác (mọi chỗ khác cũng là trong
+    // effect), mà là giữ quyết định ở hàm thuần `@/lib/api` — đã làm vậy ở
+    // `commitSession`/`sessionEndedNotice`, và test ở `lib/api.test.ts` +
+    // `lib/session-lifecycle.test.ts` canh được.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadSession();
 
     // Tab ẩn thì trình duyệt throttle timer, nên lịch có thể trôi qua lúc ta không

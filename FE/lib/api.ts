@@ -103,15 +103,24 @@ export function shouldClearCache(prev: PublicUser | null, next: PublicUser | nul
  * Tách ra khỏi component vì component không test được (xem `vitest.config.ts`:
  * không jsdom). Ở trong component thì lệnh `purgeCache()` là dòng code không test
  * bảo vệ được — thử bỏ nó đi thì toàn bộ test vẫn xanh. Ở đây thì bỏ là đỏ.
+ *
+ * `notice` đi kèm `user` vì hai thứ là **một** giao dịch: đổi tài khoản thì câu
+ * báo phiên cũ phải mất, và phiên chết giữa chừng thì câu báo phải lên cùng lúc
+ * với lúc user rơi về `null`. Truyền `setNotice` **dưới dạng giá trị** chứ không
+ * gọi trong component là bắt buộc: `react-hooks/set-state-in-effect` bắt mọi
+ * `setState` gọi trực tiếp trong thân effect, mà `AuthProvider` được mount
+ * từ effect.
  */
 export function commitSession(
   prev: PublicUser | null,
   next: PublicUser | null,
   purgeCache: () => void,
   commit: (next: PublicUser | null) => void,
+  notice?: { text: string; onNotice: (msg: string) => void },
 ): void {
   if (shouldClearCache(prev, next)) purgeCache();
   commit(next);
+  if (notice) notice.onNotice(notice.text);
 }
 
 /**

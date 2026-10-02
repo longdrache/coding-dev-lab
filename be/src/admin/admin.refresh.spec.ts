@@ -176,30 +176,40 @@ describe('AdminGuard — không lấn token loại này cho loại kia', () => {
    * Ranh giới bảo mật của cả cơ chế. Cho refresh token đi qua `AdminGuard` thì
    * hạn 30 phút của access token trở nên vô nghĩa — vì token 7 ngày kia dùng
    * được y như access token trên mọi route.
+   *
+   * **Phải là token ký thật**, không phải chuỗi bất kỳ: token rác bị chặn ở
+   * `verifyJwt`, nên test dùng chuỗi rác sẽ xanh dù guard **không** kiểm tra
+   * `typ` — tức xanh vì lý do hoàn toàn khác với cái đang kiểm.
    */
-  it('refresh token bị chặn ở mọi route có AdminGuard', () => {
+  it('refresh token ký thật bị chặn ở mọi route có AdminGuard', async () => {
     const { priv, pub } = rsaKeys();
     const svc = makeSvc(priv, pub);
+    const { refreshToken } = await svc.login('admin', 'admin');
+    // Chứng minh chuỗi này **thật sự** xác minh được — nếu không thì test dưới
+    // xanh vì lý do sai.
+    expect((svc.verifyJwt(refreshToken) as { typ: string }).typ).toBe('refresh');
     const guard = new AdminGuard(svc);
 
-    expect(() => guard.canActivate(ctx({}, { admin_token: 'refresh-token' }))).toThrow(/không hợp lệ/i);
+    expect(() => guard.canActivate(ctx({}, { admin_token: refreshToken }))).toThrow(/không hợp lệ/i);
   });
 
-  it('refresh token đi qua header Bearer cũng bị chặn', () => {
+  it('refresh token ký thật đi qua header Bearer cũng bị chặn', async () => {
     const { priv, pub } = rsaKeys();
     const svc = makeSvc(priv, pub);
+    const { refreshToken } = await svc.login('admin', 'admin');
     const guard = new AdminGuard(svc);
 
-    expect(() => guard.canActivate(ctx({ authorization: 'Bearer refresh-token' }))).toThrow();
+    expect(() => guard.canActivate(ctx({ authorization: `Bearer ${refreshToken}` }))).toThrow();
   });
 
-  it('cookie admin_refresh không bị đọc nhầm thành access token', () => {
+  it('cookie admin_refresh không bị đọc nhầm thành access token', async () => {
     // BFF proxy gửi cookie `admin_token` thành header `Bearer`. Nếu guard đọc
     // nhầm `admin_refresh` thì refresh token lọt vào mọi route.
     const { priv, pub } = rsaKeys();
     const svc = makeSvc(priv, pub);
+    const { refreshToken } = await svc.login('admin', 'admin');
     const guard = new AdminGuard(svc);
 
-    expect(() => guard.canActivate(ctx({}, { admin_refresh: 'refresh-token' }))).toThrow(/admin token/i);
+    expect(() => guard.canActivate(ctx({}, { admin_refresh: refreshToken }))).toThrow(/admin token/i);
   });
 });

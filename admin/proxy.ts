@@ -20,9 +20,6 @@ function getPublicKeyPem(): string | null {
  */
 const LOGIN_PATH = "/sign-in";
 
-/** Hạn access token admin, phải khớp `ADMIN_ACCESS_TTL` ở `be/src/admin/admin.service.ts`. */
-const ACCESS_TTL_S = 30 * 60;
-
 /**
  * Đọc `exp` mà **không** xác minh chữ ký.
  *

@@ -109,6 +109,11 @@ export async function adminFetch(
   }
 
   // Tới đây là hết phiên thật (hết 7 ngày, hoặc refresh bị từ chối).
-  if (typeof window !== "undefined") window.location.assign(ADMIN_SIGN_IN_PATH);
+  //
+  // `replace` chứ không phải `push`/`assign`: trang đang mở là trang chết, để nó
+  // trong lịch sử là bấm "quay lại" thì lại quay về trang chết. `lib/api.ts` là
+  // nơi **duy nhất** biết phiên đã hết — không có provider ở app admin nên không
+  // có chỗ nào khác để bắt, và để mỗi trang tự xử lý là chỗ nào cũng quên.
+  if (typeof window !== "undefined") window.location.replace(ADMIN_SIGN_IN_PATH);
   return res;
 }

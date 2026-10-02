@@ -289,4 +289,43 @@ describe('commitSession', () => {
     commitSession(USER, { ...USER, id: 8 }, r.purge, r.commit);
     expect(r.calls).toEqual(['purge', 'commit:8']);
   });
+
+  /**
+   * Câu báo "phiên đã kết thúc" phải đi kèm user trong **cùng** giao dịch: đổi
+   * tài khoản thì câu báo phiên cũ phải mất, và phiên chết giữa chừng thì câu
+   * báo phải lên cùng lúc user rơi về `null`. Tách ra hai chỗ là có lúc câu báo
+   * của phiên cũ nằm lại trên tài khoản mới.
+   */
+  it('truyền notice thì commit sau user, kể cả khi không xoá cache', () => {
+    const calls: string[] = [];
+    commitSession(
+      USER,
+      null,
+      () => void calls.push('purge'),
+      (u) => void calls.push(`commit:${u?.id ?? 'null'}`),
+      { text: 'Phiên đã kết thúc', onNotice: (m) => void calls.push(`notice:${m}`) },
+    );
+    expect(calls).toEqual(['purge', 'commit:null', 'notice:Phiên đã kết thúc']);
+    expect(calls.indexOf('commit:null')).toBeLessThan(calls.indexOf('notice:Phiên đã kết thúc'));
+  });
+
+  it('cùng id (chỉ làm mới token) thì câu báo cũng phải được xoá', () => {
+    // Không xoá cache ở đây, nhưng nếu không chạy `onNotice` thì câu "phiên đã
+    // kết thúc" của lần trước sẽ nằm lại trên một phiên đang sống bình thường.
+    const calls: string[] = [];
+    commitSession(
+      USER,
+      { ...USER },
+      () => void calls.push('purge'),
+      () => void calls.push('commit'),
+      { text: '', onNotice: (m) => void calls.push(`notice:${JSON.stringify(m)}`) },
+    );
+    expect(calls).toEqual(['commit', 'notice:""']);
+  });
+
+  it('không truyền notice thì không gọi gì thêm', () => {
+    const calls: string[] = [];
+    commitSession(USER, null, () => void calls.push('purge'), () => void calls.push('commit'));
+    expect(calls).toEqual(['purge', 'commit']);
+  });
 });

@@ -20,7 +20,8 @@ import { AdminController } from './admin.controller.ts';
 
 function makeController() {
   const svc = {
-    login: vi.fn().mockResolvedValue('token-abc'),
+    login: vi.fn().mockResolvedValue({ token: 'token-abc', refreshToken: 'refresh-xyz' }),
+    refresh: vi.fn().mockReturnValue({ token: 'token-moi', refreshToken: 'refresh-moi' }),
     getStats: vi.fn().mockResolvedValue({ users: 3 }),
     getLoginAnalytics: vi.fn().mockResolvedValue({ days: [] }),
     listQna: vi.fn().mockResolvedValue([]),
@@ -70,12 +71,44 @@ describe('POST /api/admin/login — cookie phải đúng theo môi trường', (
     const out = await ctrl.login({ email: 'a@b.c', password: 'p' }, res as never);
 
     expect(svc.login).toHaveBeenCalledWith('a@b.c', 'p');
-    expect(out).toEqual({ ok: true, token: 'token-abc' });
+    expect(out).toEqual({
+      ok: true,
+      token: 'token-abc',
+      refreshToken: 'refresh-xyz',
+      expiresIn: 1800,
+    });
     expect(res.cookie).toHaveBeenCalledWith(
       'admin_token',
       'token-abc',
       expect.objectContaining({ httpOnly: true, secure: false, sameSite: 'lax', path: '/' }),
     );
+    // Cookie làm mới phải được đặt cùng lúc: không có nó thì sau 30 phút admin bị
+    // đá và không có cách nào quay lại ngoài mật khẩu.
+    expect(res.cookie).toHaveBeenCalledWith(
+      'admin_refresh',
+      'refresh-xyz',
+      expect.objectContaining({ httpOnly: true, secure: false, sameSite: 'lax', path: '/' }),
+    );
+  });
+
+  /**
+   * `maxAge` của cookie phải bám hạn thật của JWT. Trước đây cookie `admin_token`
+   * sống 7 ngày trong khi bên trong là JWT 30 phút: sau 30 phút trình duyệt vẫn
+   * giữ cookie, mọi request trả 401, và admin tưởng ứng dụng hỏng chứ không phải
+   * phiên hết hạn.
+   */
+  it('maxAge của cookie admin_token bám hạn 30 phút, không phải 7 ngày', async () => {
+    const { ctrl, res } = makeController();
+    await ctrl.login({ email: 'a@b.c', password: 'p' }, res as never);
+
+    const opts = res.cookie.mock.calls.find((c) => c[0] === 'admin_token')![2] as {
+      maxAge: number;
+    };
+    expect(opts.maxAge).toBe(30 * 60 * 1000);
+    const optsRefresh = res.cookie.mock.calls.find((c) => c[0] === 'admin_refresh')![2] as {
+      maxAge: number;
+    };
+    expect(optsRefresh.maxAge).toBe(7 * 24 * 60 * 60 * 1000);
   });
 
   it('NODE_ENV=production: SameSite=None + Secure, nếu không admin không đăng nhập được', async () => {
@@ -122,6 +155,63 @@ describe('POST /api/admin/logout', () => {
     } finally {
       if (process.env.NODE_ENV === 'production') delete process.env.NODE_ENV;
     }
+  });
+
+  it('xoá cả cookie làm mới — bỏ nó thì "đăng xuất" chỉ có tác dụng 30 phút', () => {
+    // Cookie `admin_refresh` sống 7 ngày. Nếu logout không xoá nó thì sau khi
+    // admin bấm "Đăng xuất", mọi request vẫn tự làm mới được bằng nó: đăng xuất
+    // là nút chết.
+    const { ctrl, res } = makeController();
+    ctrl.logout(res as never);
+
+    expect(res.clearCookie).toHaveBeenCalledWith('admin_refresh', expect.objectContaining({ path: '/' }));
+  });
+});
+
+/**
+ * Route làm mới là thứ **duy nhất** giữ cho admin không bị đá khỏi app mỗi 30 phút.
+ * Nó phải chạy được khi access token đã chết — nên không `AdminGuard` — và phải
+ * phân biệt "hết phiên thật" với "lỗi tạm" đúng như app chính.
+ */
+describe('POST /api/admin/refresh', () => {
+  it('đọc cookie admin_refresh rồi cấp lại cả hai token', async () => {
+    const { ctrl, svc, res } = makeController();
+    const out = await ctrl.refresh({ cookies: { admin_refresh: 'refresh-xyz' } } as never, res as never);
+
+    expect(svc.refresh).toHaveBeenCalledWith('refresh-xyz');
+    expect(out).toMatchObject({ ok: true, token: 'token-moi', expiresIn: 1800 });
+    expect(res.cookie).toHaveBeenCalledWith('admin_token', 'token-moi', expect.objectContaining({ path: '/' }));
+    expect(res.cookie).toHaveBeenCalledWith('admin_refresh', 'refresh-moi', expect.objectContaining({ path: '/' }));
+  });
+
+  // Không chắc `cookie-parser` được mount ở mọi đường vào; route này phải chạy
+  // được khi access token đã hết hạn thì cookie-parser cũng chưa chắc đã chạy.
+  it('đọc được cookie admin_refresh trong header thô khi req.cookies rỗng', async () => {
+    const { ctrl, svc } = makeController();
+    await ctrl.refresh(
+      { headers: { cookie: 'admin_token=cu; admin_refresh=refresh-xyz' } } as never,
+      { cookie: vi.fn(), clearCookie: vi.fn() } as never,
+    );
+    expect(svc.refresh).toHaveBeenCalledWith('refresh-xyz');
+  });
+
+  it('không có cookie thì ném 401 và dọn cả hai cookie', async () => {
+    const { ctrl, svc, res } = makeController();
+    await expect(ctrl.refresh({} as never, res as never)).rejects.toThrow();
+    expect(svc.refresh).not.toHaveBeenCalled();
+    expect(res.clearCookie).toHaveBeenCalledWith('admin_token', { path: '/' });
+    expect(res.clearCookie).toHaveBeenCalledWith('admin_refresh', { path: '/' });
+  });
+
+  // 200 + { message } sẽ khiến client coi là xong rồi hỏi lại mãi một phiên đã
+  // chết — đúng cái bẫy mà `auth.controller.ts:263-266` đã ghi lại cho app chính.
+  it('refresh token hết hạn thì 401, KHÔNG phải 200 kèm message', async () => {
+    const { ctrl, svc, res } = makeController();
+    svc.refresh.mockReturnValue(null);
+    await expect(
+      ctrl.refresh({ cookies: { admin_refresh: 'het-han' } } as never, res as never),
+    ).rejects.toThrow();
+    expect(res.clearCookie).toHaveBeenCalledWith('admin_refresh', { path: '/' });
   });
 });
 

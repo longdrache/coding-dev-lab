@@ -25,6 +25,28 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Access token admin sống **30 phút** (`ADMIN_ACCESS_TTL`).
+ *
+ * Không phải 15 phút như `ACCESS_TTL_SECONDS` của user: admin là một tài khoản
+ * dùng để giám sát hệ thống, không phải để đọc bài.
+ */
+export const ADMIN_ACCESS_TTL = 30 * 60;
+/**
+ * Refresh token admin sống **7 ngày** (`ADMIN_REFRESH_TTL`).
+ *
+ * Cùng số với `maxAge` cookie mà BFF proxy (`admin/app/api/[...path]/route.ts`)
+ * từng đặt. Trước đó cookie sống 7 ngày nhưng bên trong là JWT 30 phút và **không
+ * có** đường làm mới nào: nên sau 30 phút làm việc, mọi request 401 và middleware
+ * đá về `/sign-in`. Đó là hệt triệu chứng của app chính, chỉ khác hạn.
+ */
+export const ADMIN_REFRESH_TTL = 7 * 24 * 60 * 60;
+
+/** Claim để phân biệt hai loại token admin. Không có nó thì xem như access (cookie cũ). */
+const CLAIM_TYPE = 'typ';
+const TYPE_ACCESS = 'access';
+const TYPE_REFRESH = 'refresh';
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -66,7 +88,10 @@ export class AdminService {
     return this.normPem(raw);
   }
 
-  async login(email: string, password: string): Promise<string> {
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{ token: string; refreshToken: string }> {
     const expEmail = process.env.ADMIN_EMAIL;
     const hash = process.env.ADMIN_PASSWORD_HASH;
     const plain = process.env.ADMIN_PASSWORD;
@@ -79,10 +104,45 @@ export class AdminService {
       ok = password === plain;
     } else throw new UnauthorizedException('Missing password env');
     if (!ok) throw new UnauthorizedException('Sai mật khẩu');
-    // Ký RS256 bằng private key — FE chỉ giữ public key để verify
-    return jwt.sign({ sub: 'admin', role: 'admin' }, this.getPrivateKey(), {
+    // Ký RS256 bằng private key — FE chỉ giữ public key để verify.
+    //
+    // **Hai token, không một.** Access 30 phút để việc lấy cắp token bị hạn chế;
+    // refresh 7 ngày để admin không phải gõ mật khẩu mỗi nửa tiếng. Claim `typ`
+    // là thứ bắt buộc: nếu không có nó thì token 7 ngày chạy được mọi route như
+    // access token, tức đánh cắp được thì dùng tới 7 ngày — đúng cái hạn 30 phút
+    // mà ta cố tình đặt ra.
+    return {
+      token: this.sign(TYPE_ACCESS, ADMIN_ACCESS_TTL),
+      refreshToken: this.sign(TYPE_REFRESH, ADMIN_REFRESH_TTL),
+    };
+  }
+
+  /**
+   * Đổi refresh token lấy access token mới. Trả `null` (không ném) khi token không
+   * dùng được — cùng lý do `AuthService.refresh`: client tự xoá phiên.
+   */
+  refresh(refreshToken: string): { token: string; refreshToken: string } | null {
+    if (!refreshToken) return null;
+    let claims: unknown;
+    try {
+      claims = this.verifyJwt(refreshToken);
+    } catch {
+      return null;
+    }
+    // Chỉ nhận **refresh** token. Cho access token đi qua đây là hở: khi đó access
+    // token 30 phút tự làm mới được vô hạn lần, tức hạn 30 phút mất tác dụng.
+    const c = claims as { role?: unknown; [CLAIM_TYPE]?: unknown } | undefined;
+    if (c?.[CLAIM_TYPE] !== TYPE_REFRESH || c?.role !== 'admin') return null;
+    return {
+      token: this.sign(TYPE_ACCESS, ADMIN_ACCESS_TTL),
+      refreshToken: this.sign(TYPE_REFRESH, ADMIN_REFRESH_TTL),
+    };
+  }
+
+  private sign(type: string, expiresIn: number): string {
+    return jwt.sign({ sub: 'admin', role: 'admin', [CLAIM_TYPE]: type }, this.getPrivateKey(), {
       algorithm: 'RS256',
-      expiresIn: '30m',
+      expiresIn,
     });
   }
 

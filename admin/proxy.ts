@@ -20,6 +20,52 @@ function getPublicKeyPem(): string | null {
  */
 const LOGIN_PATH = "/sign-in";
 
+/** Hạn access token admin, phải khớp `ADMIN_ACCESS_TTL` ở `be/src/admin/admin.service.ts`. */
+const ACCESS_TTL_S = 30 * 60;
+
+/**
+ * Đọc `exp` mà **không** xác minh chữ ký.
+ *
+ * Cần vì phần dưới đã xác minh rồi; ở đây chỉ cần biết "token này còn hạn hay
+ * không" để quyết định có đá người dùng không. Không xác minh ở đây là an toàn
+ * vì giá trị trả về chỉ dùng để **cho qua**, còn mọi route thật vẫn bị
+ * `AdminGuard` ở BE chặn.
+ */
+function expiryOf(token: string): number | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1], "base64url").toString("utf-8"),
+    ) as { exp?: unknown };
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cookie làm mới còn hạn không? Đây là thứ quyết định admin có bị đá giữa chừng
+ * khi F5 không.
+ *
+ * Trước đây proxy chỉ nhìn `admin_token`. Sau 30 phút token đó chết, nên **mọi**
+ * lần F5 — kể cả khi phiên 7 ngày còn nguyên — đều bị đẩy về `/sign-in`, và
+ * không có client JS nào kịp chạy để làm mới. Phiên dài hạn trở nên vô dụng.
+ *
+ * Cố ý **không** kiểm tra `typ`: `refresh` lẫn `access` đều là hợp lệ ở đây —
+ * điều cần biết chỉ là *phiên còn hay không*, và route thật sẽ tự phân biệt.
+ */
+function hasLiveSessionCookie(req: NextRequest): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  for (const name of ["admin_token", "admin_refresh"]) {
+    const value = req.cookies.get(name)?.value;
+    if (!value) continue;
+    const exp = expiryOf(value);
+    if (exp === null || exp > now) return true;
+  }
+  return false;
+}
+
 export default async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
   if (path === "/" || path.startsWith(LOGIN_PATH)) {
@@ -27,7 +73,12 @@ export default async function proxy(req: NextRequest) {
   }
   const token = req.cookies.get("admin_token")?.value;
   if (!token) {
-    return NextResponse.redirect(new URL(LOGIN_PATH, req.url));
+    // Chưa có access token nhưng còn refresh token thì phiên **vẫn sống**: cho
+    // qua để client làm mới. Đẩy thẳng ra `/sign-in` ở đây là chặn người dùng
+    // giữa chừng mỗi 30 phút — đúng lỗi đang sửa.
+    return hasLiveSessionCookie(req)
+      ? NextResponse.next()
+      : NextResponse.redirect(new URL(LOGIN_PATH, req.url));
   }
   try {
     const pem = getPublicKeyPem();

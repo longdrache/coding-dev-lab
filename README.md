@@ -21,15 +21,22 @@ Toàn bộ giao diện, tên bài và thông báo lỗi bằng tiếng Việt.
 | Admin | `admin/` | 3001 | Trang quản trị: dashboard, duyệt bài, học viên, bài nộp, hỏi đáp |
 | BE | `be/` | 4000 | API NestJS: bài tập, chấm bài, tiến độ, phiên đăng nhập, Premium, admin, analytics |
 
-```
-  FE  :3000  ─┐                        Next.js 16 + React 19
-               ├─▶  BE (NestJS 12)  :4000 ──▶  Judge0  :2358
-  Admin :3001 ─┘   tự quản lý cookie          chấm batch, CPU 2s, RAM 128MB
-                    │      (Admin đi qua        header X-Auth-Token
-                    │       BFF proxy)
-                    ├──▶  Postgres  (Prisma 7)
-                    ├──▶  Brevo    (SMTP: xác minh email, đặt lại mật khẩu, trả lời hỏi đáp)
-                    └──▶  Stripe   (gói Premium + webhook)
+```mermaid
+graph TD
+    FE["FE :3000<br/>Next.js 16 + React 19"]
+    Admin["Admin :3001<br/>Next.js 16 + React 19"]
+    BE["BE :4000<br/>NestJS 12"]
+    Judge0["Judge0 :2358<br/>Docker sandbox"]
+    DB[("Postgres<br/>Prisma 7")]
+    Brevo["Brevo<br/>SMTP"]
+    Stripe["Stripe<br/>Checkout + Webhook"]
+
+    FE -->|"REST API"| BE
+    Admin -->|"BFF proxy"| BE
+    BE -->|"batch submit<br/>X-Auth-Token"| Judge0
+    BE -->|"Prisma"| DB
+    BE -->|"SMTP"| Brevo
+    BE -->|"webhook"| Stripe
 ```
 
 ## Tính năng
@@ -118,60 +125,6 @@ Toàn bộ giao diện, tên bài và thông báo lỗi bằng tiếng Việt.
 - Judge0: BE gắn header `X-Auth-Token` khi `JUDGE0_API_TOKEN` có giá trị. Để trống thì Judge0
   chạy public — ai cũng chấm được, nên production phải đặt token.
 
-## Tech stack
-
-| Layer | Công nghệ |
-| ----- | --------- |
-| FE | Next.js 16, React 19, TypeScript, Tailwind v4, shadcn, SWR, R3F, Framer Motion, GSAP, Monaco |
-| Admin | Next.js 16, React 19, TypeScript, Tailwind v4 |
-| BE | NestJS 12, Prisma 7, Neon Postgres, Stripe, Nodemailer/Brevo |
-| Infra | Vercel, pnpm, Judge0 Docker |
-| Auth | Custom JWT (RS256), Google OAuth 2.0 + PKCE S256, bcrypt |
-
-## Chạy local
-
-Cần Node.js 22 (CI chạy 22), pnpm 10, và một Postgres. Judge0 chạy bằng Docker hoặc trỏ
-`JUDGE0_URL` tới một Judge0 sẵn có.
-
-```bash
-# 1. Cài đặt
-pnpm --dir be install
-pnpm --dir FE install
-pnpm --dir admin install
-
-# 2. Tạo file env
-#    be/.env.example    -> be/.env
-#    FE/.env.example    -> FE/.env
-#    admin/.env.example -> admin/.env
-
-# 3. Đẩy schema rồi nạp 56 bài tập vào DB
-pnpm --dir be exec prisma migrate deploy
-pnpm --dir be exec node scripts/seed-problems.ts
-
-# 4. Chạy
-pnpm dev            # BE :4000 + FE :3000
-pnpm dev-admin      # thêm Admin :3001
-```
-
-Lưu ý: script `be/scripts/*.ts` phải chạy qua `pnpm --dir be exec node <file>`. Viết
-`pnpm --dir be node <file>` sẽ không chạy được — pnpm hiểu `be` là tên lệnh chứ không phải
-thư mục.
-
-Mấy điểm hay vấp:
-
-- **`pnpm dev-admin` có thể đụng cổng.** Cả `FE` và `admin` đều chạy lệnh `next dev` nên cùng mặc
-  định cổng 3000; app nào giành được cổng trước thì app kia tự nhảy sang 3001, và `FE/.env` +
-  `admin/.env` trỏ `localhost:4000` nên vẫn chạy được nhưng lại lệch cổng so với tài liệu.
-  Ghim port riêng cho chắc:
-  ```bash
-  pnpm --dir admin dev -p 3001   # chạy cửa sổ riêng
-  pnpm dev                       # cửa sổ khác: BE :4000 + FE :3000
-  ```
-- **Tài khoản admin local**: `ADMIN_EMAIL` / `ADMIN_PASSWORD` trong `be/.env` (mặc định
-  `admin` / `admin`). Đặt lại trước khi deploy.
-- **`be/.env` đang trỏ Neon production.** Đổi `DATABASE_URL` sang Postgres local trước khi
-  chạy `migrate deploy` hoặc `seed-problems.ts`, nếu không seed sẽ ghi thẳng vào DB thật.
-
 ## Biến môi trường
 
 Nguồn: `be/.env.example`, `FE/.env.example`, `admin/.env.example`. Không có giá trị bí mật nào
@@ -211,17 +164,6 @@ nằm trong repo.
 | `NEXT_PUBLIC_API_URL` | Dự phòng khi thiếu `BE_API_URL`. |
 | `JWT_SECRET` | Chỉ dùng làm fallback HS256 khi verify RS256 thất bại (chỉ ở dev). |
 | `ADMIN_JWT_PUBLIC_KEY` | Khoá công khai để `proxy.ts` verify cookie admin. |
-
-## Docker Compose
-
-Judge0 chạy bằng Docker Compose:
-
-```bash
-cd be && docker compose up -d      # judge0-server + 3 workers
-docker compose restart judge0-server
-```
-
-`docker-compose.yml` khai báo `judge0-server` + 3 workers, mặc định port 2358.
 
 ## Phụ thuộc ngoài
 
@@ -465,14 +407,16 @@ erDiagram
 
 ## Performance Testing
 
-Tool: k6
-Environment: NestJS, PostgreSQL (local)
-Machine: AMD Ryzen 7 5800U, 14GB RAM, Windows 11
+Tool: k6 v2.2.0
+Environment: NestJS + PostgreSQL (local), Judge0 (Docker)
+Machine: AMD Ryzen 7 5800U, 14GB RAM, Windows 11 (local) / VM.Standard.E2.1.Micro: 1 OCPU AMD EPYC, 1GB RAM, 480 Mbps, Ubuntu 22.04 (Oracle Cloud free tier)
 Test date: 2026-10-01
 Commit: [Git commit SHA]
+Warm-up: 5 VUs / 30s trước mỗi lần test chính
 
 ### Scenarios
 - Public read: 30 VUs, sustain for 120 seconds (3 runs)
+- Judge0 submit: 5 VUs, sustain for 60 seconds
 
 ### Thresholds
 - HTTP error rate < 1%
@@ -486,19 +430,6 @@ Commit: [Git commit SHA]
 | 2 | 30 | 120s | 2374 | 19.61 | 1.07ms | 1.73ms | 2.16ms | 990.57ms | 0% | PASS |
 | 3 | 30 | 120s | 2377 | 19.58 | 0.92ms | 1.58ms | 1.75ms | 797.27ms | 0% | PASS |
 | **Avg** | **30** | **120s** | **2383** | **19.67** | **1.02ms** | **1.68ms** | **2.12ms** | **800.62ms** | **0%** | **PASS** |
-
-### Reproduce
-```bash
-cd be && pnpm start:dev
-k6 run --vus 30 --duration 120s --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" -e BASE_URL=http://localhost:4000 tests/performance/problems-load-test.js
-```
-
-### Judge0 Load Test
-```bash
-# Cần Judge0 chạy (docker compose up -d trong be/)
-# Test user phải tồn tại trước (script tự register nếu chưa có)
-k6 run --vus 5 --duration 60s --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" -e BASE_URL=http://localhost:4000 -e TEST_EMAIL=k6@test.com -e TEST_PASSWORD=k6test123 tests/performance/judge0-load-test.js
-```
 
 ### Judge0 Results
 | Metric | Value |
@@ -514,29 +445,28 @@ k6 run --vus 5 --duration 60s --summary-trend-stats "avg,min,med,max,p(90),p(95)
 | Error rate | 0% |
 | Status | PASS |
 
-## Chạy test
+### Script Path
+- `be/tests/performance/problems-load-test.js`
+- `be/tests/performance/judge0-load-test.js`
 
+### Reproduce
 ```bash
-pnpm --dir be test         # vitest: unit + service
-pnpm --dir FE test         # vitest
-pnpm --dir admin test      # node --test
-pnpm test:e2e              # Playwright, tự bật FE (playwright.config.ts)
+# Public read test
+cd be && pnpm start:dev
+k6 run --vus 30 --duration 120s --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" -e BASE_URL=http://localhost:4000 tests/performance/problems-load-test.js
+
+# Judge0 test (cần Judge0 chạy)
+cd be && docker compose up -d judge0-server judge0-workers
+k6 run --vus 5 --duration 60s --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" -e BASE_URL=http://localhost:4000 -e TEST_EMAIL=k6@test.com -e TEST_PASSWORD=k6test123 tests/performance/judge0-load-test.js
 ```
 
-`pnpm --dir be test:e2e` cần một Postgres local và chạy `be/scripts/guard-e2e-db.mjs` trước. Script
-này chặn e2e khi `DATABASE_URL` trỏ vào Neon (`*.neon.tech`) trừ khi bạn cố ý đặt
-`E2E_ALLOW_PROD=1` — vì e2e ghi và xoá dữ liệu thật.
-
-## Deploy
-
-- FE, Admin, BE là ba project Vercel riêng. BE chạy qua `be/api/index.ts` (`be/vercel.json`).
-- Biến bắt buộc trên BE khi deploy: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `STRIPE_SECRET_KEY`,
-  `STRIPE_WEBHOOK_SECRET`, `JUDGE0_URL`, `JUDGE0_API_TOKEN`, `ADMIN_*`, `FRONTEND_URL`,
-   `USER_LOGIN`, `USER_PASS`, `MAIL_FROM`, và ba biến `GOOGLE_*`.
-- `ADMIN_PASSWORD=admin` và `JWT_SECRET` mặc định **không được** để nguyên khi deploy.
-- Stripe webhook trỏ tới `https://<be-domain>/api/premium/webhook`.
-- Admin và BE khác domain nên cookie admin chạy `SameSite=None; Secure` khi
-  `NODE_ENV=production` hoặc `VERCEL=1` (`be/src/admin/admin.controller.ts`).
+### Side Effects & Cleanup
+- **Public read**: chỉ GET, không ghi DB, không cần cleanup
+- **Judge0 test**: tạo user `k6@test.com` (nếu chưa có), ghi submission vào DB. Cleanup:
+  ```sql
+  DELETE FROM "Submission" WHERE "userId" = (SELECT id FROM "User" WHERE email = 'k6@test.com');
+  DELETE FROM "User" WHERE email = 'k6@test.com';
+  ```
 
 ## Screenshots
 
@@ -551,6 +481,180 @@ này chặn e2e khi `DATABASE_URL` trỏ vào Neon (`*.neon.tech`) trừ khi b�
 ## API Documentation
 
 API collection đầy đủ xem ở section [API Collection](#api-collection) phía trên. Swagger UI chưa được tích hợp — dùng Postman hoặc curl với các endpoint đã liệt kê.
+
+## 1. Product Overview
+
+GoCode là nền tảng luyện thuật toán cho học sinh/sinh viên Việt Nam. Người dùng đọc đề, viết code trong trình soạn thảo Monaco, nộp bài và nhận kết quả chấm tức thì từ Judge0. Hệ thống lưu tiến độ (streak, heatmap, huy hiệu) để giữ động lực học mỗi ngày.
+
+**Live demo:** https://go-code-vn.vercel.app/
+
+## 2. Architecture Diagram
+
+```mermaid
+graph TD
+    FE["FE :3000 — Next.js 16"]
+    Admin["Admin :3001 — Next.js 16"]
+    BE["BE :4000 — NestJS 12"]
+    Judge0["Judge0 :2358 — Docker"]
+    DB[("Postgres — Prisma 7")]
+    Brevo["Brevo — SMTP"]
+    Stripe["Stripe — Checkout + Webhook"]
+
+    FE -->|"REST API"| BE
+    Admin -->|"BFF proxy"| BE
+    BE -->|"X-Auth-Token"| Judge0
+    BE --> DB
+    BE --> Brevo
+    BE --> Stripe
+```
+
+## 3. Service Deployment Diagram
+
+```mermaid
+graph LR
+    Vercel["Vercel Edge"] --> FE["FE (Vercel)"]
+    Vercel --> Admin["Admin (Vercel)"]
+    Vercel --> BE["BE (Vercel Serverless)"]
+    BE --> Neon["Neon Postgres"]
+    BE --> Judge0VM["Judge0 VM riêng"]
+    BE --> StripeAPI["Stripe API"]
+```
+
+- **FE/Admin/BE**: 3 project Vercel riêng, deploy độc lập
+- **Postgres**: Neon (serverless, pooler + direct connection)
+- **Judge0**: VM riêng chạy Docker, BE gọi qua `JUDGE0_URL` + `X-Auth-Token`
+
+## 4. Main User Flows
+
+### Luyện tập
+1. Đăng nhập → xem danh sách bài → chọn bài → viết code → chạy test mẫu → nộp bài → xem kết quả
+2. Bài VIP bị khoá → hiện nút nâng cấp → thanh toán → mở khoá ngay
+
+### Premium
+1. Chọn gói → Stripe Checkout → webhook cấp VIP → hết hạn tự hạ
+
+### Admin
+1. Đăng nhập admin → duyệt bài → bật/tắt VIP → trả lời QNA qua email
+
+## 5. Technology Choices & Trade-offs
+
+| Lựa chọn | Trade-off |
+|----------|-----------|
+| Next.js 16 (App Router) | SSR + client components, học phí cao hơn Pages Router |
+| NestJS 12 | Nặng hơn Express nhưng DI + module rõ ràng |
+| Prisma 7 | Type-safe, chậm hơn raw SQL ở query phức tạp |
+| Judge0 self-hosted | Kiểm soát được giới hạn, tốn VM riêng |
+| Stripe Checkout | Không cần quản lý form thanh toán, phí 2.9% + 30¢ |
+| Custom auth (không Clerk/Auth0) | Tự quản lý hoàn toàn, không phụ thuộc bên thứ 3 |
+
+## 6. Authentication/Token Design
+
+- **Access token**: JWT RS256, 15 phút, cookie `httpOnly` + `Secure` + `SameSite=None`
+- **Refresh token**: 30 ngày, xoay vòng theo thiết bị, lưu hash trong `UserToken`
+- **Thu hồi**: logout xoá dòng `UserToken` → refresh token cũ không dùng được
+- **Đa thiết bị**: mỗi thiết bị 1 dòng, đăng nhập mới không đuổi thiết bị cũ
+- **OAuth Google**: PKCE S256, state lưu DB (hash), không lưu plaintext
+
+## 7. Stripe Webhook/Idempotency Design
+
+- **Vấn đề**: Stripe retry event khi timeout → gia hạn VIP hai lần
+- **Giải pháp**: bảng `StripeEvent` với `eventId` là PK
+- **Cơ chế**: `stripeEvent.create()` → P2002 unique violation → bỏ qua event trùng
+- **Code**: `be/src/premium/premium.service.ts:294`
+
+## 8. Judge0 Execution Workflow & Security
+
+### Workflow
+1. FE gọi `POST /api/submissions` với `{ language_id, source_code }`
+2. BE gửi lên Judge0 → nhận `token`
+3. FE poll `GET /api/submissions/:token` → nhận kết quả
+
+### Security Constraints
+- **Container**: mỗi submission 1 container tạm, xong xóa
+- **Resource limits**: CPU 2s, RAM 128MB, pids limit
+- **Network isolation**: container không có network access
+- **Read-only FS**: không ghi được ra host
+- **Non-root**: process chạy với quyền thấp
+- **Auth**: header `X-Auth-Token` (token trong `judge0.conf`)
+
+## 9. CI/CD Workflow
+
+```mermaid
+graph LR
+    Push["Push to main"] --> CI["GitHub Actions"]
+    CI --> Test["Run tests"]
+    CI --> Build["Build apps"]
+    Test --> Deploy["Deploy to Vercel"]
+    Build --> Deploy
+```
+
+- **Test**: `pnpm --dir be test` + `pnpm --dir FE test`
+- **Build**: Vercel tự build khi push
+- **Deploy**: FE, Admin, BE deploy độc lập
+
+## 10. Test Strategy & Coverage
+
+| Layer | Tool | Tests | Coverage |
+|-------|------|-------|----------|
+| Unit/Integration | Vitest | 744 | 86.5% lines |
+| E2E | Playwright | 13 | — |
+| Performance | k6 | 2 scenarios | — |
+
+**Thresholds**: lines ≥ 80%, branches ≥ 75%
+
+## 11. Performance Test Profile
+
+### Environment
+- **Machine**: AMD Ryzen 7 5800U, 14GB RAM, Windows 11
+- **VM**: VM.Standard.E2.1.Micro (1 OCPU, 1GB RAM, Ubuntu 22.04)
+- **Warm-up**: 5 VUs / 30s trước mỗi lần test
+
+### Results (30 VUs, 120s, 3 runs)
+| Metric | Value |
+|--------|-------|
+| RPS | 19.67 |
+| p50 | 1.02ms |
+| p90 | 1.68ms |
+| p95 | 2.12ms |
+| p99 | 800ms |
+| Error rate | 0% |
+
+### Limitations
+- p99 cao do GC/cold start (Node.js)
+- Chỉ test public read, không test submit/auth
+- Local environment, không phải production traffic
+
+## 12. Local Setup with Docker/.env.example
+
+```bash
+# 1. Cài dependencies
+pnpm --dir be install && pnpm --dir FE install && pnpm --dir admin install
+
+# 2. Copy env
+cp be/.env.example be/.env
+cp FE/.env.example FE/.env
+cp admin/.env.example admin/.env
+
+# 3. Start Postgres + Judge0
+cd be && docker compose up -d
+
+# 4. Migrate + seed
+pnpm --dir be exec prisma migrate deploy
+pnpm --dir be exec node scripts/seed-problems.ts
+
+# 5. Run
+pnpm dev
+```
+
+## 13. Screenshots
+
+| Trang chủ | Danh sách bài | Trang bài |
+| --- | --- | --- |
+| ![Trang chủ](docs/images/trang-chu.png) | ![Danh sách bài](docs/images/danh-sach-bai.png) | ![Trang bài](docs/images/bai-tap-mon-code.png) |
+
+| Premium | Đăng nhập | Admin |
+| --- | --- | --- |
+| ![Premium](docs/images/premium.png) | ![Đăng nhập](docs/images/dang-nhap-google.png) | ![Admin](docs/images/admin-dashboard.png) |
 
 ## Tài liệu khác
 

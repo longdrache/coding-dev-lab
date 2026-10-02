@@ -31,6 +31,11 @@ export class AdminGuard implements CanActivate {
     try {
       const p = this.svc.verifyJwt(token);
       if (p.role !== 'admin') throw new Error('invalid role');
+      // Token làm mới 7 ngày **không** được dùng thay access token: nếu cho qua,
+      // thì hạn 30 phút của access token mất tác dụng (đánh cắp refresh token là
+      // có quyền truy cập tới hết 7 ngày). `typ` vắng mặt = cookie cũ phát ra
+      // trước khi có hai loại token, nên vẫn coi là access.
+      if (p.typ === 'refresh') throw new Error('wrong token type');
       req.admin = p;
       return true;
     } catch {

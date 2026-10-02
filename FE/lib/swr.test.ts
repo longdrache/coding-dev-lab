@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { REFRESH_URL } from './api';
 import { ApiError, authedFetcher, swrFetcher } from './swr';
 
 describe('swrFetcher', () => {
@@ -116,22 +117,58 @@ describe('authedFetcher', () => {
       .mockResolvedValueOnce({ ok: false, status: 401 })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
     vi.stubGlobal('fetch', fetchMock);
-    vi.doMock('./api', () => ({
-      refreshSession: () => Promise.resolve({ kind: 'ok', session: { user: {}, expiresIn: 900 } }),
-    }));
+    const refreshSessionOnce = vi.fn(() =>
+      Promise.resolve({ kind: 'ok', session: { user: {}, expiresIn: 900 } }),
+    );
+    vi.doMock('./api', () => ({ refreshSessionOnce }));
     const { authedFetcher: fetcher } = await import('./swr');
     await expect(fetcher('/x')).resolves.toEqual({ ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(refreshSessionOnce).toHaveBeenCalledTimes(1);
     vi.doUnmock('./api');
   });
 
   it('401 → refresh thất bại → ném 401', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
     vi.doMock('./api', () => ({
-      refreshSession: () => Promise.resolve({ kind: 'expired' }),
+      refreshSessionOnce: () => Promise.resolve({ kind: 'expired' }),
     }));
     const { authedFetcher: fetcher } = await import('./swr');
     await expect(fetcher('/x')).rejects.toThrow('401');
     vi.doUnmock('./api');
+  });
+
+  /**
+   * Ca này là **lý do** `authedFetcher` gọi `refreshSessionOnce` chứ không gọi
+   * `refreshSession`: nhiều key SWR cùng 401 thì chỉ được xoay vòng token **một
+   * lần**. Refresh token xoay vòng, nên hai lần gọi là hai lần tranh nhau token
+   * mới và các lượt sau phải giành qua đệm 30 giây (`ROTATION_GRACE_MS`).
+   */
+  it('nhiều key cùng 401 thì chỉ một lần gọi refresh', async () => {
+    // Access token chưa được làm mới thì mọi key trả 401; sau một lần refresh
+    // thì cùng các key đó trả 200 — y hệt điều xảy ra ở BE.
+    let daLamMoi = false;
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url === REFRESH_URL) {
+        daLamMoi = true;
+        return { ok: true, status: 200, json: () => Promise.resolve({ user: {}, expiresIn: 900 }) };
+      }
+      if (!daLamMoi) return { ok: false, status: 401, json: () => Promise.resolve({}) };
+      return { ok: true, status: 200, json: () => Promise.resolve({ url }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    // Các test trên dùng `doMock` cho `./api`; phải xoá cache module để test này
+    // import đúng bản thật, không phải bản đã bị mock.
+    vi.doUnmock('./api');
+    vi.resetModules();
+    const { authedFetcher: fetcher } = await import('./swr');
+
+    await expect(
+      Promise.all([fetcher('http://x/a'), fetcher('http://x/b'), fetcher('http://x/c')]),
+    ).resolves.toEqual([{ url: 'http://x/a' }, { url: 'http://x/b' }, { url: 'http://x/c' }]);
+
+    const refreshCalls = fetchMock.mock.calls.filter((c) => c[0] === REFRESH_URL);
+    // 3 key × 2 lần gọi (thử, rồi thử lại) = 6, nhưng chỉ **một** lần xoay vòng token.
+    expect(refreshCalls).toHaveLength(1);
   });
 });

@@ -17,6 +17,31 @@ const HOP_HEADERS = new Set([
   "keep-alive",
 ]);
 
+/**
+ * Hạn cookie phải bám hạn thật của JWT bên trong.
+ *
+ * Trước đây `admin_token` sống 7 ngày trong khi bên trong là JWT 30 phút và
+ * không có refresh token nào: nên sau 30 phút làm việc, cookie vẫn còn, mọi
+ * request 401, và admin tưởng ứng dụng hỏng. Đặt `admin_refresh` 7 ngày cạnh
+ * `admin_token` 30 phút là để sau 30 phút vẫn làm mới được thay vì gõ lại
+ * mật khẩu.
+ *
+ * Số phút/giây phải khớp `ADMIN_ACCESS_TTL`/`ADMIN_REFRESH_TTL` ở
+ * `be/src/admin/admin.service.ts`.
+ */
+const ADMIN_ACCESS_TTL_MS = 30 * 60 * 1000;
+const ADMIN_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function adminCookieOptions(maxAgeMs: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    maxAge: maxAgeMs,
+    path: "/",
+  };
+}
+
 function pickHeaders(src: Headers): Headers {
   const headers = new Headers();
   src.forEach((v, k) => {
@@ -64,21 +89,23 @@ async function proxy(req: NextRequest) {
     headers: pickHeaders(upstream.headers),
   });
 
-  // Login: lấy token BE trả trong body, set cookie trên domain admin
+  // Login/làm mới: lấy token BE trả trong body, set cookie trên domain admin
   // để middleware đọc được (cookie BE set thuộc domain BE, vô dụng ở đây).
-  if (path === "admin/login" && upstream.ok) {
+  //
+  // `POST /admin/refresh` trả **cả hai** token nên nó dùng chung đúng nhánh này.
+  // Trước đây refresh không tồn tại, nên access token hết hạn 30 phút là đăng
+  // xuất cứng.
+  if ((path === "admin/login" || path === "admin/refresh") && upstream.ok) {
     try {
       const data = JSON.parse(Buffer.from(buf).toString("utf-8")) as {
         token?: string;
+        refreshToken?: string;
       };
       if (data?.token) {
-        out.cookies.set("admin_token", data.token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 7 * 24 * 60 * 60,
-          path: "/",
-        });
+        out.cookies.set("admin_token", data.token, adminCookieOptions(ADMIN_ACCESS_TTL_MS));
+      }
+      if (data?.refreshToken) {
+        out.cookies.set("admin_refresh", data.refreshToken, adminCookieOptions(ADMIN_REFRESH_TTL_MS));
       }
     } catch {
       // body không phải JSON thì bỏ qua
@@ -86,6 +113,9 @@ async function proxy(req: NextRequest) {
   }
   if (path === "admin/logout") {
     out.cookies.delete("admin_token");
+    // Phải xoá cả cookie làm mới: nó sống 7 ngày, để lại thì "Đăng xuất" chỉ có
+    // tác dụng trong 30 phút rồi phiên tự sống lại.
+    out.cookies.delete("admin_refresh");
   }
   return out;
 }

@@ -5,9 +5,10 @@ import { useSWRConfig } from "swr";
 import {
   RETRY_DELAY_MS,
   commitSession,
-  currentSession,
   refreshPlan,
-  refreshSession,
+  refreshSessionOnce,
+  resolveSession,
+  sessionEndedNotice,
   type PublicUser,
 } from "@/lib/api";
 
@@ -17,7 +18,11 @@ type SessionState = {
   user: PublicUser | null;
   /** Chưa xác minh xong `/me` thì `true`. Riêng trạng thái "chưa đăng nhập" không phải là loading. */
   loading: boolean;
-  refresh: () => Promise<void>;
+  /**
+   * Đọc lại phiên. `deliberate` = người dùng vừa bấm đăng xuất, dùng để không
+   * báo "phiên đã kết thúc" cho chính hành động của họ.
+   */
+  refresh: (opts?: { deliberate?: boolean }) => Promise<void>;
 };
 
 const Ctx = createContext<SessionState>({
@@ -58,6 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * để lời gọi đang bay về biết mình đã lỗi thời và không hẹn lại timer.
    */
   const genRef = useRef(0);
+  /** Câu báo cho biết phiên vừa kết thúc giữa chừng (khác đăng xuất cố ý). */
+  const [notice, setNotice] = useState("");
 
   /**
    * Đặt user, và xoá cache SWR nếu đây là lần chuyển sang tài khoản khác.
@@ -87,36 +94,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   /** Đọc `/me`: đồng bộ user và lên lịch lần tới từ `expiresIn` vừa nhận. */
-  const loadSession = useCallback(async () => {
-    try {
-      const session = await currentSession();
-      signedInRef.current = session !== null;
-      // Đọc được phiên là dấu hiệu phiên chết trước đó đã được thay bằng phiên mới
-      // (đăng nhập lại) — mở lại vòng lặp làm mới.
-      if (session) deadRef.current = false;
-      applyUser(session?.user ?? null);
-      if (session) {
-        const delay = refreshPlan(session.expiresIn);
+  const loadSession = useCallback(
+    async (opts?: { deliberate?: boolean }) => {
+      // `resolveSession` tự làm mới một lần khi `/me` trả 401 — đó là chỗ sửa
+      // "hết 15 phút là bị đăng xuất". Ở đây chỉ còn nối kết quả với state.
+      const r = await resolveSession();
+      if (r.kind === "ok") {
+        signedInRef.current = true;
+        // Đọc được phiên là dấu hiệu phiên chết trước đó đã được thay bằng phiên mới
+        // (đăng nhập lại, hoặc chính lần tự làm mới vừa thành công) — mở lại vòng
+        // lặp làm mới.
+        deadRef.current = false;
+        setNotice("");
+        applyUser(r.session.user);
+        const delay = refreshPlan(r.session.expiresIn);
         if (delay !== null) armRef.current?.(delay);
+      } else if (r.kind === "expired") {
+        signedInRef.current = false;
+        deadRef.current = true;
+        // Chỉ nói khi phiên chết **giữa chừng** và không phải do chính người dùng
+        // bấm đăng xuất — quyết định này thuộc `sessionEndedNotice` để test được.
+        setNotice(sessionEndedNotice(user, r.kind, opts?.deliberate === true) ?? "");
+        applyUser(null);
       }
-    } catch {
-      // `currentSession` chỉ trả `null` khi HTTP không OK (phiên thật sự hết).
-      // Tới đây là `fetch` **ném** — mạng chết, CORS, tab bị đóng giữa chừng. Xoá
-      // user ở đây là đăng xuất oan: người dùng bấm F5 vài lần là rớt phiên, rồi
-      // bị guard đá về trang chủ, dù mật khẩu vẫn đúng và cookie vẫn còn.
-      // Giữ nguyên user đang có, chỉ ngừng báo "đang tải"; lần refresh/401 sau sẽ
-      // tự đồng bộ lại. Cùng nguyên tắc với `RefreshResult` kind `'retry'`.
-      // `loadSession` lúc mount thì `user` còn `null` nên hiện khách — đúng, vì
-      // lúc đó chưa có gì để giữ.
-    } finally {
+      // `retry`: lỗi mạng hoặc 5xx. `resolveSession` đã không ném, nên tới đây
+      // ta **giữ nguyên** user đang có và chỉ ngừng báo "đang tải"; lần refresh/401
+      // sau sẽ tự đồng bộ lại. Xoá user ở nhánh này là đăng xuất oan: người dùng
+      // bấm F5 vài lần là rớt phiên, rồi bị guard đá về trang chủ, dù mật khẩu vẫn
+      // đúng và cookie vẫn còn.
       setLoading(false);
-    }
-  }, [applyUser]);
+    },
+    [applyUser, user],
+  );
 
   /** Làm mới bằng cookie `refresh`, rồi lên lịch lần kế tiếp. */
   const renew = useCallback(async () => {
     if (deadRef.current) return;
-    const r = await refreshSession();
+    // `refreshSessionOnce`: nếu đúng lúc này `loadSession` đang bay thì hai
+    // chỗ dùng chung **một** request refresh, không phải hai.
+    const r = await refreshSessionOnce();
     if (r.kind === "retry") {
       // Lỗi tạm (mạng, 5xx) — thử lại sau, tuyệt đối không đăng xuất nhầm.
       armRef.current?.(RETRY_DELAY_MS);
@@ -127,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // sẽ thử lại mãi một phiên đã hỏng. `loadSession` sẽ mở lại khi đăng nhập.
       deadRef.current = true;
       signedInRef.current = false;
+      setNotice(sessionEndedNotice(user, r.kind) ?? "");
       applyUser(null);
       return;
     }
@@ -137,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
     const delay = refreshPlan(r.session.expiresIn);
     if (delay !== null) armRef.current?.(delay);
-  }, [applyUser]);
+  }, [applyUser, user]);
 
   useEffect(() => {
     const gen = ++genRef.current;
@@ -161,9 +178,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Tab ẩn thì trình duyệt throttle timer, nên lịch có thể trôi qua lúc ta không
     // thấy. Khi tab quay lại: bỏ lịch cũ và gọi lại `/me` để xác minh từ đầu —
-    // `/me` rẻ, **không** xoay vòng refresh token, và trả `expiresIn` mới để lên
-    // lịch lại cho đúng. Không gọi `/refresh` ở đây: như vậy mỗi lần chuyển tab
-    // lại sẽ đốt một refresh token dù chẳng cần làm mới gì.
+    // `/me` rẻ, và trả `expiresIn` mới để lên lịch lại cho đúng.
+    //
+    // Gọi `/me` chứ không gọi thẳng `/refresh` là chủ ý: **hầu hết** lần quay lại
+    // tab thì access token còn hạn, và mỗi lần `/refresh` là một lần xoay vòng
+    // token vô ích. Nhưng nếu tab bị treo quá mốc 15 phút thì `/me` trả 401, và
+    // `resolveSession` sẽ tự làm mới **một lần** — đúng một lần, không hơn.
+    // Trước đây nhánh này gọi `/me` rồi coi 401 là hết phiên, tức đóng app hơn
+    // 15 phút rồi quay lại là bị đá ra khỏi tài khoản dù cookie `refresh` còn hạn.
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (!signedInRef.current || deadRef.current) return;
@@ -182,7 +204,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [loadSession, renew]);
 
-  return <Ctx.Provider value={{ user, loading, refresh: loadSession }}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={{ user, loading, refresh: loadSession }}>
+      {/*Chỉ hiện khi phiên chết giữa chừng (hết 30 ngày / bị gỡ phiên), không
+        hiện lúc hết 15 phút — ca đó `resolveSession` đã tự làm mới nên người
+        dùng không hề thấy gì. Không hiện lúc đăng xuất cố ý, vì câu do
+        `AccountMenu` báo đã đủ. */}
+      {notice && (
+        <p
+          role="status"
+          className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900"
+        >
+          {notice}
+        </p>
+      )}
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export const useSession = () => useContext(Ctx);

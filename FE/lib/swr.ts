@@ -68,18 +68,28 @@ export async function swrFetcher<T = unknown>(url: string): Promise<T> {
  * đây hàm này ném `Error` trần nên `useProblem` không phân biệt được 404 của bài
  * với lỗi mạng.
  */
+/**
+ * Lỗi 401 **một lần** thì làm mới rồi thử lại đúng một lần.
+ *
+ * Nhiều key SWR cùng 401 (màn dashboard bắn lúc mở) thì chỉ được **một** lần gọi
+ * `/refresh`: `refreshSessionOnce` dùng chung một promise cho mọi chỗ đang chờ.
+ * Không dedupe thì mỗi key một lần xoay vòng token, và các lượt sau phải giành
+ * qua đệm 30 giây của token vừa bị thay — thắng thì phiên rời rạc giữa các key,
+ * thua thì bị coi nhầm là hết phiên và đá người dùng ra khỏi tài khoản.
+ *
+ * `retry` (lỗi mạng, 5xx) thì ném 401 để `AuthProvider` xử lý — ném `ApiError`
+ * `503` ở đây sẽ khiến SWR hiện cả lỗi lên màn hình vì một sự cố tạm.
+ */
 export function authedFetcher<T = unknown>(url: string): Promise<T> {
   return fetch(url, { credentials: "include" }).then(async (res) => {
     if (res.status === 401) {
-      // Access token hết hạn — thử refresh rồi retry một lần
-      const { refreshSession } = await import("./api");
-      const r = await refreshSession();
+      const { refreshSessionOnce } = await import("./api");
+      const r = await refreshSessionOnce();
       if (r.kind === "ok") {
         const retry = await fetch(url, { credentials: "include" });
         if (retry.ok) return retry.json() as Promise<T>;
         throw new ApiError(retry.status, await readErrorCode(retry));
       }
-      // Refresh thất bại — ném 401 gốc để AuthProvider xử lý
       throw new ApiError(401);
     }
     if (!res.ok) throw new ApiError(res.status, await readErrorCode(res));

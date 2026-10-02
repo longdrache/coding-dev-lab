@@ -184,6 +184,102 @@ export async function refreshSession(): Promise<RefreshResult> {
 export type SignOutResult = "out" | "retry";
 
 /**
+ * Một lần làm mới, **dùng chung cho mọi nơi đang chờ**.
+ *
+ * Refresh token xoay vòng: mỗi lần `/refresh` trả về là một token mới và token
+ * cũ chỉ sống thêm `ROTATION_GRACE_MS` (30 giây, `auth.service.ts:71`). Nên khi
+ * hai chỗ cùng gặp 401 và cùng gọi `/refresh`, chỉ một lần được token mới và lần
+ * còn lại phải giành qua đệm — thắng thì phiên rời rạc giữa các tab, thua thì bị
+ * coi nhầm là hết phiên. `authedFetcher` chạy cho **mọi** key SWR nên một màn
+ * bảng điện thoại có thể ra mười request 401 cùng lúc.
+ *
+ * Vì vậy mọi lời gọi trong lúc đang bay đều nhận **cùng một** promise, và khi nó
+ * xong thì `inflight` trở lại `null` để lần sau (một access token mới vừa được
+ * cấp) không dùng lại kết quả cũ.
+ */
+let inflight: Promise<RefreshResult> | null = null;
+
+export function refreshSessionOnce(): Promise<RefreshResult> {
+  if (!inflight) {
+    // `finally` chạy **sau** khi promise đã được gán nên `inflight = null` ở đây
+    // không xoá nhầm một lần refresh mới hơn vừa được tạo ra.
+    inflight = refreshSession().finally(() => {
+      inflight = null;
+    });
+  }
+  return inflight;
+}
+
+/** Đọc phiên, tự làm mới **một lần** nếu access token vừa hết hạn. */
+export type SessionLookup =
+  | { kind: "ok"; session: SessionPayload }
+  /** Refresh token không dùng được nữa: hết 30 ngày, hoặc bị gỡ phiên. */
+  | { kind: "expired" }
+  /** Lỗi tạm (mạng, 5xx): tuyệt đối không kết luận là hết phiên. */
+  | { kind: "retry" };
+
+/**
+ * Đây là hợp đồng mà `AuthProvider` thật sự cần, và là chỗ **sửa đúng** cái lỗi
+ * "hết 15 phút là bị đăng xuất".
+ *
+ * `/me` chỉ đọc cookie `session` (access token, 15 phút) — nó không biết phiên 30
+ * ngày còn hay không. Nên `401` từ `/me` có **hai** nguyên nhân hoàn toàn khác
+ * nhau mà status không phân biệt được:
+ *
+ *  1. khách thật (chưa đăng nhập bao giờ);
+ *  2. access token vừa hết hạn, còn refresh token thì vẫn sống tới 30 ngày.
+ *
+ * Trước đây `AuthProvider` coi cả hai như `null` và hạ user về khách — tức mở
+ * lại trang sau 20 phút là mất phiên dù cookie `refresh` còn nguyên và còn hạn.
+ * Đó chính là "refresh token không kích hoạt được": **không có đường nào** gọi
+ * `/refresh` khi `/me` trả 401.
+ *
+ * Vì vậy `401` phải được phân giải bằng cách hỏi BE một lần: `/refresh` chỉ trả
+ * `200` khi phiên còn thật. Hết hạn 15 phút ⇒ `200` ⇒ người dùng không bao giờ
+ * phải đăng nhập lại; hết 30 ngày thì `401` ⇒ mới là đăng xuất thật.
+ *
+ * **Cái giá:** khách lạ mở app phải thêm một POST `/refresh` (trả 401 ngay). Chấp
+ * nhận được — nó chỉ xảy ra một lần mỗi lần tải trang, và cách khác (chỉ làm
+ * mới khi biết chắc có phiên) đòi phải thêm một cookie báo hiệu, tức thêm bề mặt
+ * hơn là đáng.
+ *
+ * `5xx`/lỗi mạng của `/me` không được đi vào nhánh refresh: đó là lỗi tạm của
+ * server, và `currentSession` đã ném đúng như vậy.
+ */
+export async function resolveSession(): Promise<SessionLookup> {
+  let session: SessionPayload | null;
+  try {
+    session = await currentSession();
+  } catch {
+    return { kind: "retry" };
+  }
+  if (session) return { kind: "ok", session };
+  const r = await refreshSessionOnce();
+  if (r.kind === "ok") return { kind: "ok", session: r.session };
+  return r;
+}
+
+/**
+ * Câu nói khi phiên **thật sự** kết thúc giữa chừng, để người dùng hiểu đây là
+ * đăng xuất chứ không phải lỗi.
+ *
+ * Ba điều kiện phải đủ cả ba, mỗi điều kiện lọc ra một ca sai:
+ *  - `kind` phải là `"expired"`: hết 15 phút là `ok` (đã tự làm mới), lỗi mạng là
+ *    `retry` — hai ca đó không được nói là hết phiên.
+ *  - `prev` phải có user: không có gì để mất thì không có gì để báo.
+ *  - không phải đăng xuất **cố ý**: `AccountMenu` đã báo lỗi riêng của nó rồi,
+ *    thêm dòng này là nói với người dùng chuyện họ vừa tự làm.
+ */
+export function sessionEndedNotice(
+  prev: PublicUser | null,
+  kind: SessionLookup["kind"],
+  deliberate = false,
+): string | null {
+  if (kind !== "expired" || deliberate || !prev) return null;
+  return 'Phiên đăng nhập đã kết thúc (hết 30 ngày hoặc bị đăng xuất ở nơi khác). Vui lòng đăng nhập lại.';
+}
+
+/**
  * Đăng xuất: xoá dòng phiên ở BE (route `/logout` đọc cookie `refresh` chứ không
  * dùng `AuthGuard`, vì access token hết hạn sau 15 phút mà người dùng vẫn phải
  * đăng xuất được).

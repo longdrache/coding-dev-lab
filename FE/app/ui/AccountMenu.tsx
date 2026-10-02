@@ -42,6 +42,9 @@ export default function AccountMenu() {
    * SWR và hạ user về `null` (`AuthProvider.applyUser`). Bỏ nó thì UI vẫn hiện
    * tài khoản cũ tới lần làm mới kế tiếp (tối đa 15 phút), và dữ liệu của tài
    * khoản đó vẫn nằm lại trong cache.
+   *
+   * `deliberate` là để `AuthProvider` **không** hiện dòng "phiên đã kết thúc":
+   * người dùng vừa tự bấm đăng xuất, báo lại cho họ là vô nghĩa.
    */
   async function onSignOut() {
     setSignOutError("");
@@ -50,7 +53,7 @@ export default function AccountMenu() {
       setSignOutError("Chưa đăng xuất được. Kiểm tra mạng rồi thử lại.");
       return;
     }
-    await refresh();
+    await refresh({ deliberate: true });
   }
 
   // Đóng khi đổi trang. Đây là điều kiện dễ sót nhất: header nằm sát mép trên

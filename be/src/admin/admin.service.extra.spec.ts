@@ -36,9 +36,13 @@ describe('AdminService login + verifyJwt (RS256)', () => {
       VERCEL: undefined,
     });
     const svc = new AdminService({} as any);
-    const token = await svc.login('admin', 'admin');
-    const payload = svc.verifyJwt(token) as { role: string };
+    const { token, refreshToken } = await svc.login('admin', 'admin');
+    const payload = svc.verifyJwt(token) as { role: string; typ: string };
     expect(payload.role).toBe('admin');
+    expect(payload.typ).toBe('access');
+    // Login phải trả **hai** token: chỉ access token 30 phút thì admin bị đá
+    // khỏi app mỗi nửa tiếng và không có đường nào quay lại ngoài mật khẩu.
+    expect(svc.verifyJwt(refreshToken).typ).toBe('refresh');
   });
 
   it('fallback HS256 ở dev, chặn ở production', () => {

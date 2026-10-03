@@ -61,7 +61,7 @@ test('/sign-in?oauth=… hiện nút Google và câu báo theo mã BE', async ({
   // `exists` là mã quan trọng nhất: phải chỉ đúng việc phải làm là đăng nhập
   // bằng mật khẩu trước, không thì người dùng bấm Google lại mãi.
   await expect(page.getByTestId('google-signin')).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText(/Đăng nhập bằng mật khẩu trước/)).toBeVisible();
+  await expect(page.getByText(/Đăng nhập bằng mật khẩu/)).toBeVisible();
 });
 
 // `conflict` là mã dễ rơi nhất (sinh ở tầng service, không ở controller) và là

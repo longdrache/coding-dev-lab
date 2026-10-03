@@ -143,6 +143,9 @@ jobs:
       - name: Seed problems
         run: node scripts/seed-problems.ts
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       - name: Test (e2e)
         run: pnpm test:e2e
 

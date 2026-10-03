@@ -501,17 +501,7 @@ export class AuthController {
       const tokens = await this.auth.issueSessionForUserId(r.userId, userAgent(req));
       if (!tokens) return res.redirect(302, frontendUrl('/sign-in?oauth=failed'));
       setSessionCookies(res, tokens);
-      // Đích sau khi đăng nhập Google xong là **trang chủ**, không phải
-      // `consumed.redirectTo`. `redirect_to` vẫn được nhận ở `start` và vẫn
-      // được `safeInternalPath` chạy hai lần (khi ghi vào dòng state, và lần
-      // nữa trong `consumeState` khi đọc ra) — lớp kiểm đó phải còn ngay cả khi
-      // đích cuối không còn lấy từ nó, vì đó là lớp chặn open redirect chứ không
-      // phải lớp định tuyến.
-      //
-      // Hệ quả cần biết: người mở `/problem/two-sum` bị đá sang `/sign-in` sẽ
-      // vào thẳng trang chủ chứ không quay lại đúng bài đó. Đó là chủ ý của
-      // yêu cầu "đăng nhập xong vào thẳng trang chủ".
-      return res.redirect(302, frontendUrl('/'));
+      return res.redirect(302, frontendUrl(safeInternalPath(consumed.redirectTo) || '/'));
     } catch {
       // Log lỗi **không kèm chi tiết người dùng**: đủ để biết DB/phiên hỏng ở
       // đâu mà không đổ PII lên log. Người dùng thì nhận `failed`, câu dành cho

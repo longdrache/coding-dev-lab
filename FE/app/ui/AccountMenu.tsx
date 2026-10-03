@@ -259,7 +259,7 @@ export default function AccountMenu() {
               send({ type: "TOGGLE" });
               void onSignOut();
             }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 focus-visible:bg-zinc-100 focus-visible:outline-none"
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 focus-visible:bg-zinc-100 focus-visible:outline-none"
           >
             <LogOut aria-hidden className="size-4" />
             Đăng xuất

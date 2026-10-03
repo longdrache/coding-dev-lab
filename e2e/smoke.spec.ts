@@ -118,6 +118,6 @@ test('URL lạ hiện trang 404', async ({ page }) => {
 
 test('/premium hiện 3 gói giá', async ({ page }) => {
   await page.goto('/premium');
-  await expect(page.getByText(/Hàng Tháng/).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/Hàng Năm/).first()).toBeVisible();
+  await expect(page.getByText(/1 Tháng/).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/1 Năm/).first()).toBeVisible();
 });

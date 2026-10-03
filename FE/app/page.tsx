@@ -412,7 +412,7 @@ export default function Home() {
                 {user?.role !== "vip" && (
                   <Link
                     href="/premium"
-                    className="font-medium text-amber-600 transition hover:text-amber-700"
+                    className="cursor-pointer font-medium text-amber-600 transition hover:text-amber-700"
                   >
                     Premium
                   </Link>

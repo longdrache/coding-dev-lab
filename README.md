@@ -1,664 +1,471 @@
-# GoCode — nền tảng luyện thuật toán
+# GoCode — Algorithm Practice Platform (coding-dev-lab)
 
-**Production:** https://go-code-vn.vercel.app/
+A Vietnamese-language algorithm practice platform for students. Users read problem statements, write code in a Monaco editor, submit solutions, and receive instant judging results from Judge0. The platform gamifies learning with streaks, heatmaps, and badges, and monetizes via a Premium/VIP subscription tier (Stripe).
 
-Chấm code tự động bằng Judge0: 56 bài tập cấu trúc dữ liệu và giải thuật (Dễ / Trung bình / Khó),
-8 ngôn ngữ, streak và bản đồ nhiệt tiến độ, gói Premium trả phí, cùng một trang quản trị riêng.
-Toàn bộ giao diện, tên bài và thông báo lỗi bằng tiếng Việt.
+**Production URL:** [https://go-code-vn.vercel.app/](https://go-code-vn.vercel.app/)
 
-| Trang chủ | Danh sách bài |
-| --- | --- |
-| ![Trang chủ GoCode](docs/images/trang-chu.png) | ![Danh sách 56 bài tập](docs/images/danh-sach-bai.png) |
+---
 
-> Ảnh trong README chụp từ bản chạy local với **dữ liệu mồi** (tài khoản `@example.test`,
-> số liệu analytics tự sinh). Không ảnh nào chứa dữ liệu người dùng thật.
+## Features
 
-## Sản phẩm gồm những gì
+### Core Platform
+- **Problem Library** — Browse and search algorithm problems across 8 topics (Arrays & Pointers, Strings, Linked Lists, Stack & Queue, Trees & Graphs, Dynamic Programming, Sorting & Searching, Hashing & Sets)
+- **Code Editor** — Monaco Editor with syntax highlighting for multiple languages
+- **Instant Judging** — Submit code and get real-time results from Judge0 (CPU 2s, RAM 128MB limits)
+- **Batch Testing** — Submit up to 10 hidden tests at once with fail-fast polling
+- **Submission History** — Track your last 50 submissions per problem
 
-| App | Thư mục | Cổng local | Vai trò |
-| --- | --- | --- | --- |
-| FE | `FE/` | 3000 | Sân luyện: trang chủ, danh sách bài, trang bài + trình soạn thảo, Premium, tiến độ, hỏi đáp, đăng nhập |
-| Admin | `admin/` | 3001 | Trang quản trị: dashboard, duyệt bài, học viên, bài nộp, hỏi đáp |
-| BE | `be/` | 4000 | API NestJS: bài tập, chấm bài, tiến độ, phiên đăng nhập, Premium, admin, analytics |
+### Gamification
+- **Streak System** — Consecutive days with activity (Vietnam timezone UTC+7)
+- **Activity Heatmap** — 35-day activity visualization
+- **12 Badges** — Unlocked by streak length, problems solved, and difficulty milestones
+- **Solved & Favorites** — Server-side storage, synced across devices
 
-```mermaid
-graph TD
-    FE["FE :3000<br/>Next.js 16 + React 19"]
-    Admin["Admin :3001<br/>Next.js 16 + React 19"]
-    BE["BE :4000<br/>NestJS 12"]
-    Judge0["Judge0 :2358<br/>Docker sandbox"]
-    DB[("Postgres<br/>Prisma 7")]
-    Brevo["Brevo<br/>SMTP"]
-    Stripe["Stripe<br/>Checkout + Webhook"]
+### Authentication
+- **Email/Password** — Registration with email verification (24-hour token)
+- **Google OAuth 2.0** — PKCE S256 flow with state stored hashed in DB
+- **JWT RS256** — Access tokens (15-min expiry) + Refresh tokens (30-day, per-device rotation, max 10 sessions)
+- **Password Reset** — Token-based via email (1-hour expiry)
+- **Timing Attack Prevention** — Dummy bcrypt hash comparison for non-existent users
 
-    FE -->|"REST API"| BE
-    Admin -->|"BFF proxy"| BE
-    BE -->|"batch submit<br/>X-Auth-Token"| Judge0
-    BE -->|"Prisma"| DB
-    BE -->|"SMTP"| Brevo
-    BE -->|"webhook"| Stripe
-```
+### Premium/VIP
+- **3 Plans** — 200 VND/day, 1,000 VND/month, 2,000 VND/year
+- **Stripe Checkout** — Subscription mode with VND currency
+- **Webhook Idempotency** — Duplicate event prevention via `StripeEvent` table
+- **Auto-Downgrade** — VIP expires automatically; sweep runs every 60 minutes
+- **VIP-Only Problems** — Per-problem VIP flag for exclusive content
 
-## Tính năng
+### Admin Dashboard
+- **Analytics** — 30-day stats, online count, daily charts, top problems, recent logins by country
+- **User Management** — List, search by email/name/ID
+- **Problem Management** — CRUD, publish/unpublish, VIP flag toggle
+- **Submission Review** — View all submissions with source code
+- **Q&A Management** — Read questions, reply via email (Brevo SMTP)
 
-### Sân luyện
+### Q&A Support
+- **Public Submission** — Guests can submit questions (rate limited: 5/minute)
+- **Admin Reply** — Sends email via Brevo SMTP with HTML template
 
-- **Trình soạn thảo Monaco** với 8 ngôn ngữ: Python 3, JavaScript, TypeScript, C++ 17, PHP,
-  Java, C#, Go (`FE/app/problem/[slug]/page.tsx`).
-- **Chạy test mẫu và nộp bài.** Nộp bài thì BE gửi **test ẩn** lên Judge0; test ẩn bị cắt khỏi
-  mọi response gửi cho client, kể cả khi tài khoản có VIP
-  (`be/src/problems/problems.service.ts`). Mỗi bài tối đa 10 test ẩn.
-- **Lịch sử nộp bài** theo từng bài, xem lại mã nguồn và kết quả từng lần nộp.
+### Analytics & Presence
+- **Page View Tracking** — Fire-and-forget, IP hashed with salt (privacy-preserving)
+- **Login Analytics** — Country detection via Vercel header or ip-api.com
+- **Online Presence** — In-memory heartbeat with 45-second TTL
 
-![Trang bài với trình soạn thảo Monaco](docs/images/bai-tap-mon-code.png)
+---
 
-### Tiến độ
+## Tech Stack
 
-- **Streak** chuỗi ngày liên tiếp, **bản đồ nhiệt 35 ngày**, **12 huy hiệu** mở theo điều kiện
-  (chuỗi ngày, số bài đã giải, số bài theo độ khó) — `be/src/progress/progress.service.ts`.
-- **Đã giải / yêu thích** lưu trên server, đồng bộ giữa các máy.
-- **Tiến độ theo 8 chủ đề** (mảng & con trỏ, chuỗi, danh sách liên kết, stack & hàng đợi, cây & đồ thị,
-  quy hoạch động, sắp xếp & tìm kiếm, hàm bấm & tập hợp).
+### Backend (`be/`)
+| Technology | Purpose |
+|------------|---------|
+| NestJS 12 (ESM) | REST API framework |
+| Prisma 7 | ORM with PostgreSQL |
+| PostgreSQL | Database |
+| jose / jsonwebtoken | JWT (RS256) authentication |
+| bcryptjs | Password hashing |
+| Judge0 (self-hosted) | Code execution engine |
+| Stripe 18 | Payment processing |
+| Nodemailer 10 | Email (Brevo SMTP) |
+| class-validator | Input validation |
+| Vitest 4 + Supertest | Testing |
+| oxlint | Linting |
 
-![Streak, bản đồ nhiệt và huy hiệu](docs/images/streak-va-huy-hieu.png)
+### Frontend (`FE/`)
+| Technology | Purpose |
+|------------|---------|
+| Next.js 16.3 (App Router) | React framework |
+| React 19.2 | UI library |
+| Monaco Editor | Code editor |
+| Three.js + @react-three/fiber | 3D graphics |
+| Framer Motion 13 + GSAP 3 | Animations |
+| shadcn/ui + Tailwind CSS 4 | UI components |
+| SWR 2 | Data fetching |
+| Vitest 5 | Testing |
 
-![Tiến độ theo chủ đề](docs/images/tien-do-theo-chu-de.png)
+### Admin (`admin/`)
+| Technology | Purpose |
+|------------|---------|
+| Next.js 16.3 (App Router) | Admin dashboard framework |
+| React 19.2 | UI library |
+| shadcn/ui + Tailwind CSS 4 | UI components |
+| jose | JWT verification |
+| SWR 2 | Data fetching |
 
-### Bài VIP và gói Premium
+### Infrastructure
+| Technology | Purpose |
+|------------|---------|
+| pnpm 10.15 | Package manager (workspace) |
+| Vercel | Deployment (3 separate projects) |
+| Neon Postgres | Serverless database |
+| Docker | Judge0 self-hosting |
+| Playwright 16 | E2E testing |
+| k6 | Performance testing |
 
-- **20 bài VIP** trong 56 bài, chỉ tài khoản `role = vip` mới mở được. Quyền quyết định bằng `role`
-  đã ký trong access token, không đọc cột `isVip` của bài — `be/src/problems/vip-problem.policy.ts`.
-  Người chưa nâng cấp chỉ thấy tên bài và lời mời nâng cấp, không lọt mô tả, test hay trình soạn thảo.
+---
 
-![Bài VIP bị khoá với tài khoản thường](docs/images/bai-vip.png)
+## Prerequisites
 
-- **3 gói** (`FE/app/data/pricing.ts`): 200 ₫/ngày, 1.000 ₫/tháng, 2.000 ₫/năm. Thanh toán qua
-  Stripe Checkout, giá và kỳ hạn gửi thẳng trong `price_data` nên không cần khai price ID.
-- **Webhook idempotent**: mỗi event Stripe ghi vào bảng `StripeEvent`, nên retry webhook không
-  gia hạn VIP hai lần. Hết hạn thì tự hạ VIP, không cần nhớ hủy.
+- Node.js 18+
+- pnpm 10+
+- PostgreSQL 14+
+- Docker (for Judge0)
+- Stripe account (for payments)
+- Brevo account (for email)
 
-![Bảng giá Premium](docs/images/premium.png)
+---
 
-### Tài khoản
+## Installation & Setup
 
-- **Đăng ký kèm xác minh email**, gửi lại link xác minh, và đặt lại mật khẩu qua email
-  (`/register`, `/verify`, `/forgot-password`, `/reset-password`).
-- **Đăng nhập bằng Google (OAuth 2.0 + PKCE S256)**. Nút Google ở cả `/sign-in` và `/sign-up`.
-  Toàn bộ thỏa thuận nằm ở BE, FE chỉ có một liên kết tới `GET /api/auth/oauth/google/start`.
-- Mật khẩu băm **bcrypt**; access token **RS256 hạn 15 phút**; refresh token hạn 30 ngày, xoay vòng
-  theo từng thiết bị và chỉ giữ 10 phiên mới nhất.
-
-![Đăng nhập bằng mật khẩu hoặc Google](docs/images/dang-nhap-google.png)
-
-### Trang quản trị
-
-- **Dashboard**: lượt truy cập 30 ngày, số online, tổng bài / hỏi đáp / bài nộp, biểu đồ chạy và nộp
-  bài theo ngày, bài được nộp nhiều nhất, đăng nhập gần đây theo quốc gia.
-
-![Dashboard quản trị](docs/images/admin-dashboard.png)
-
-- **Học viên**: danh sách tài khoản, vai trò, tìm theo email / tên / ID.
-
-![Danh sách học viên](docs/images/admin-hoc-vien.png)
-
-- **Bài nộp**: ai nộp bài nào, ngôn ngữ, kết quả, thời gian chạy, và xem lại mã nguồn.
-
-![Danh sách bài nộp](docs/images/admin-bai-nop.png)
-
-- **Bài tập**: tạo / sửa / xoá, duyệt xuất bản, gỡ xuất bản, bật hoặc gỡ cờ VIP cho từng bài.
-
-![Quản lý bài tập](docs/images/admin-quan-ly-bai-tap.png)
-
-- **Hỏi đáp**: đọc câu hỏi của người dùng (kể cả khách chưa đăng nhập) và trả lời thẳng qua email.
-
-![Hộp thư hỏi đáp](docs/images/admin-hoi-dap.png)
-
-### Bảo mật
-
-- Access token RS256 15 phút, refresh token xoay vòng theo thiết bị; admin ký cặp khoá RS256 riêng.
-- Giới hạn tần suất: đăng nhập 30 lần/15 phút, đăng ký 20 lần/giờ, đăng nhập admin 5 lần/phút,
-  gửi câu hỏi 5 lần/phút, nộp bài 30 lần/phút.
-- Mọi input đi qua `ValidationPipe` với `whitelist`; route `PATCH /api/admin/problems/:slug/vip`
-  còn bật `forbidNonWhitelisted` vì thân request đúng một trường.
-- Analytics **không lưu IP thô**: chỉ lưu `sha256(IP_HASH_SALT + ":" + ip)`
-  (`be/src/views/views.service.ts`), và chỉ đọc quốc gia qua header `x-vercel-ip-country`.
-- Judge0: BE gắn header `X-Auth-Token` khi `JUDGE0_API_TOKEN` có giá trị. Để trống thì Judge0
-  chạy public — ai cũng chấm được, nên production phải đặt token.
-
-## Biến môi trường
-
-Nguồn: `be/.env.example`, `FE/.env.example`, `admin/.env.example`. Không có giá trị bí mật nào
-nằm trong repo.
-
-### BE (`be/.env`)
-
-| Biến | Bắt buộc | Lấy ở đâu / ghi chú |
-| --- | --- | --- |
-| `PORT` | không | Mặc định 4000. |
-| `STRIPE_SECRET_KEY` | có | Bắt buộc cho trang Premium. |
-| `STRIPE_WEBHOOK_SECRET` | có | Xác thực chữ ký webhook. Thiếu thì mọi webhook bị từ chối. |
-| `FRONTEND_URL` | có | Origin của FE, dùng cho CORS và link trong mail. |
-| `JUDGE0_URL` | có | URL Judge0, mặc định trong compose là `http://judge0-server:2358`. |
-| `JUDGE0_API_TOKEN` | có | Token cho header `X-Auth-Token`. Rỗng = Judge0 public. |
-| `USER_LOGIN` | có | Tài khoản SMTP Brevo. |
-| `USER_PASS` | có | SMTP key Breho (`xsmtpsib-…`), không phải API key. |
-| `MAIL_FROM` | có | Địa chỉ sender **đã xác minh** trên Brevo. |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_PASSWORD_HASH` | có | Tài khoản admin. Bcrypt hash tạo bằng `bcrypt.hashSync`. |
-| `ADMIN_JWT_PRIVATE_KEY` / `ADMIN_JWT_PUBLIC_KEY` | có | Cặp RSA cho cookie admin (RS256). |
-| `JWT_SECRET` | không | Fallback HS256 cho cookie admin cũ. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | có | Google Cloud Console → Credentials → OAuth client ID loại *Web application*. |
-
-
-
-### FE (`FE/.env`)
-
-| Biến | Ghi chú |
-| --- | --- |
-| `NEXT_PUBLIC_API_URL` | URL BE, mặc định `http://localhost:4000`. |
-
-### Admin (`admin/.env`, `admin/.env.local`)
-
-| Biến | Ghi chú |
-| --- | --- |
-| `BE_API_URL` | URL BE mà BFF proxy forward tới, chạy server-side. |
-| `NEXT_PUBLIC_API_URL` | Dự phòng khi thiếu `BE_API_URL`. |
-| `JWT_SECRET` | Chỉ dùng làm fallback HS256 khi verify RS256 thất bại (chỉ ở dev). |
-| `ADMIN_JWT_PUBLIC_KEY` | Khoá công khai để `proxy.ts` verify cookie admin. |
-
-## Phụ thuộc ngoài
-
-| Phụ thuộc | Cần khi nào | Bắt buộc? |
-| --- | --- | --- |
-| **Postgres** | Mọi lúc — `DATABASE_URL` trỏ vào đây | Bắt buộc |
-| **Judge0** (Docker) | Chạy test mẫu và nộp bài | Bắt buộc cho chấm code; danh sách bài vẫn xem được không cần |
-| **Brevo** | Xác minh email, đặt lại mật khẩu, trả lời hỏi đáp | Không — thiếu thì các luồng đó log lỗi và bỏ qua gửi |
-| **Google Cloud OAuth** | Nút "Tiếp tục với Google" | Không — thiếu thì nút báo `?oauth=failed` ngay khi bấm |
-| **Stripe** | Gói Premium | Không — trang `/premium` vẫn hiện, chỉ không tạo được phiên thanh toán |
-
-Judge0 local:
+### 1. Clone the Repository
 
 ```bash
-cd be && docker compose up -d      # judge0-server + 3 workers
-docker compose restart judge0-server
+git clone https://github.com/longdrache/coding-dev-lab.git
+cd coding-dev-lab
 ```
 
-Judge0 CE hỗ trợ auth ngay trong `judge0.conf`, không cần nginx:
-
-```ini
-AUTHN_TOKEN=<token-khoa-manh>
-```
-
-BE gắn header `X-Auth-Token: $JUDGE0_API_TOKEN` vào mọi request khi biến này có giá trị. CPU time
-mặc định 2 giây (tối đa 5), RAM cố định 128MB cho mọi bài — `be/src/judge0/judge0.service.ts`.
-
-## API chính
-
-| Method & Path | Auth | Mô tả |
-| --- | --- | --- |
-| `GET /api/problems` | public | Danh sách bài đã xuất bản |
-| `GET /api/problems/:slug` | public | Chi tiết bài (không kèm test ẩn) |
-| `POST /api/problems/:slug/submit` | JWT cookie | Nộp bài: chấm test ẩn, ghi lịch sử + đánh dấu đã giải |
-| `POST /api/submissions/batch` | JWT cookie | Gửi cả lô test lên Judge0 |
-| `GET /api/submissions/batch?tokens=` | JWT cookie | Poll kết quả lô |
-| `GET /api/history`, `POST /api/history` | JWT cookie | Lịch sử nộp bài |
-| `GET /api/progress/dashboard` | JWT cookie | Streak, heatmap, huy hiệu, số bài đã giải |
-| `GET /api/progress/solved`, `/favorites` | JWT cookie | Bài đã giải / yêu thích |
-| `POST /api/auth/register`, `/login`, `/refresh`, `/logout` | public | Đăng ký và vòng đời phiên |
-| `GET /api/auth/verify?token=` | public | Xác minh email từ link trong mail |
-| `GET /api/auth/oauth/google/start`, `/callback` | public | Luồng OAuth Google |
-| `POST /api/premium/checkout`, `/webhook` | JWT cookie / Stripe | Thanh toán |
-| `GET /api/presence/online` | public | Số người đang online |
-| `POST /api/qna` | public (giới hạn tần suất) | Gửi câu hỏi |
-| `POST /api/admin/login` | admin | Đăng nhập admin |
-
-## Cơ sở dữ liệu
-
-Postgres qua Prisma 7. `be/prisma/schema.prisma` có 15 model: 14 bảng dùng thật và `Test` là
-model stub chưa dùng.
-
-| Bảng | Vai trò |
-| --- | --- |
-| `User` | Tài khoản: `role` (user/vip/admin), `vipExpiresAt`, `premiumPlan`, `avatarUrl` |
-| `UserToken` | Refresh token theo thiết bị (xoay vòng, thu hồi từng thiết bị) |
-| `UserAccount` | Liên kết OAuth — unique `(provider, providerUserId)` |
-| `UserOAuthState` | State tạm của luồng OAuth, khoá theo hash |
-| `ActivityDay` | Streak và bản đồ nhiệt — unique `(userId, date)` |
-| `SolvedProblem` | Bài đã giải — unique `(userId, slug)` |
-| `FavoriteProblem` | Bài yêu thích — unique `(userId, slug)` |
-| `UserBadge` | Huy hiệu đã mở — unique `(userId, badgeId)` |
-| `Problem` | Bài tập: `isVip`, `tests`, `hiddenTests`, `starterCodes`, `status` |
-| `Submission` | Lịch sử nộp bài: `status`, `passed`, `time`, `memory`, `sourceCode` |
-| `QnaQuestion` | Câu hỏi hỗ trợ, `userId` nullable để khách không cần đăng nhập |
-| `StripeEvent` | Event Stripe đã xử lý — idempotency chống gia hạn VIP hai lần |
-| `PageView` | Analytics trang — `ipHash` (không lưu IP thô) |
-| `LoginEvent` | Lượt đăng nhập — `ipHash`, `country` |
-
-Quan hệ chính: `User` 1—N các bảng dữ liệu. `onDelete: Cascade` cho dữ liệu thuộc user;
-`QnaQuestion`, `PageView`, `LoginEvent` để lại dòng (nullable `userId`) khi user bị xoá.
-
-## ERD
-
-```mermaid
-erDiagram
-    User ||--o{ UserToken : "refresh tokens"
-    User ||--o{ UserAccount : "OAuth links"
-    User ||--o{ ActivityDay : "streak"
-    User ||--o{ SolvedProblem : "solved"
-    User ||--o{ FavoriteProblem : "favorites"
-    User ||--o{ UserBadge : "badges"
-    User ||--o{ Submission : "submissions"
-    User ||--o{ QnaQuestion : "questions"
-    User ||--o{ PageView : "views"
-    User ||--o{ LoginEvent : "logins"
-
-    User {
-        Int id PK
-        String email UK
-        String role
-        DateTime vipExpiresAt
-        String premiumPlan
-        String stripeSubscriptionId
-    }
-    UserToken {
-        String id PK
-        Int userId FK
-        String tokenHash
-        DateTime expiresAt
-    }
-    UserAccount {
-        Int id PK
-        Int userId FK
-        String provider
-        String providerUserId
-    }
-    ActivityDay {
-        String id PK
-        Int userId FK
-        DateTime date
-        Int count
-    }
-    SolvedProblem {
-        String id PK
-        Int userId FK
-        String slug
-        DateTime solvedAt
-    }
-    FavoriteProblem {
-        String id PK
-        Int userId FK
-        String slug
-    }
-    UserBadge {
-        String id PK
-        Int userId FK
-        String badgeId
-    }
-    Problem {
-        String id PK
-        String slug UK
-        String title
-        String difficulty
-        Boolean isVip
-        Json hiddenTests
-    }
-    Submission {
-        String id PK
-        Int userId FK
-        String problemSlug
-        Int languageId
-        String sourceCode
-        String status
-    }
-    QnaQuestion {
-        String id PK
-        Int userId FK
-        String email
-        String question
-    }
-    StripeEvent {
-        String eventId PK
-        String type
-    }
-    PageView {
-        String id PK
-        Int userId FK
-        String ipHash
-        String path
-    }
-    LoginEvent {
-        String id PK
-        Int userId FK
-        String ipHash
-        String country
-    }
-```
-
-## API Collection
-
-### Auth
-
-| Method | Path | Body | Response |
-| ------ | ---- | ---- | -------- |
-| `POST` | `/api/auth/register` | `{ email, password, name? }` | `200 { message }` |
-| `POST` | `/api/auth/login` | `{ email, password }` | `200 { user, expiresIn }` + cookies |
-| `POST` | `/api/auth/refresh` | — (cookie `refresh`) | `200 { user, expiresIn }` |
-| `POST` | `/api/auth/logout` | — (cookie `refresh`) | `200 { ok }` |
-| `GET` | `/api/auth/me` | — (cookie `session`) | `200 { user, expiresIn }` / `401` |
-| `GET` | `/api/auth/verify?token=` | — | `200 { user, expiresIn }` |
-| `POST` | `/api/auth/forgot-password` | `{ email }` | `200 { message }` |
-| `POST` | `/api/auth/reset-password` | `{ token, password }` | `200 { ok }` |
-
-### OAuth
-
-| Method | Path | Response |
-| ------ | ---- | -------- |
-| `GET` | `/api/auth/oauth/google/start?redirect_to=` | `302` → Google |
-| `GET` | `/api/auth/oauth/google/callback?code&state` | `302` → FE |
-
-### Problems
-
-| Method | Path | Auth | Response |
-| ------ | ---- | ---- | -------- |
-| `GET` | `/api/problems` | public | `200 Problem[]` |
-| `GET` | `/api/problems/:slug` | public | `200 Problem` / `404` |
-| `POST` | `/api/problems/:slug/submit` | JWT | `200 Submission` |
-
-### Submissions
-
-| Method | Path | Auth | Response |
-| ------ | ---- | ---- | -------- |
-| `POST` | `/api/submissions/batch` | JWT | `200 { tokens }` |
-| `GET` | `/api/submissions/batch?tokens=` | JWT | `200 Submission[]` |
-| `GET` | `/api/history` | JWT | `200 Submission[]` |
-| `POST` | `/api/history` | JWT | `200 Submission` |
-
-### Progress
-
-| Method | Path | Auth | Response |
-| ------ | ---- | ---- | -------- |
-| `GET` | `/api/progress/dashboard` | JWT | `200 { streak, heatmap, badges, solved }` |
-| `GET` | `/api/progress/solved` | JWT | `200 { slugs }` |
-| `GET` | `/api/progress/favorites` | JWT | `200 { slugs }` |
-| `POST` | `/api/progress/favorites` | JWT | `200 { ok }` |
-
-### Premium
-
-| Method | Path | Auth | Response |
-| ------ | ---- | ---- | -------- |
-| `POST` | `/api/premium/checkout` | JWT | `200 { url }` |
-| `GET` | `/api/premium/status` | JWT | `200 { role, vipExpiresAt }` |
-| `POST` | `/api/premium/webhook` | Stripe | `200 { received }` |
-
-### Admin
-
-| Method | Path | Auth | Response |
-| ------ | ---- | ---- | -------- |
-| `POST` | `/api/admin/login` | — | `200 { ok }` + cookie |
-| `GET` | `/api/admin/users` | admin | `200 User[]` |
-| `PATCH` | `/api/admin/problems/:slug/vip` | admin | `200 { ok }` |
-| `POST` | `/api/admin/qna/:id/reply` | admin | `200 { ok }` |
-
-### Other
-
-| Method | Path | Auth | Response |
-| ------ | ---- | ---- | -------- |
-| `GET` | `/api/presence/online` | public | `200 { count }` |
-| `POST` | `/api/qna` | public | `200 { ok }` |
-
-## Performance Testing
-
-Tool: k6 v2.2.0
-Environment: NestJS + PostgreSQL (local), Judge0 (Docker)
-Machine: AMD Ryzen 7 5800U, 14GB RAM, Windows 11 (local) / VM.Standard.E2.1.Micro: 1 OCPU AMD EPYC, 1GB RAM, 480 Mbps, Ubuntu 22.04 (Oracle Cloud free tier)
-Test date: 2026-10-01
-Commit: [Git commit SHA]
-Warm-up: 5 VUs / 30s trước mỗi lần test chính
-
-### Scenarios
-- Public read: 30 VUs, sustain for 120 seconds (3 runs)
-- Judge0 submit: 5 VUs, sustain for 60 seconds
-
-### Thresholds
-- HTTP error rate < 1%
-- API p95 latency < 500 ms
-- Checks pass rate > 99%
-
-### Results
-| Run | VUs | Duration | Requests | RPS | p50 | p90 | p95 | p99 | Error rate | Status |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
-| 1 | 30 | 120s | 2398 | 19.83 | 1.07ms | 1.73ms | 2.46ms | 614.03ms | 0% | PASS |
-| 2 | 30 | 120s | 2374 | 19.61 | 1.07ms | 1.73ms | 2.16ms | 990.57ms | 0% | PASS |
-| 3 | 30 | 120s | 2377 | 19.58 | 0.92ms | 1.58ms | 1.75ms | 797.27ms | 0% | PASS |
-| **Avg** | **30** | **120s** | **2383** | **19.67** | **1.02ms** | **1.68ms** | **2.12ms** | **800.62ms** | **0%** | **PASS** |
-
-### Judge0 Results
-| Metric | Value |
-|--------|-------|
-| VUs | 5 |
-| Duration | 60s |
-| Requests | 276 |
-| RPS | 4.41 |
-| p50 | 202ms |
-| p90 | 923ms |
-| p95 | 1.03s |
-| p99 | 1.62s |
-| Error rate | 0% |
-| Status | PASS |
-
-### Script Path
-- `be/tests/performance/problems-load-test.js`
-- `be/tests/performance/judge0-load-test.js`
-
-### Reproduce
-```bash
-# Public read test
-cd be && pnpm start:dev
-k6 run --vus 30 --duration 120s --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" -e BASE_URL=http://localhost:4000 tests/performance/problems-load-test.js
-
-# Judge0 test (cần Judge0 chạy)
-cd be && docker compose up -d judge0-server judge0-workers
-k6 run --vus 5 --duration 60s --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" -e BASE_URL=http://localhost:4000 -e TEST_EMAIL=k6@test.com -e TEST_PASSWORD=k6test123 tests/performance/judge0-load-test.js
-```
-
-### Side Effects & Cleanup
-- **Public read**: chỉ GET, không ghi DB, không cần cleanup
-- **Judge0 test**: tạo user `k6@test.com` (nếu chưa có), ghi submission vào DB. Cleanup:
-  ```sql
-  DELETE FROM "Submission" WHERE "userId" = (SELECT id FROM "User" WHERE email = 'k6@test.com');
-  DELETE FROM "User" WHERE email = 'k6@test.com';
-  ```
-
-## Screenshots
-
-| Trang chủ | Danh sách bài | Trang bài |
-| --- | --- | --- |
-| ![Trang chủ](docs/images/trang-chu.png) | ![Danh sách bài](docs/images/danh-sach-bai.png) | ![Trang bài](docs/images/bai-tap-mon-code.png) |
-
-| Premium | Đăng nhập | Admin |
-| --- | --- | --- |
-| ![Premium](docs/images/premium.png) | ![Đăng nhập](docs/images/dang-nhap-google.png) | ![Admin](docs/images/admin-dashboard.png) |
-
-## API Documentation
-
-API collection đầy đủ xem ở section [API Collection](#api-collection) phía trên. Swagger UI chưa được tích hợp — dùng Postman hoặc curl với các endpoint đã liệt kê.
-
-## 1. Product Overview
-
-GoCode là nền tảng luyện thuật toán cho học sinh/sinh viên Việt Nam. Người dùng đọc đề, viết code trong trình soạn thảo Monaco, nộp bài và nhận kết quả chấm tức thì từ Judge0. Hệ thống lưu tiến độ (streak, heatmap, huy hiệu) để giữ động lực học mỗi ngày.
-
-**Live demo:** https://go-code-vn.vercel.app/
-
-## 2. Architecture Diagram
-
-```mermaid
-graph TD
-    FE["FE :3000 — Next.js 16"]
-    Admin["Admin :3001 — Next.js 16"]
-    BE["BE :4000 — NestJS 12"]
-    Judge0["Judge0 :2358 — Docker"]
-    DB[("Postgres — Prisma 7")]
-    Brevo["Brevo — SMTP"]
-    Stripe["Stripe — Checkout + Webhook"]
-
-    FE -->|"REST API"| BE
-    Admin -->|"BFF proxy"| BE
-    BE -->|"X-Auth-Token"| Judge0
-    BE --> DB
-    BE --> Brevo
-    BE --> Stripe
-```
-
-## 3. Service Deployment Diagram
-
-```mermaid
-graph LR
-    Vercel["Vercel Edge"] --> FE["FE (Vercel)"]
-    Vercel --> Admin["Admin (Vercel)"]
-    Vercel --> BE["BE (Vercel Serverless)"]
-    BE --> Neon["Neon Postgres"]
-    BE --> Judge0VM["Judge0 VM riêng"]
-    BE --> StripeAPI["Stripe API"]
-```
-
-- **FE/Admin/BE**: 3 project Vercel riêng, deploy độc lập
-- **Postgres**: Neon (serverless, pooler + direct connection)
-- **Judge0**: VM riêng chạy Docker, BE gọi qua `JUDGE0_URL` + `X-Auth-Token`
-
-## 4. Main User Flows
-
-### Luyện tập
-1. Đăng nhập → xem danh sách bài → chọn bài → viết code → chạy test mẫu → nộp bài → xem kết quả
-2. Bài VIP bị khoá → hiện nút nâng cấp → thanh toán → mở khoá ngay
-
-### Premium
-1. Chọn gói → Stripe Checkout → webhook cấp VIP → hết hạn tự hạ
-
-### Admin
-1. Đăng nhập admin → duyệt bài → bật/tắt VIP → trả lời QNA qua email
-
-## 5. Technology Choices & Trade-offs
-
-| Lựa chọn | Trade-off |
-|----------|-----------|
-| Next.js 16 (App Router) | SSR + client components, học phí cao hơn Pages Router |
-| NestJS 12 | Nặng hơn Express nhưng DI + module rõ ràng |
-| Prisma 7 | Type-safe, chậm hơn raw SQL ở query phức tạp |
-| Judge0 self-hosted | Kiểm soát được giới hạn, tốn VM riêng |
-| Stripe Checkout | Không cần quản lý form thanh toán, phí 2.9% + 30¢ |
-| Custom auth (không Clerk/Auth0) | Tự quản lý hoàn toàn, không phụ thuộc bên thứ 3 |
-
-## 6. Authentication/Token Design
-
-- **Access token**: JWT RS256, 15 phút, cookie `httpOnly` + `Secure` + `SameSite=None`
-- **Refresh token**: 30 ngày, xoay vòng theo thiết bị, lưu hash trong `UserToken`
-- **Thu hồi**: logout xoá dòng `UserToken` → refresh token cũ không dùng được
-- **Đa thiết bị**: mỗi thiết bị 1 dòng, đăng nhập mới không đuổi thiết bị cũ
-- **OAuth Google**: PKCE S256, state lưu DB (hash), không lưu plaintext
-
-## 7. Stripe Webhook/Idempotency Design
-
-- **Vấn đề**: Stripe retry event khi timeout → gia hạn VIP hai lần
-- **Giải pháp**: bảng `StripeEvent` với `eventId` là PK
-- **Cơ chế**: `stripeEvent.create()` → P2002 unique violation → bỏ qua event trùng
-- **Code**: `be/src/premium/premium.service.ts:294`
-
-## 8. Judge0 Execution Workflow & Security
-
-### Workflow
-1. FE gọi `POST /api/submissions` với `{ language_id, source_code }`
-2. BE gửi lên Judge0 → nhận `token`
-3. FE poll `GET /api/submissions/:token` → nhận kết quả
-
-### Security Constraints
-- **Container**: mỗi submission 1 container tạm, xong xóa
-- **Resource limits**: CPU 2s, RAM 128MB, pids limit
-- **Network isolation**: container không có network access
-- **Read-only FS**: không ghi được ra host
-- **Non-root**: process chạy với quyền thấp
-- **Auth**: header `X-Auth-Token` (token trong `judge0.conf`)
-
-## 9. CI/CD Workflow
-
-```mermaid
-graph LR
-    Push["Push to main"] --> CI["GitHub Actions"]
-    CI --> Test["Run tests"]
-    CI --> Build["Build apps"]
-    Test --> Deploy["Deploy to Vercel"]
-    Build --> Deploy
-```
-
-- **Test**: `pnpm --dir be test` + `pnpm --dir FE test`
-- **Build**: Vercel tự build khi push
-- **Deploy**: FE, Admin, BE deploy độc lập
-
-## 10. Test Strategy & Coverage
-
-| Layer | Tool | Tests | Coverage |
-|-------|------|-------|----------|
-| Unit/Integration | Vitest | 744 | 86.5% lines |
-| E2E | Playwright | 13 | — |
-| Performance | k6 | 2 scenarios | — |
-
-**Thresholds**: lines ≥ 80%, branches ≥ 75%
-
-## 11. Performance Test Profile
-
-### Environment
-- **Machine**: AMD Ryzen 7 5800U, 14GB RAM, Windows 11
-- **VM**: VM.Standard.E2.1.Micro (1 OCPU, 1GB RAM, Ubuntu 22.04)
-- **Warm-up**: 5 VUs / 30s trước mỗi lần test
-
-### Results (30 VUs, 120s, 3 runs)
-| Metric | Value |
-|--------|-------|
-| RPS | 19.67 |
-| p50 | 1.02ms |
-| p90 | 1.68ms |
-| p95 | 2.12ms |
-| p99 | 800ms |
-| Error rate | 0% |
-
-### Limitations
-- p99 cao do GC/cold start (Node.js)
-- Chỉ test public read, không test submit/auth
-- Local environment, không phải production traffic
-
-## 12. Local Setup with Docker/.env.example
+### 2. Install Dependencies
 
 ```bash
-# 1. Cài dependencies
-pnpm --dir be install && pnpm --dir FE install && pnpm --dir admin install
+pnpm --dir be install
+pnpm --dir FE install
+pnpm --dir admin install
+```
 
-# 2. Copy env
+### 3. Configure Environment Variables
+
+```bash
 cp be/.env.example be/.env
 cp FE/.env.example FE/.env
 cp admin/.env.example admin/.env
-
-# 3. Start Postgres + Judge0
-cd be && docker compose up -d
-
-# 4. Migrate + seed
-pnpm --dir be exec prisma migrate deploy
-pnpm --dir be exec node scripts/seed-problems.ts
-
-# 5. Run
-pnpm dev
 ```
 
-## 13. Screenshots
+Edit each `.env` file with your configuration. See the [Environment Variables](#environment-variables) section below.
 
-| Trang chủ | Danh sách bài | Trang bài |
-| --- | --- | --- |
-| ![Trang chủ](docs/images/trang-chu.png) | ![Danh sách bài](docs/images/danh-sach-bai.png) | ![Trang bài](docs/images/bai-tap-mon-code.png) |
+### 4. Start Infrastructure (PostgreSQL + Judge0)
 
-| Premium | Đăng nhập | Admin |
-| --- | --- | --- |
-| ![Premium](docs/images/premium.png) | ![Đăng nhập](docs/images/dang-nhap-google.png) | ![Admin](docs/images/admin-dashboard.png) |
+```bash
+cd be
+docker compose up -d
+```
 
-## Tài liệu khác
+### 5. Run Database Migrations & Seed
 
-- `PRODUCT.md` — mục đích sản phẩm, đối tượng, nguyên tắc sản phẩm.
-- `DESIGN.md` — hệ thống hình ảnh.
-- `docs/superpowers/specs/` — thiết kế tính năng: custom auth, Google OAuth, admin, UI.
-- `be/src/**/*.spec.ts` — test chi tiết từng service, là tài liệu hành vi đáng tin hơn README.
+```bash
+pnpm --dir be exec prisma migrate deploy
+pnpm --dir be exec node scripts/seed-problems.ts
+```
+
+### 6. Start Development Servers
+
+```bash
+# Backend + Frontend
+pnpm dev
+
+# Backend + Frontend + Admin
+pnpm dev-admin
+```
+
+The apps will be available at:
+- **Frontend:** http://localhost:3000
+- **Admin:** http://localhost:3001
+- **Backend API:** http://localhost:4000
+
+---
+
+## Environment Variables
+
+### Backend (`be/.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PORT` | No | Server port (default: 4000) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (pooled) |
+| `DATABASE_URL_UNPOOLED` | No | Direct connection (bypasses Neon pooler) |
+| `STRIPE_SECRET_KEY` | Yes | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signature verification |
+| `FRONTEND_URL` | Yes | Frontend origin for CORS and email links |
+| `JUDGE0_URL` | Yes | Judge0 URL (default: `http://judge0-server:2358`) |
+| `JUDGE0_API_TOKEN` | Yes | Auth token for Judge0 reverse proxy |
+| `USER_LOGIN` / `USER_PASS` / `MAIL_FROM` | No | Brevo SMTP credentials |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_PASSWORD_HASH` | Yes | Admin login credentials |
+| `ADMIN_JWT_PRIVATE_KEY` / `ADMIN_JWT_PUBLIC_KEY` | Yes | RSA key pair for admin JWT (RS256) |
+| `JWT_SECRET` | No | Legacy HS256 fallback |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Yes | Google OAuth credentials |
+| `IP_HASH_SALT` | No | Salt for IP hashing (privacy) |
+| `DISABLE_RATE_LIMIT` | No | Set to `1` to disable rate limiting |
+| `DISABLE_OAUTH_STATE_SWEEP` | No | Set to `1` to disable OAuth state cleanup |
+| `DISABLE_PREMIUM_SWEEP` | No | Set to `1` to disable VIP expiry sweep |
+
+### Frontend (`FE/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Backend URL (default: `http://localhost:4000`) |
+| `NEXT_PUBLIC_CHECKOUT_HOSTS` | Trusted payment hostnames (comma-separated) |
+
+### Admin (`admin/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `BE_API_URL` | Backend URL for BFF proxy (server-side) |
+| `NEXT_PUBLIC_API_URL` | Fallback when `BE_API_URL` is missing |
+| `JWT_SECRET` | HS256 fallback (dev only) |
+| `ADMIN_JWT_PUBLIC_KEY` | RSA public key for admin cookie verification |
+
+---
+
+## Project Structure
+
+```
+coding-dev-lab/
+├── package.json              # Root orchestration (concurrently)
+├── pnpm-lock.yaml
+├── playwright.config.ts      # E2E test config
+├── README.md                 # This file
+├── PRODUCT.md                # Product requirements
+├── DESIGN.md                 # Design system
+├── PRIVACY.md                # Privacy policy
+├── DEFEND.md                 # Security documentation
+├── docs/                     # Images, specs, reports
+├── .github/                  # CI/CD workflows
+│
+├── be/                       # Backend (NestJS)
+│   ├── package.json
+│   ├── .env.example
+│   ├── prisma/
+│   │   └── schema.prisma     # 15 database models
+│   ├── src/
+│   │   ├── main.ts           # Bootstrap (ESM, dotenv, CORS)
+│   │   ├── app.module.ts     # Root module
+│   │   ├── auth/             # Authentication (JWT, OAuth, tokens)
+│   │   ├── judge0/           # Code execution service
+│   │   ├── problems/         # Problem management + VIP policy
+│   │   ├── submissions/      # Submission history
+│   │   ├── progress/         # Streaks, badges, heatmap
+│   │   ├── premium/          # Stripe payments + VIP
+│   │   ├── admin/            # Admin panel API
+│   │   ├── qna/              # Q&A support
+│   │   ├── views/            # Page view analytics
+│   │   ├── presence/         # Online user tracking
+│   │   ├── activity/         # Daily activity tracking
+│   │   ├── database/         # Prisma database service
+│   │   └── common/           # Throttle guard, cache config
+│   ├── tests/performance/    # k6 load tests
+│   └── scripts/              # Seed scripts, E2E guards
+│
+├── FE/                       # Frontend (Next.js 16)
+│   ├── package.json
+│   ├── .env.example
+│   ├── app/                  # App Router pages
+│   │   ├── page.tsx          # Home
+│   │   ├── problem/[slug]/   # Problem detail + editor
+│   │   ├── premium/          # Premium plans
+│   │   ├── sign-in/          # Login
+│   │   ├── sign-up/          # Register
+│   │   └── ...
+│   ├── components/           # React components
+│   ├── lib/                  # Utilities
+│   └── public/               # Static assets
+│
+├── admin/                    # Admin Dashboard (Next.js 16)
+│   ├── package.json
+│   ├── .env.example
+│   ├── app/                  # App Router pages
+│   │   └── api/[...path]/    # BFF proxy to backend
+│   ├── components/           # Admin UI components
+│   ├── lib/                  # Utilities
+│   └── proxy.ts              # BFF proxy with JWT verification
+│
+└── e2e/                      # Playwright E2E tests
+    ├── smoke.spec.ts
+    ├── account-menu.spec.ts
+    ├── header-wrap.spec.ts
+    └── vip-problems.spec.ts
+```
+
+---
+
+## API Endpoints
+
+### Authentication (`/api/auth`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/register` | Public | Register (20/hr limit) |
+| POST | `/login` | Public | Login (30/15min limit) |
+| POST | `/refresh` | Cookie | Refresh session (100/min) |
+| POST | `/logout` | Cookie | Logout current device |
+| POST | `/logout-all` | JWT | Logout all devices |
+| POST | `/forgot-password` | Public | Request reset (20/hr) |
+| POST | `/resend-verification` | Public | Resend verification (20/hr) |
+| POST | `/reset-password` | Public | Reset with token (20/hr) |
+| GET | `/verify?token=` | Public | Verify email (20/min) |
+| GET | `/me` | JWT | Current user |
+| GET | `/oauth/google/start` | Public | Start Google OAuth (20/hr) |
+| GET | `/oauth/google/callback` | Public | Google OAuth callback (20/hr) |
+
+### Problems (`/api/problems`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/` | Optional | List published problems |
+| GET | `/:slug` | Optional | Problem detail (VIP-gated) |
+| POST | `/:slug/submit` | JWT | Submit solution (10/min) |
+
+### Submissions (`/api/submissions`, `/api/history`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/submissions` | JWT | Single submission (20/min) |
+| POST | `/api/submissions/batch` | JWT | Batch submit (20/min) |
+| GET | `/api/submissions/batch?tokens=` | JWT | Poll batch (100/min) |
+| GET | `/api/submissions/:token` | JWT | Get submission result |
+| GET | `/api/history` | JWT | User submission history |
+| POST | `/api/history` | JWT | Create submission record (30/min) |
+
+### Progress (`/api/progress`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/dashboard` | JWT | Streak, heatmap, badges, solved |
+| GET | `/solved` | JWT | Solved problems |
+| GET | `/badges` | JWT | Badge list |
+| POST | `/solve` | JWT | Mark problem solved |
+| GET | `/favorites` | JWT | Favorite problems |
+| POST | `/favorites` | JWT | Add favorite |
+| DELETE | `/favorites/:slug` | JWT | Remove favorite |
+
+### Premium (`/api/premium`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/checkout` | JWT | Create Stripe checkout |
+| GET | `/status` | JWT | VIP status |
+| POST | `/grant-vip` | Admin | Grant VIP to user |
+| POST | `/cancel-vip` | Admin | Cancel VIP |
+| POST | `/webhook` | Stripe | Stripe webhook |
+| POST | `/check-expired` | JWT | Check/downgrade expired VIP |
+
+### Admin (`/api/admin`)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/login` | Public | Admin login (5/min) |
+| POST | `/refresh` | Cookie | Refresh admin token (100/min) |
+| POST | `/logout` | Cookie | Admin logout |
+| GET | `/me` | Admin | Current admin |
+| GET | `/stats` | Admin | Dashboard stats |
+| GET | `/analytics/views` | Admin | View analytics |
+| GET | `/analytics/views/recent` | Admin | Recent views |
+| GET | `/analytics/logins` | Admin | Login analytics |
+| GET | `/qna` | Admin | List Q&A |
+| DELETE | `/qna/:id` | Admin | Delete Q&A |
+| POST | `/qna/:id/reply` | Admin | Reply via email |
+| GET | `/users` | Admin | List users |
+| GET | `/submissions` | Admin | List submissions |
+| GET | `/problems` | Admin | List all problems |
+| GET | `/problems/:slug` | Admin | Problem detail |
+| POST | `/problems` | Admin | Create problem |
+| PUT | `/problems/:slug` | Admin | Update problem |
+| DELETE | `/problems/:slug` | Admin | Delete problem |
+| POST | `/problems/:slug/approve` | Admin | Publish problem |
+| POST | `/problems/:slug/unpublish` | Admin | Unpublish problem |
+| PATCH | `/problems/:slug/vip` | Admin | Toggle VIP flag |
+
+### Other
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/presence/online` | Public | Online count |
+| POST | `/api/presence/heartbeat` | Public | Heartbeat |
+| POST | `/api/views/track` | Public | Track page view (30/min) |
+| POST | `/api/qna` | Public | Submit question (5/min) |
+| POST | `/api/activity/login` | JWT | Record login |
+| POST | `/api/activity/run` | JWT | Record run |
+| GET | `/api/activity/me` | JWT | Activity map |
+
+---
+
+## Database Schema
+
+15 models in `be/prisma/schema.prisma`:
+
+| Model | Purpose |
+|-------|---------|
+| `User` | User accounts (email, role, VIP status, Stripe subscription) |
+| `UserToken` | Refresh/verification tokens (hashed, with rotation) |
+| `UserAccount` | OAuth provider links |
+| `UserOAuthState` | OAuth state (PKCE) |
+| `ActivityDay` | Daily activity counts for streaks |
+| `SolvedProblem` | Solved problems per user |
+| `FavoriteProblem` | Favorite problems per user |
+| `UserBadge` | Unlocked badges |
+| `Problem` | Problem definitions (slug, title, difficulty, topic, tests, VIP flag) |
+| `Submission` | Submission history (source code, status, results) |
+| `QnaQuestion` | Q&A questions |
+| `StripeEvent` | Stripe webhook events (idempotency) |
+| `PageView` | Page view analytics (IP hashed) |
+| `LoginEvent` | Login analytics (IP hashed) |
+
+---
+
+## Testing
+
+- **Unit Tests:** 744 Vitest tests (86.5% line coverage)
+- **E2E Tests:** 13 Playwright tests
+- **Performance Tests:** 2 k6 load test scenarios
+
+```bash
+# Run unit tests
+pnpm --dir be test
+pnpm --dir FE test
+
+# Run E2E tests
+pnpm test:e2e
+```
+
+---
+
+## Security
+
+- RS256 JWT for authentication
+- bcrypt password hashing
+- Timing-safe comparisons (dummy bcrypt for non-existent users)
+- Rate limiting (per-IP, per-route)
+- Input validation with `whitelist` mode
+- No raw IP storage (only salted SHA-256 hashes)
+- Hidden tests never sent to client
+- OAuth state stored hashed with PKCE S256
+
+---
+
+## Performance
+
+- p95 < 500ms for public reads
+- ~2ms p95 for cached reads
+- Judge0 submit p95 ~1s
+
+---
+
+## Deployment
+
+The app is deployed on Vercel as 3 separate projects:
+- **Frontend:** [https://go-code-vn.vercel.app/](https://go-code-vn.vercel.app/)
+- **Admin:** Separate Vercel deployment
+- **Backend:** Separate Vercel deployment
+
+Infrastructure:
+- **Database:** Neon Postgres (serverless, pooler + direct connection)
+- **Judge0:** Self-hosted on Oracle Cloud VM (free tier)
+
+---
+
+## Contributing
+
+This is a personal project. Contributions are not expected, but feel free to fork and learn from the code.
+
+---
+
+## License
+
+This project is for educational purposes. No license is specified.

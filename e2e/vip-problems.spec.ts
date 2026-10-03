@@ -83,7 +83,15 @@ async function timBaiTrongDanhSach(page: import('@playwright/test').Page, tuKhoa
   // `fill` tự chờ phần tử actionable (visible + enabled) nên không cần assert
   // `toBeVisible` trước: assert sớm ở giữa lúc hydration dễ chập chờn, còn kết
   // quả thật của bài tìm kiếm là link mà các test dưới kiểm.
-  await page.getByPlaceholder(/Tìm kiếm bài tập/).fill(tuKhoa);
+  //
+  // `filter({ visible: true })` là bắt buộc, không phải cho đẹp: RSC stream bài
+  // trong `<Suspense>` (xem `FE/app/problem/page.tsx`), và React chừa một bản
+  // sao trong `<div hidden id="S:0">` cho tới lúc hydrate xong. `getByPlaceholder`
+  // khớp theo thuộc tính nên **thấy cả bản ẩn** (`display:none`, 0×0 nhưng
+  // `isConnected`), đủ để Playwright báo strict mode violation "resolved to 2
+  // elements" và hỏng cả test. Lọc theo visibility thì đúng một cái, và `fill`
+  // vẫn tự chờ nên lúc chỉ có bản ẩn thì không sao.
+  await page.getByPlaceholder(/Tìm kiếm bài tập/).filter({ visible: true }).fill(tuKhoa);
 }
 
 test.describe('bài VIP: khách thấy tiêu đề kèm dấu khoá trong danh sách', () => {

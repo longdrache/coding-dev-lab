@@ -143,20 +143,149 @@ jobs:
       - name: Seed problems
         run: node scripts/seed-problems.ts
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Test (e2e)
+      # KHÔNG phải Playwright. `be/package.json` khai `test:e2e` =
+      # `guard-e2e-db.mjs && vitest run --config ./vitest.config.e2e.ts` — tức là
+      # suite e2e của NestJS (bắn HTTP vào app thật), không có trình duyệt nào.
+      # Playwright nằm ở `e2e/` thư mục gốc, nên có job riêng (`playwright`).
+      # Trước đây job này lại chạy `npx playwright install` trong khi `be` không
+      # hề có dependency Playwright: tải thêm trình duyệt rồi không ai dùng, và
+      # tệ hơn là 42 test trình duyệt vẫn không được chạy.
+      - name: Test (API e2e)
         run: pnpm test:e2e
 
       - name: Build
         run: pnpm build
 
+  playwright:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    # Postgres service không dùng chung được giữa các job, nên khai lại y hệt job
+    # `backend` (cùng image, cùng health-cmd) thay vì bịa cách khác. Chỉ là
+    # Postgres thật trong container, không đụng Neon production.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gocode_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # CẢ HAI biến bắt buộc cùng trỏ một DB. App dùng `DATABASE_URL` (pool),
+      # Prisma client/test dùng `DATABASE_URL_UNPOOLED`; thiếu hoặc lệch một biến
+      # là app và test nói chuyện với hai DB khác nhau — đã gây 13 test đỏ giả.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode_test
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/gocode_test
+      # FE không có `.env` trong repo, nên API base phải cấp ở đây. Bắt buộc
+      # đúng cổng: `e2e/account-menu.spec.ts` và `e2e/vip-problems.spec.ts` chặn
+      # route ở `http://localhost:4000`, và `vip-problems.spec.ts` còn đòi header
+      # CORS trả `Access-Control-Allow-Origin: http://localhost:3000`.
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      FRONTEND_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          # Ba bộ cài độc lập, ba lockfile riêng (không có pnpm-workspace.yaml).
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            be/pnpm-lock.yaml
+            FE/pnpm-lock.yaml
+
+      # `@playwright/test` nằm ở package gốc, nên root phải có node_modules riêng.
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install backend dependencies
+        working-directory: be
+        run: pnpm install --frozen-lockfile
+
+      # `webServer` trong `playwright.config.ts` chạy `pnpm --dir FE dev`, nên FE
+      # phải cài sẵn — không cài thì job chết ở bước Playwright chứ không phải ở
+      # bước cài, khó đọc lỗi hơn.
+      - name: Install frontend dependencies
+        working-directory: FE
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        working-directory: be
+        run: pnpm exec prisma migrate deploy
+
+      - name: Seed problems
+        working-directory: be
+        run: node scripts/seed-problems.ts
+
+      # Backend chạy thật vì spec cần dữ liệu thật: `/problem` render SSR từ
+      # `GET /api/problems`, và `vip-problems.spec.ts` cần BE trả 403
+      # `problem_vip_only` cho khách — đó mới là bằng chứng chính sách VIP có
+      # chạy. `main.ts` đọc `process.env.PORT ?? 4000`, nên ghim cổng ở đây.
+      - name: Start backend
+        working-directory: be
+        env:
+          PORT: '4000'
+        run: |
+          nohup pnpm start > "$RUNNER_TEMP/backend.log" 2>&1 &
+          echo "started backend, log: $RUNNER_TEMP/backend.log"
+
+      # Chờ BE thật sự trả lời, không chỉ "cổng đã mở": endpoint này đi qua
+      # Prisma nên nó cũng chứng minh migrate + seed đã xong.
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "http://localhost:4000/api/problems?limit=1" > /dev/null; then
+              echo "backend ready after $((i * 5))s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::backend khong len trong 300s"
+          tail -n 80 "$RUNNER_TEMP/backend.log" || true
+          exit 1
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      # `next dev` đọc `PORT` (`.default(3000).env('PORT')`), nên ghim cổng FE ở
+      # đây. Cổng này khớp `baseURL` + `webServer.url` của `playwright.config.ts`
+      # và khớp `ORIGIN_FE` mà `vip-problems.spec.ts` dùng để kỳ vọng CORS.
+      # `reuseExistingServer: !process.env.CI` nên trong CI Playwright tự dựng
+      # FE; tuyệt đối không tự `next dev` thêm ở step này, sẽ tranh cổng 3000.
+      - name: Test (Playwright)
+        env:
+          PORT: '3000'
+          PLAYWRIGHT_HTML_OPEN: 'never'
+        run: pnpm exec playwright test --reporter="line,html" --trace=retain-on-failure
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   # Job 6: Telegram Notification
   notify:
     name: Telegram Notification
     runs-on: ubuntu-latest
-    needs: [frontend, admin, backend]
+    needs: [frontend, admin, backend, playwright]
     if: always()
 
     steps:
@@ -165,7 +294,8 @@ jobs:
         run: |
           if [ "${{ needs.frontend.result }}" != "success" ] || \
            [ "${{ needs.admin.result }}" != "success" ] || \
-           [ "${{ needs.backend.result }}" != "success" ]; then
+           [ "${{ needs.backend.result }}" != "success" ] || \
+           [ "${{ needs.playwright.result }}" != "success" ]; then
             echo "status=failure" >> $GITHUB_OUTPUT
           else
             echo "status=success" >> $GITHUB_OUTPUT

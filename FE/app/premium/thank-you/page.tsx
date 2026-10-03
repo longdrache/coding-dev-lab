@@ -11,8 +11,8 @@ export const metadata: Metadata = {
 
 const planLabels: Record<string, { name: string; desc: string }> = {
   daily: { name: "Gói Theo Ngày", desc: "200 ₫ / 24h" },
-  monthly: { name: "Gói Hàng Tháng", desc: "1.000 ₫ / tháng" },
-  yearly: { name: "Gói Hàng Năm", desc: "2.000 ₫ / năm" },
+  monthly: { name: "Gói 1 Tháng", desc: "1.000 ₫ / 30 ngày" },
+  yearly: { name: "Gói 1 Năm", desc: "2.000 ₫ / 365 ngày" },
 };
 
 export default async function ThankYouPage({

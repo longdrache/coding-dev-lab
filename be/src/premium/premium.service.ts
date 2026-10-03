@@ -11,11 +11,11 @@ export type PremiumPlan = 'daily' | 'monthly' | 'yearly';
 
 const plans: Record<
   PremiumPlan,
-  { amount: number; interval: 'day' | 'month' | 'year' }
+  { amount: number; duration: 'day' | 'month' | 'year' }
 > = {
-  daily: { amount: 200, interval: 'day' },
-  monthly: { amount: 1000, interval: 'month' },
-  yearly: { amount: 2000, interval: 'year' },
+  daily: { amount: 200, duration: 'day' },
+  monthly: { amount: 1000, duration: 'month' },
+  yearly: { amount: 2000, duration: 'year' },
 };
 
 /** Cột đủ để dựng lại trạng thái VIP; đọc cả 3 ở mọi nơi cần chúng. */
@@ -240,19 +240,15 @@ export class PremiumService implements OnModuleInit {
 
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
     return this.getStripe().checkout.sessions.create({
-      mode: 'subscription',
+      mode: 'payment',
       client_reference_id: String(userId),
       metadata: { userId: String(userId), plan },
-      subscription_data: {
-        metadata: { userId: String(userId), plan },
-      },
       line_items: [
         {
           quantity: 1,
           price_data: {
             currency: 'vnd',
             unit_amount: selectedPlan.amount,
-            recurring: { interval: selectedPlan.interval },
             product_data: { name: `GoCode Premium (${plan})` },
           },
         },
@@ -321,29 +317,6 @@ export class PremiumService implements OnModuleInit {
       console.log(
         `✅ Đã nâng VIP thành công cho user: ${userId}, gói: ${plan}`,
       );
-    }
-
-    // Hủy/gỡ VIP khi Stripe subscription bị hủy/hết hạn
-    if (
-      event.type === 'customer.subscription.deleted' ||
-      event.type === 'customer.subscription.updated'
-    ) {
-      const sub = event.data.object as Stripe.Subscription;
-      const userId =
-        this.toUserId((sub.metadata as Record<string, string> | null)?.userId) ??
-        (await this.findUserIdByStripeCustomerId(sub.customer as string));
-      if (userId) {
-        const status = sub.status; // active, canceled, unpaid, past_due, incomplete_expired
-        const shouldDowngrade =
-          event.type === 'customer.subscription.deleted' ||
-          status === 'canceled' ||
-          status === 'unpaid' ||
-          status === 'incomplete_expired';
-        if (shouldDowngrade) {
-          this.logger.warn(`Stripe sub ${sub.id} status=${status} → hạ VIP cho ${userId}`);
-          await this.removeVip(userId).catch((e) => this.logger.error(`Lỗi hạ VIP từ webhook: ${e}`));
-        }
-      }
     }
 
     if (event.type === 'invoice.payment_failed') {

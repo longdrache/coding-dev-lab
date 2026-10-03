@@ -254,6 +254,68 @@ describe('PremiumService đọc/ghi trạng thái VIP trong DB', () => {
   });
 });
 
+describe('PremiumService.createCheckout', () => {
+  const OLD = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...OLD };
+  });
+
+  function makeService() {
+    const createMock = vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/test' });
+    const db = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+        update: vi.fn().mockResolvedValue({ id: 7 }),
+      },
+    };
+    const svc = new PremiumService(db as any);
+    (svc as any).stripeInstance = {
+      checkout: { sessions: { create: createMock } },
+    };
+    return { svc, createMock };
+  }
+
+  beforeEach(() => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_x';
+    process.env.FRONTEND_URL = 'http://localhost:3000';
+  });
+
+  it('dùng mode payment, không có recurring/subscription_data', async () => {
+    const { svc, createMock } = makeService();
+    await svc.createCheckout(7, 'monthly');
+    const arg = createMock.mock.calls[0][0];
+    expect(arg.mode).toBe('payment');
+    expect(arg.recurring).toBeUndefined();
+    expect(arg.subscription_data).toBeUndefined();
+  });
+
+  it('tính vipExpiresAt từ thời lượng gói (monthly = 30 ngày)', async () => {
+    const { svc } = makeService();
+    const before = Date.now();
+    await svc.setUserToVip(7, 'monthly');
+    const after = Date.now();
+    const expiresAt = (svc as any).toIso;
+    const db = (svc as any).db;
+    const vipExpiresAt = db.user.update.mock.calls[0][0].data.vipExpiresAt.getTime();
+    expect(vipExpiresAt).toBeGreaterThanOrEqual(before + 30 * 86_400_000);
+    expect(vipExpiresAt).toBeLessThanOrEqual(after + 30 * 86_400_000);
+  });
+
+  it('tính vipExpiresAt từ thời lượng gói (yearly = 365 ngày)', async () => {
+    const { svc } = makeService();
+    const before = Date.now();
+    await svc.setUserToVip(7, 'yearly');
+    const after = Date.now();
+    const db = (svc as any).db;
+    const vipExpiresAt = db.user.update.mock.calls[0][0].data.vipExpiresAt.getTime();
+    expect(vipExpiresAt).toBeGreaterThanOrEqual(before + 365 * 86_400_000);
+    expect(vipExpiresAt).toBeLessThanOrEqual(after + 365 * 86_400_000);
+  });
+});
+
 describe('PremiumService.handleWebhook', () => {
   const OLD = { ...process.env };
 
@@ -324,22 +386,16 @@ describe('PremiumService.handleWebhook', () => {
     expect(db.user.update).not.toHaveBeenCalled();
   });
 
-  it('subscription.deleted mất metadata.userId thì tra cột stripeSubscriptionId', async () => {
+  it('customer.subscription.deleted không còn hạ VIP (không còn subscription)', async () => {
     emit('customer.subscription.deleted', { id: 'sub_1', customer: 'cus_7', metadata: null, status: 'canceled' });
     const { svc, db } = makeService();
     db.user.findFirst.mockResolvedValue({ id: 7 });
     await svc.handleWebhook(Buffer.from('x'), 'sig');
-    expect(db.user.findFirst).toHaveBeenCalledWith({
-      where: { stripeSubscriptionId: 'cus_7' },
-      select: { id: true },
-    });
-    expect(db.user.update).toHaveBeenCalledWith({
-      where: { id: 7 },
-      data: { role: 'user', vipExpiresAt: null, premiumPlan: null, stripeSubscriptionId: null },
-    });
+    expect(db.user.findFirst).not.toHaveBeenCalled();
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 
-  it('subscription.updated còn active thì giữ nguyên VIP', async () => {
+  it('customer.subscription.updated không còn hạ VIP (không còn subscription)', async () => {
     emit('customer.subscription.updated', { id: 'sub_1', customer: 'cus_7', metadata: { userId: '7' }, status: 'active' });
     const { svc, db } = makeService();
     await svc.handleWebhook(Buffer.from('x'), 'sig');

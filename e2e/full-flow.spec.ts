@@ -35,8 +35,8 @@ async function signIn(page: Page, user: FakeUser) {
   });
 }
 
-test.describe('Full flow: login → browse → submit → dashboard', () => {
-  test('user can browse problem list', async ({ page }) => {
+test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài → dashboard', () => {
+  test('người dùng có thể duyệt danh sách bài tập', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem');
     await expect(page.getByRole('link', { name: /Hai số có tổng/ }).first()).toBeVisible({
@@ -44,7 +44,7 @@ test.describe('Full flow: login → browse → submit → dashboard', () => {
     });
   });
 
-  test('user can open a problem and see description', async ({ page }) => {
+  test('người dùng có thể mở bài tập và xem đề bài', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/two-sum');
     await expect(page.getByRole('heading', { name: /Hai số có tổng/ })).toBeVisible({
@@ -53,7 +53,7 @@ test.describe('Full flow: login → browse → submit → dashboard', () => {
     await expect(page.locator('#editor')).toBeVisible();
   });
 
-  test('user can submit code and see result', async ({ page }) => {
+  test('người dùng có thể nộp bài và xem kết quả', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/two-sum');
 
@@ -73,7 +73,7 @@ test.describe('Full flow: login → browse → submit → dashboard', () => {
     });
   });
 
-  test('user can view submission history', async ({ page }) => {
+  test('người dùng có thể xem lịch sử nộp bài', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/two-sum');
 
@@ -88,7 +88,7 @@ test.describe('Full flow: login → browse → submit → dashboard', () => {
     }
   });
 
-  test('user can view progress dashboard', async ({ page }) => {
+  test('người dùng có thể xem dashboard tiến độ', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/');
 
@@ -101,14 +101,14 @@ test.describe('Full flow: login → browse → submit → dashboard', () => {
     }
   });
 
-  test('user can view premium page', async ({ page }) => {
+  test('người dùng có thể xem trang premium', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/premium');
     await expect(page.getByText(/1 Tháng/).first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/1 Năm/).first()).toBeVisible();
   });
 
-  test('user can logout', async ({ page }) => {
+  test('người dùng có thể đăng xuất', async ({ page }) => {
     await signIn(page, USER);
     const avatarBtn = page.getByRole('button', { name: /^Tài khoản:/ });
     await avatarBtn.click();
@@ -119,8 +119,8 @@ test.describe('Full flow: login → browse → submit → dashboard', () => {
   });
 });
 
-test.describe('API integration: submission flow', () => {
-  test('POST /api/submissions returns result', async ({ page }) => {
+test.describe('Tích hợp API: luồng nộp bài', () => {
+  test('POST /api/submissions trả về kết quả', async ({ page }) => {
     await signIn(page, USER);
 
     const response = await page.request.post(`${API}/api/submissions`, {
@@ -136,7 +136,7 @@ test.describe('API integration: submission flow', () => {
     expect(body).toHaveProperty('token');
   });
 
-  test('GET /api/history returns submissions', async ({ page }) => {
+  test('GET /api/history trả về lịch sử nộp bài', async ({ page }) => {
     await signIn(page, USER);
 
     const response = await page.request.get(`${API}/api/history`);
@@ -145,7 +145,7 @@ test.describe('API integration: submission flow', () => {
     expect(Array.isArray(body)).toBe(true);
   });
 
-  test('GET /api/progress/dashboard returns progress data', async ({ page }) => {
+  test('GET /api/progress/dashboard trả về dữ liệu tiến độ', async ({ page }) => {
     await signIn(page, USER);
 
     const response = await page.request.get(`${API}/api/progress/dashboard`);
@@ -156,7 +156,7 @@ test.describe('API integration: submission flow', () => {
     expect(body).toHaveProperty('badges');
   });
 
-  test('GET /api/problems returns problem list', async ({ page }) => {
+  test('GET /api/problems trả về danh sách bài tập', async ({ page }) => {
     await signIn(page, USER);
 
     const response = await page.request.get(`${API}/api/problems`);
@@ -166,7 +166,7 @@ test.describe('API integration: submission flow', () => {
     expect(body.length).toBeGreaterThan(0);
   });
 
-  test('GET /api/problems/:slug returns problem detail', async ({ page }) => {
+  test('GET /api/problems/:slug trả về chi tiết bài tập', async ({ page }) => {
     await signIn(page, USER);
 
     const response = await page.request.get(`${API}/api/problems/two-sum`);
@@ -178,8 +178,8 @@ test.describe('API integration: submission flow', () => {
   });
 });
 
-test.describe('VIP flow: premium user access', () => {
-  test('VIP user can access VIP problem', async ({ page }) => {
+test.describe('Luồng VIP: người dùng premium truy cập bài VIP', () => {
+  test('người VIP có thể truy cập bài VIP', async ({ page }) => {
     await signIn(page, { ...USER, role: 'vip' });
     await page.goto('/problem/coin-change');
     await expect(page.getByRole('heading', { name: /Đổi tiền ít xu nhất/ })).toBeVisible({
@@ -188,7 +188,7 @@ test.describe('VIP flow: premium user access', () => {
     await expect(page.locator('#editor')).toBeVisible();
   });
 
-  test('VIP user does not see upgrade button', async ({ page }) => {
+  test('người VIP không thấy nút nâng cấp', async ({ page }) => {
     await signIn(page, { ...USER, role: 'vip' });
     await page.goto('/problem/coin-change');
     await expect(page.getByRole('link', { name: /Nâng cấp/ })).toHaveCount(0);

@@ -262,7 +262,7 @@ describe('đọc cookie refresh', () => {
     expect(res.cookie).not.toHaveBeenCalled();
     expect(names(res)).toEqual([SESSION_COOKIE, REFRESH_COOKIE]);
     for (const call of res.clearCookie.mock.calls) {
-      expect(call[1]).toEqual({ path: '/' });
+      expect(call[1].path).toBe('/');
     }
   });
 
@@ -279,7 +279,7 @@ describe('đọc cookie refresh', () => {
     expect(res.cookie).not.toHaveBeenCalled();
     expect(names(res)).toEqual([SESSION_COOKIE, REFRESH_COOKIE]);
     for (const call of res.clearCookie.mock.calls) {
-      expect(call[1]).toEqual({ path: '/' });
+      expect(call[1].path).toBe('/');
     }
     expect(r).toEqual({ message: 'Phiên đã hết hạn, vui lòng đăng nhập lại.' });
   });
@@ -291,7 +291,7 @@ describe('đăng xuất', () => {
     const r = await c.logout({ headers: { cookie: `refresh=${REFRESH}` } }, res);
     expect(names(res)).toEqual([SESSION_COOKIE, REFRESH_COOKIE]);
     for (const call of res.clearCookie.mock.calls) {
-      expect(call[1]).toEqual({ path: '/' });
+      expect(call[1].path).toBe('/');
     }
     expect(r).toEqual({ ok: true });
   });

@@ -296,6 +296,21 @@ describe('đăng xuất', () => {
     expect(r).toEqual({ ok: true });
   });
 
+  it('xoá cookie production bằng đúng thuộc tính đã tạo cookie', async () => {
+    setEnv('NODE_ENV', 'production');
+    setEnv('VERCEL', undefined);
+    const { c, res } = ctl();
+    await c.logout({ headers: { cookie: `refresh=${REFRESH}` } }, res);
+    const expected = {
+      path: '/',
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+    };
+    expect(res.clearCookie).toHaveBeenNthCalledWith(1, SESSION_COOKIE, expected);
+    expect(res.clearCookie).toHaveBeenNthCalledWith(2, REFRESH_COOKIE, expected);
+  });
+
   it('xoá được dòng phiên trong DB kể cả khi guard không gán req.refreshToken', async () => {
     // `req.refreshToken` chỉ được `AuthGuard` gán mà `logout` không dùng guard
     // (access token có thể đã hết hạn). Nếu controller chỉ tin `req.refreshToken`

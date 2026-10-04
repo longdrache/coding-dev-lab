@@ -16,11 +16,5 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,
     },
-    {
-      command: 'pnpm --dir be dev',
-      url: 'http://localhost:4000',
-      reuseExistingServer: !process.env.CI,
-      timeout: 180_000,
-    },
   ],
 });

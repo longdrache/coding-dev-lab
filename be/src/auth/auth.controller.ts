@@ -84,14 +84,16 @@ function setSessionCookies(res: CookieResponse, tokens: { accessToken: string; r
 }
 
 /**
- * Chỉ `path` là đủ để xoá: theo RFC 6265 §5.3 trình duyệt khớp cookie cần xoá theo
- * `name` + `domain` + `path`, các thuộc tính còn lại của `Set-Cookie` bị bỏ qua.
- * Thiếu `path` thì `Set-Cookie` ghi đè cookie cũ ở path khác và người dùng vẫn
- * đăng nhập được — đúng cái lỗi "bấm đăng xuất mà vẫn còn phiên".
+ * Xoá bằng **đúng thuộc tính đã tạo cookie** (`httpOnly`, `secure`, `sameSite`,
+ * `path`), chỉ bỏ `maxAge`. Theo RFC 6265 §5.3 trình duyệt khớp cookie cần xoá
+ * theo `name` + `domain` + `path`, nhưng response `Set-Cookie` cross-site mà thiếu
+ * `SameSite=None; Secure` vẫn có thể bị bỏ qua — tức lệnh xoá cookie phiên ở
+ * production không có tác dụng và người dùng bấm đăng xuất mà vẫn còn phiên.
  */
 function clearSessionCookies(res: CookieResponse): void {
-  res.clearCookie(SESSION_COOKIE, { path: '/' });
-  res.clearCookie(REFRESH_COOKIE, { path: '/' });
+  const { maxAge: _ignoredMaxAge, ...clearOptions } = cookieOptions(0);
+  res.clearCookie(SESSION_COOKIE, clearOptions);
+  res.clearCookie(REFRESH_COOKIE, clearOptions);
 }
 
 type CookieRequest = AuthenticatedRequest & { cookies?: Record<string, string> };

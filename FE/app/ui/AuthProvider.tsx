@@ -44,6 +44,8 @@ const Ctx = createContext<SessionState>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [loading, setLoading] = useState(true);
+  /** User hiện tại, dùng cho deps-free đọc trong callback. */
+  const userRef = useRef<PublicUser | null>(null);
 
   // Phải nằm trong `<SWRConfig>` của app, nếu không `mutate` gọi vào đây là
   // no-op và xoá cache là xoá nhầm chỗ khác. `providers.tsx` là nơi đặt nó.
@@ -91,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         (u) => {
           lastUserRef.current = u;
+          userRef.current = u;
           setUser(u);
         },
         // Truyền `setNotice` **dưới dạng giá trị**: `commitSession` gọi nó, chứ
@@ -123,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         deadRef.current = true;
         // Chỉ nói khi phiên chết **giữa chừng** và không phải do chính người dùng
         // bấm đăng xuất — quyết định này thuộc `sessionEndedNotice` để test được.
-        applyUser(null, sessionEndedNotice(user, r.kind, opts?.deliberate === true) ?? "");
+        applyUser(null, sessionEndedNotice(userRef.current, r.kind, opts?.deliberate === true) ?? "");
       }
       // `retry`: lỗi mạng hoặc 5xx. `resolveSession` đã không ném, nên tới đây
       // ta **giữ nguyên** user đang có và chỉ ngừng báo "đang tải"; lần refresh/401
@@ -132,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // đúng và cookie vẫn còn.
       setLoading(false);
     },
-    [applyUser, user],
+    [applyUser],
   );
 
   /** Làm mới bằng cookie `refresh`, rồi lên lịch lần kế tiếp. */
@@ -151,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // sẽ thử lại mãi một phiên đã hỏng. `loadSession` sẽ mở lại khi đăng nhập.
       deadRef.current = true;
       signedInRef.current = false;
-      applyUser(null, sessionEndedNotice(user, r.kind) ?? "");
+      applyUser(null, sessionEndedNotice(userRef.current, r.kind) ?? "");
       return;
     }
     signedInRef.current = true;
@@ -161,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
     const delay = refreshPlan(r.session.expiresIn);
     if (delay !== null) armRef.current?.(delay);
-  }, [applyUser, user]);
+  }, [applyUser]);
 
   useEffect(() => {
     const gen = ++genRef.current;
@@ -207,8 +210,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (!signedInRef.current || deadRef.current) return;
-      if (timerRef.current !== null) clearTimeout(timerRef.current);
-      void loadSession();
+      // Chỉ cần refresh timer, không cần gọi /me lại nếu token còn hạn.
+      // `refreshPlan` đã lên lịch trước khi tab ẩn, nên active lại thì tiếp tục
+      // chờ đúng nhịp đó. Gọi /me ở đây là lặp vô nghĩa — expiresIn vẫn còn.
     };
 
     document.addEventListener("visibilitychange", onVisible);

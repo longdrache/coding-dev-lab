@@ -36,7 +36,7 @@ async function signIn(page: Page, user: FakeUser) {
 }
 
 test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài → dashboard', () => {
-  test('người dùng có thể duyệt danh sách bài tập', async ({ page }) => {
+  test('duyệt danh sách bài tập', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem');
     await expect(page.getByRole('link', { name: /Hai số có tổng/ }).first()).toBeVisible({
@@ -44,7 +44,7 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
     });
   });
 
-  test('người dùng có thể mở bài tập và xem đề bài', async ({ page }) => {
+  test('mở bài tập và xem đề bài', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/two-sum');
     await expect(page.getByRole('heading', { name: /Hai số có tổng/ })).toBeVisible({
@@ -53,7 +53,7 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
     await expect(page.locator('#editor')).toBeVisible();
   });
 
-  test('người dùng có thể nộp bài và xem kết quả', async ({ page }) => {
+  test('nộp bài và xem kết quả', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/two-sum');
 
@@ -73,7 +73,7 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
     });
   });
 
-  test('người dùng có thể xem lịch sử nộp bài', async ({ page }) => {
+  test('xem lịch sử nộp bài', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/two-sum');
 
@@ -88,7 +88,7 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
     }
   });
 
-  test('người dùng có thể xem dashboard tiến độ', async ({ page }) => {
+  test('xem dashboard tiến độ', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/');
 
@@ -101,14 +101,14 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
     }
   });
 
-  test('người dùng có thể xem trang premium', async ({ page }) => {
+  test('xem trang premium', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/premium');
     await expect(page.getByText(/1 Tháng/).first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/1 Năm/).first()).toBeVisible();
   });
 
-  test('người dùng có thể đăng xuất', async ({ page }) => {
+  test('đăng xuất', async ({ page }) => {
     await signIn(page, USER);
     const avatarBtn = page.getByRole('button', { name: /^Tài khoản:/ });
     await avatarBtn.click();
@@ -179,7 +179,7 @@ test.describe('Tích hợp API: luồng nộp bài', () => {
 });
 
 test.describe('Luồng VIP: người dùng premium truy cập bài VIP', () => {
-  test('người VIP có thể truy cập bài VIP', async ({ page }) => {
+  test('VIP truy cập bài VIP', async ({ page }) => {
     await signIn(page, { ...USER, role: 'vip' });
     await page.goto('/problem/coin-change');
     await expect(page.getByRole('heading', { name: /Đổi tiền ít xu nhất/ })).toBeVisible({
@@ -188,7 +188,7 @@ test.describe('Luồng VIP: người dùng premium truy cập bài VIP', () => {
     await expect(page.locator('#editor')).toBeVisible();
   });
 
-  test('người VIP không thấy nút nâng cấp', async ({ page }) => {
+  test('VIP không thấy nút nâng cấp', async ({ page }) => {
     await signIn(page, { ...USER, role: 'vip' });
     await page.goto('/problem/coin-change');
     await expect(page.getByRole('link', { name: /Nâng cấp/ })).toHaveCount(0);

@@ -51,10 +51,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <SWRConfig
       value={{
         // provider: cacheProvider,
-        revalidateIfStale: true,
-        dedupingInterval: 10_000,
+        revalidateIfStale: false,
+        dedupingInterval: 30_000,
         revalidateOnFocus: false,
-        revalidateOnReconnect: true,
+        revalidateOnReconnect: false,
         errorRetryCount: 2,
       }}
     >

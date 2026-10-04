@@ -59,7 +59,7 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
 
     await expect(page.locator('#editor')).toBeVisible({ timeout: 30_000 });
 
-    const submitBtn = page.getByRole('button', { name: /Nộp bài|Submit/ });
+    const submitBtn = page.getByRole('button', { name: /Nộp bài/ });
     await expect(submitBtn).toBeVisible();
 
     await page.locator('#editor').click();
@@ -68,7 +68,7 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
 
     await submitBtn.click();
 
-    await expect(page.getByText(/Kết quả|Result|Accepted|Wrong Answer/).first()).toBeVisible({
+    await expect(page.getByText(/Kết quả|Đúng|Sai/).first()).toBeVisible({
       timeout: 60_000,
     });
   });
@@ -79,10 +79,10 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
 
     await expect(page.locator('#editor')).toBeVisible({ timeout: 30_000 });
 
-    const historyTab = page.getByRole('tab', { name: /Lịch sử|History/ });
+    const historyTab = page.getByRole('tab', { name: /Lịch sử/ });
     if (await historyTab.count()) {
       await historyTab.click();
-      await expect(page.getByText(/Lịch sử nộp|Submission history/).first()).toBeVisible({
+      await expect(page.getByText(/Lịch sử nộp/).first()).toBeVisible({
         timeout: 30_000,
       });
     }
@@ -92,10 +92,10 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
     await signIn(page, USER);
     await page.goto('/');
 
-    const dashboardLink = page.getByRole('link', { name: /Tiến độ|Dashboard|Progress/ });
+    const dashboardLink = page.getByRole('link', { name: /Tiến độ/ });
     if (await dashboardLink.count()) {
       await dashboardLink.click();
-      await expect(page.getByText(/Chuỗi|Streak|Tiến độ|Progress/).first()).toBeVisible({
+      await expect(page.getByText(/Chuỗi|Tiến độ/).first()).toBeVisible({
         timeout: 30_000,
       });
     }
@@ -113,7 +113,7 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
     const avatarBtn = page.getByRole('button', { name: /^Tài khoản:/ });
     await avatarBtn.click();
     await page.getByRole('menuitem', { name: /Đăng xuất/ }).click();
-    await expect(page.getByRole('button', { name: /Đăng nhập|Sign in/ }).first()).toBeVisible({
+    await expect(page.getByRole('button', { name: /Đăng nhập/ }).first()).toBeVisible({
       timeout: 30_000,
     });
   });

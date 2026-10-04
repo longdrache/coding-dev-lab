@@ -24,6 +24,9 @@ beforeEach(() => {
 
 function makeService() {
   const db = {
+    user: {
+      findUnique: vi.fn().mockResolvedValue({ id: 42 }),
+    },
     pageView: {
       create: vi.fn().mockImplementation((args: unknown) => Promise.resolve(args)),
       count: vi.fn().mockResolvedValue(7),

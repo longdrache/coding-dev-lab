@@ -34,6 +34,10 @@ export class ViewsService {
         : null;
     let country = headerCountry(headers);
     if (!country && ip) country = await lookupCountry(ip);
+    if (cleanUserId) {
+      const user = await this.db.user.findUnique({ where: { id: cleanUserId } });
+      if (!user) return null;
+    }
     return this.db.pageView.create({
       data: {
         ipHash,

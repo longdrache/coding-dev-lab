@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 export const options = {
-  vus: 5,
+  vus: 30,
   duration: '60s',
   thresholds: {
     http_req_failed: ['rate<0.05'],
@@ -11,39 +11,41 @@ export const options = {
 };
 
 const BASE = __ENV.BASE_URL || 'http://localhost:4000';
-const EMAIL = __ENV.TEST_EMAIL || 'k6@test.com';
-const PASSWORD = __ENV.TEST_PASSWORD || 'k6test123';
+const EMAIL = __ENV.TEST_EMAIL || 'user@gocode.local';
+const PASSWORD = __ENV.TEST_PASSWORD || 'password123';
 
 let token = null;
 
-
 export default function () {
-    const login = http.post(`${BASE}/api/auth/login`, JSON.stringify({
-      email: EMAIL,
-      password: PASSWORD,
-    }), { headers: { 'Content-Type': 'application/json' } });
-    token = login.cookies?.gocode_access?.value || null;
-  
+  const login = http.post(`${BASE}/api/auth/login`, JSON.stringify({
+    email: EMAIL,
+    password: PASSWORD,
+  }), { headers: { 'Content-Type': 'application/json' } });
+  token = login.cookies?.session?.[0]?.value || null;
 
   const headers = {
     'Content-Type': 'application/json',
-    'Cookie': `gocode_access=${token}`,
+    'Authorization': `Bearer ${token}`,
   };
 
-  const submit = http.post(`${BASE}/api/submissions`, JSON.stringify({
+  const submissions = Array.from({ length: 10 }, (_, i) => ({
     language_id: 71,
-    source_code: 'print("hello")',
-  }), { headers });
-  console.log(`Submit status: ${submit.status}`);
-  check(submit, { 'submit 200': (r) => r.status === 201 });
+    source_code: `print("hello ${i}")`,
+  }));
 
-  if (submit.status === 201) {
+  const submit = http.post(`${BASE}/api/submissions/batch`, JSON.stringify({
+    submissions,
+  }), { headers });
+  console.log(`Batch submit status: ${submit.status}`);
+  check(submit, { 'batch submit 200': (r) => r.status === 200 });
+
+  if (submit.status === 200) {
     const body = submit.json();
-    const tokens = body?.tokens || (body?.token ? [body.token] : []);
+    const tokens = body?.tokens || [];
     if (tokens.length > 0) {
       const poll = http.get(`${BASE}/api/submissions/batch?tokens=${tokens.join(',')}`, { headers });
-      console.log(`Poll status: ${poll.status}`);
-      check(poll, { 'poll 200': (r) => r.status === 200 });
+      console.log(`Batch poll status: ${poll.status}`);
+      check(poll, { 'batch poll 200': (r) => r.status === 200 });
     }
   }
 

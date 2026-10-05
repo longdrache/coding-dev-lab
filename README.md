@@ -325,6 +325,61 @@ erDiagram
 
 ---
 
+## Database Design
+
+**PostgreSQL** via Prisma 7 — 14 tables, 3 schemas (public, auth, app).
+
+### Schema Overview
+
+| Schema | Tables | Purpose |
+|--------|--------|---------|
+| `public` | `User`, `UserToken`, `UserAccount`, `UserOAuthState` | Core identity & sessions |
+| `app` | `Problem`, `Submission`, `SolvedProblem`, `FavoriteProblem`, `UserBadge`, `ActivityDay` | Learning data |
+| `analytics` | `PageView`, `LoginEvent`, `StripeEvent` | Observability |
+
+### Entity Relationships
+
+```
+User (1) ───< UserToken (refresh tokens, per-device)
+User (1) ───< UserAccount (OAuth links)
+User (1) ───< UserOAuthState (transient, TTL 10min)
+User (1) ───< Problem (author)
+User (1) ───< Submission
+User (1) ───< SolvedProblem
+User (1) ───< FavoriteProblem
+User (1) ───< UserBadge
+User (1) ───< ActivityDay
+User (1) ───< PageView (nullable userId for guests)
+User (1) ───< LoginEvent (nullable userId for guests)
+```
+
+### Key Indexes
+
+| Table | Index | Reason |
+|-------|-------|--------|
+| `User` | `email` UNIQUE | Login lookup |
+| `UserToken` | `(userId, type)` | Session queries |
+| `UserToken` | `tokenHash` | Refresh token lookup |
+| `UserAccount` | `(provider, providerUserId)` UNIQUE | OAuth account matching |
+| `UserOAuthState` | `expiresAt` | Sweep expired states |
+| `Problem` | `slug` UNIQUE | Problem lookup |
+| `Submission` | `(userId, problemSlug)` | User's submissions for a problem |
+| `SolvedProblem` | `(userId, slug)` UNIQUE | Prevent duplicate solves |
+| `ActivityDay` | `(userId, date)` UNIQUE | Streak calculation |
+| `PageView` | `(ipHash, createdAt)` | Unique visitor counting |
+| `LoginEvent` | `(userId, createdAt)` | Login history |
+
+### Design Decisions
+
+- **Soft deletes**: `User.deletedAt` — preserve data integrity for foreign keys
+- **UUID vs Int**: `User.id` is Int (fast joins), other tables use UUID (distributed-safe)
+- **JSON columns**: `Problem.tests`, `Problem.hiddenTests` — flexible schema, validated in app layer
+- **Nullable analytics**: `PageView.userId`, `LoginEvent.userId` nullable — track guests without fake users
+- **TTL cache**: `UserOAuthState` has `expiresAt` index for periodic cleanup
+- **Idempotency**: `StripeEvent.eventId` PK prevents duplicate webhook processing
+
+---
+
 ## API
 
 ### Authentication (`/api/auth`)

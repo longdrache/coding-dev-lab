@@ -241,6 +241,7 @@ jobs:
         working-directory: be
         env:
           PORT: '4000'
+          DISABLE_RATE_LIMIT: '1'
         run: |
           nohup pnpm start > "$RUNNER_TEMP/backend.log" 2>&1 &
           echo "started backend, log: $RUNNER_TEMP/backend.log"
@@ -272,6 +273,7 @@ jobs:
         env:
           PORT: '3000'
           PLAYWRIGHT_HTML_OPEN: 'never'
+          DISABLE_RATE_LIMIT: '1'
         run: pnpm exec playwright test --reporter="line,html" --trace=retain-on-failure
 
       - name: Upload Playwright report

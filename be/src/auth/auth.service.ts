@@ -124,6 +124,8 @@ const RESEND_SENT =
   'Nếu email đó có tài khoản chưa xác minh, chúng tôi đã gửi lại link xác nhận.';
 /** Một câu duy nhất cho mọi lý do từ chối đăng nhập, không lộ email nào tồn tại. */
 const BAD_CREDENTIALS = 'Email hoặc mật khẩu không đúng';
+/** Email đã đăng ký nhưng chưa mở link xác minh — cho phép gửi lại. */
+const UNVERIFIED_EMAIL = 'Email này chưa được xác minh';
 /**
  * Hash bcrypt cost 10 sinh một lần từ 32 byte ngẫu nhiên đã bị bỏ đi, dùng làm
  * "đối thủ" khi không có mật khẩu thật để so. Phải là hash **hợp lệ** và cùng
@@ -465,7 +467,7 @@ export class AuthService implements OnModuleInit {
       this.denyCredentials();
     }
     if (!(await verifyPassword(String(password ?? ''), user.passwordHash))) this.denyCredentials();
-    if (!user.emailVerifiedAt) this.denyCredentials();
+    if (!user.emailVerifiedAt) throw new UnauthorizedException(UNVERIFIED_EMAIL);
 
     const tokens = await this.issueSession(user, userAgent);
     await this.trimSessions(user.id);

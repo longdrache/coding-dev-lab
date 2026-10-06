@@ -31,6 +31,7 @@ async function signIn(page: Page, user: FakeUser) {
   const loginRes = await page.context().request.post(`${API}/api/auth/login`, {
     data: { email: user.email, password: user.password },
   });
+  console.log(loginRes.status());
   expect(loginRes.ok()).toBeTruthy();
   const cookies = await page.context().cookies();
   const sessionCookie = cookies.find((c) => c.name === 'session');

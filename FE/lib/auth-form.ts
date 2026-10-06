@@ -37,6 +37,7 @@ const BE_MESSAGE_COPY: Record<string, string> = {
   "Email không hợp lệ": "Email chưa đúng dạng. Kiểm tra lại địa chỉ rồi thử.",
   "Email này đã được dùng để đăng ký": "Email này đã có tài khoản. Thử đăng nhập nhé.",
   "Email hoặc mật khẩu không đúng": "Email hoặc mật khẩu không đúng. Kiểm tra lại rồi thử lần nữa.",
+  "Email này chưa được xác minh": "Email này chưa được xác minh. Mở link xác nhận trong hộp thư hoặc bấm Gửi lại link bên dưới.",
   "Quá nhiều yêu cầu, vui lòng thử lại sau": "Bạn thử hơi nhiều lần trong thời gian ngắn. Chờ một lúc rồi thử lại.",
 };
 

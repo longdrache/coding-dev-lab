@@ -293,6 +293,24 @@ export default function AuthForm({
 
       {error && <ErrorNote message={error} />}
 
+      {/* Email đã đăng ký nhưng chưa mở link xác minh: cho phép gửi lại
+          ngay tại màn đăng nhập, không cần quay trang đăng ký. */}
+      {error.includes("chưa được xác minh") && !isSignup && (
+        <button
+          type="button"
+          onClick={() => void run("resend")}
+          disabled={pending !== null || resendCooldown > 0}
+          className={`${SECONDARY} mt-3`}
+        >
+          {pending !== null ? (
+            <LoaderCircle aria-hidden className={SPINNER} />
+          ) : (
+            <Send aria-hidden className="size-4" />
+          )}
+          {resendCooldown > 0 ? `Gửi lại sau ${resendCooldown}s` : "Gửi lại link xác nhận"}
+        </button>
+      )}
+
       {/*
         Nút Google nằm TRÊN nút chính: mốc trên thẻ là `Dùng email và mật khẩu`
         (đã quen, không cần nghĩ), Google là đường thứ hai cho người không muốn

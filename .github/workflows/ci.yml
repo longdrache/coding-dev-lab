@@ -190,6 +190,8 @@ jobs:
       FRONTEND_URL: http://localhost:3000
       NEXT_TELEMETRY_DISABLED: '1'
       DISABLE_RATE_LIMIT: '1'
+      USE_DATABASE_TEST: '10'
+      
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -240,6 +242,8 @@ jobs:
       # chạy. `main.ts` đọc `process.env.PORT ?? 4000`, nên ghim cổng ở đây.
       - name: Start backend
         working-directory: be
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode_test
         run: |
           nohup pnpm start > "$RUNNER_TEMP/backend.log" 2>&1 &
           echo "started backend, log: $RUNNER_TEMP/backend.log"

@@ -22,7 +22,7 @@ export class AppController {
 
   @Get('api/vip/health')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles('vip')
+  @Roles('vip', 'admin')
   getVipHealth(): { ok: true } {
     return { ok: true };
   }

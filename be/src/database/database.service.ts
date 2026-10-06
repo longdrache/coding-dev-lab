@@ -13,8 +13,9 @@ export class DatabaseService
     // hành vi treo/kill của Neon pooler; fallback pooler URL nếu thiếu.
     // Pool nhỏ + evict idle sớm để không giữ connection chết.
     const pool = new Pool({
-      connectionString:
-        process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL,
+      connectionString: process.env.USE_DATABASE_TEST === '1'
+        ? process.env.DATABASE_TEST_URL
+        : process.env.DATABASE_URL,
       max: Number(process.env.PG_POOL_MAX ?? 10),
       // Đóng connection idle sau 10s (sớm hơn Neon kill)
       idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS ?? 10_000),

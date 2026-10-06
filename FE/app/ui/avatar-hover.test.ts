@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { PublicUser } from "./AuthProvider";
 import AccountMenu from "./AccountMenu";
+import { avatarSource } from "../../lib/account";
 
 /**
  * Nút avatar ở header phải phản hồi khi rê chuột — nhưng nó là **nút mở
@@ -35,7 +36,7 @@ vi.mock("./AuthProvider", () => ({
 
 /* `INITIAL_AVATAR_MENU` là hằng, mà test cần cả hai trạng thái nên để nó đọc
  * biến ở mỗi lần render. Getter giữ nguyên phần còn lại của module thật. */
-vi.mock("@/lib/account", async (importOriginal) => {
+  vi.mock("../../lib/account", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/account")>();
   return {
     ...real,

@@ -1,5 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import tsconfigPaths from 'vite-tsconfig-paths';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Load .env.test trước, fallback về .env nếu không có
+config({ path: resolve(__dirname, '.env.test') });
+config({ path: resolve(__dirname, '.env') });
 
 export default defineConfig({
   // Resolves the path aliases declared in tsconfig.json, including the ones

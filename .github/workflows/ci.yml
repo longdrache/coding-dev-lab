@@ -229,6 +229,9 @@ jobs:
       - name: Seed problems
         working-directory: be
         run: node scripts/seed-problems.ts
+      - name: Seed users
+        working-directory: be
+        run: node scripts/seed-users.ts
 
       # Backend chạy thật vì spec cần dữ liệu thật: `/problem` render SSR từ
       # `GET /api/problems`, và `vip-problems.spec.ts` cần BE trả 403

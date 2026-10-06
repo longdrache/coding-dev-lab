@@ -399,6 +399,29 @@ User (1) ───< LoginEvent (nullable userId for guests)
 | GET | `/oauth/google/start` | Public | Start Google OAuth (20/hr) |
 | GET | `/oauth/google/callback` | Public | Google OAuth callback (20/hr) |
 
+## Database Design
+
+Postgres via Prisma 7 — 14 tables across 3 schemas (public, auth, app).
+
+| Table | Role |
+| ----- | ---- |
+| `User` | Account: `role` (user/vip/admin), `vipExpiresAt`, `premiumPlan`, `stripeSubscriptionId` |
+| `UserToken` | Refresh token per device (rotation, revocation per device) |
+| `UserAccount` | OAuth link — unique `(provider, providerUserId)` |
+| `UserOAuthState` | Transient OAuth state (PK is `stateHash`, TTL indexed) |
+| `ActivityDay` | Streak/heatmap — unique `(userId, date)` |
+| `SolvedProblem` | Solved problems — unique `(userId, slug)` |
+| `FavoriteProblem` | Favorites — unique `(userId, slug)` |
+| `UserBadge` | Badges — unique `(userId, badgeId)` |
+| `Problem` | Problem: `isVip`, `tests`, `hiddenTests` (JSON), `starterCodes` |
+| `Submission` | History: `status`, `passed`, `time`, `memory`, `sourceCode` |
+| `QnaQuestion` | Support questions (guest allowed, nullable `userId`) |
+| `StripeEvent` | Processed webhook events — idempotency |
+| `PageView` | Page analytics — `ipHash` (no raw IP) |
+| `LoginEvent` | Login log — `ipHash`, `country` |
+
+Key relations: `User` 1—N all data tables. `onDelete: Cascade` for user-owned data; `QnaQuestion`/`PageView`/`LoginEvent` preserve rows on user deletion (nullable `userId`).
+
 ### Problems (`/api/problems`)
 
 | Method | Endpoint | Auth | Description |
@@ -593,6 +616,26 @@ pnpm --dir FE test
 
 # Run E2E tests
 pnpm test:e2e
+```
+
+### Test Environment Setup
+
+For load testing or isolated test runs, use a separate `.env.test` file:
+
+```bash
+cp be/.env.test.example be/.env.test
+# Edit be/.env.test with your test database credentials
+```
+
+Key test environment variables:
+- `DATABASE_URL`: Point to a dedicated test database (not production)
+- `DISABLE_RATE_LIMIT=1`: Remove rate limits for load testing
+- `PORT`: Use a non-standard port (e.g., 4100) to avoid conflicts
+
+Run tests with the test environment:
+```bash
+cd be
+pnpm start:dev  # Uses .env.test if present
 ```
 
 ---

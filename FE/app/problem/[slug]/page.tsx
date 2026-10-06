@@ -391,19 +391,13 @@ const JSON_HEADERS = { "Content-Type": "application/json" } as const;
 export default function ProblemWorkspace() {
   const params = useParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
-  const { problem: swrProblem, loading: swrLoading, error, missing, vipLocked, retry } =
+  const { problem, loading: swrLoading, error, missing, vipLocked, retry } =
     useProblem(slug);
-  // Chỉ dùng để lấy **tiêu đề** bài VIP cho màn khoá (chi tiết bài bị chặn nên
-  // không có ở đâu khác). Danh sách là payload công khai.
-  const { problems: danhSach } = useProblems();
+//  console.log("Check SWR:", { problem, loading: swrLoading, error, missing, vipLocked, retry });
   // Gate như trang list: lần render đầu khớp server, sau mount lấy cache có sẵn
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration guard, cố ý 1 lần
-    setMounted(true);
-  }, []);
-  const problem = mounted ? swrProblem : null;
-  const loading = !mounted || swrLoading;
+  const loading = swrLoading;
+
+useEffect(() => {retry()}, [problem]);
 
   if (loading) {
     return (
@@ -433,7 +427,7 @@ export default function ProblemWorkspace() {
   // không phải đường vòng: cùng một key SWR với trang danh sách, tức vào từ danh
   // sách thì không tốn request nào.
   if (vipLocked) {
-    return <VipLockedNotice title={danhSach?.find((p) => p.slug === slug)?.title} />;
+    return <VipLockedNotice />;
   }
 
   if (error || !problem) {
@@ -442,12 +436,11 @@ export default function ProblemWorkspace() {
         <div className="mx-auto max-w-xl py-16 text-center">
           <h1 className="font-display text-xl font-bold text-zinc-950">Không tải được bài toán</h1>
           <p className="mt-2.5 text-sm leading-relaxed text-zinc-600">
-            Bài này có thể vẫn ở đó — chỉ là lần tải vừa rồi thất bại. Thử lại, hoặc kiểm tra
-            xem backend có đang chạy không.
+            Bài này có thể vẫn ở đó — chỉ là lần tải vừa rồi thất bại. Thử lại.
           </p>
           <button
             type="button"
-            onClick={() => void retry()}
+            onClick={() => retry()}
             className="mt-6 inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800"
           >
             Thử lại
@@ -1008,7 +1001,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
             )}
           </section>
 
-          <section className={focus === "statement" ? "hidden" : "min-w-0"}>
+          <section id="editor" className={focus === "statement" ? "hidden" : "min-w-0"}>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <div className="relative w-fit max-w-full">
                 <button

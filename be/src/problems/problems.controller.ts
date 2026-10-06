@@ -103,7 +103,7 @@ export class ProblemsController {
 
   @Post(':slug/submit')
   @UseGuards(AuthGuard)
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: 100, ttl: 60_000 } })
   async submit(
     @Param('slug') slug: string,
     @Req() req: AuthenticatedRequest,

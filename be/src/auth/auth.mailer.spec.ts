@@ -22,8 +22,8 @@ const OLD_ENV = { ...process.env };
  * làm một test "thiếu cấu hình" xanh vì lý do sai.
  */
 const MAIL_VARS = [
-  'USER_LOGIN',
-  'USER_PASS',
+  'SMTP_USER',
+  'SMTP_PASS',
   'MAIL_FROM',
   'EMAIL_HOST',
   'EMAIL_PORT',
@@ -45,8 +45,8 @@ beforeEach(() => {
   // chứ không từ tài liệu: `USER_LOGIN`/`USER_PASS` là hai biến mailer này thực sự
   // đọc. Test nào muốn khác thì set lại trong chính nó — không thừa hưởng từ `.env`
   // của máy (bài học từ f4d04c4).
-  process.env.USER_LOGIN = 'gocode@brevo.test';
-  process.env.USER_PASS = 'xsmtpsib-v1-abc';
+  process.env.SMTP_USER = 'gocode@brevo.test';
+  process.env.SMTP_PASS = 'xsmtpsib-v1-abc';
   process.env.MAIL_FROM = 'no-reply@gocode.vn';
 });
 
@@ -59,21 +59,21 @@ afterAll(() => {
 });
 
 describe('thiếu cấu hình Brevo thì fail rõ ràng, không gửi nhầm qua provider khác', () => {
-  // Cảnh báo đọc kỹ trước khi "sửa cho xanh": `AuthMailer` **đọc** `USER_LOGIN` /
-  // `USER_PASS` (`auth.mailer.ts:40-41`) nhưng dòng lỗi **in** tên cũ
-  // `USER_LOGIN` / `USER_PASS` (`:44-45`, `:58`). Test bám theo đúng thứ
+  // Cảnh báo đọc kỹ trước khi "sửa cho xanh": `AuthMailer` **đọc** `SMTP_USER` /
+  // `SMTP_PASS` (`auth.mailer.ts:40-41`) nhưng dòng lỗi **in** tên cũ
+  // `SMTP_USER` / `SMTP_PASS` (`:44-45`, `:58`). Test bám theo đúng thứ
   // code in ra — đổi tên ở đây là đỏ. Đây là bug sản phẩm (log dẫn người vận hành
   // điền vào hai biến mà code không đọc), đã báo chứ không tự sửa.
-  it('thiếu USER_LOGIN thì nêu đúng tên biến và không dựng transport', async () => {
-    delete process.env.USER_LOGIN;
-    await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/USER_LOGIN/);
+  it('thiếu SMTP_USER thì nêu đúng tên biến và không dựng transport', async () => {
+    delete process.env.SMTP_USER;
+    await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/SMTP_USER/);
     expect(h.createTransport).not.toHaveBeenCalled();
     expect(h.sendMail).not.toHaveBeenCalled();
   });
 
-  it('thiếu USER_PASS thì nêu đúng tên biến và không dựng transport', async () => {
-    delete process.env.USER_PASS;
-    await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/USER_PASS/);
+  it('thiếu SMTP_PASS thì nêu đúng tên biến và không dựng transport', async () => {
+    delete process.env.SMTP_PASS;
+    await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/SMTP_PASS/);
     expect(h.createTransport).not.toHaveBeenCalled();
   });
 
@@ -88,21 +88,21 @@ describe('thiếu cấu hình Brevo thì fail rõ ràng, không gửi nhầm qua
   it('thiếu cả ba thì nêu trọn danh sách biến thiếu, không phải từng biến một', async () => {
     for (const k of MAIL_VARS) delete process.env[k];
     const loi = await new AuthMailer().send(MAIL).catch((e: Error) => e);
-    expect(String(loi?.message)).toContain('USER_LOGIN');
-    expect(String(loi?.message)).toContain('USER_PASS');
+    expect(String(loi?.message)).toContain('SMTP_USER');
+    expect(String(loi?.message)).toContain('SMTP_PASS');
     expect(String(loi?.message)).toContain('MAIL_FROM');
     expect(h.createTransport).not.toHaveBeenCalled();
   });
 
   it('giá trị chỉ khoảng trắng thì coi như chưa cấu hình', async () => {
-    process.env.USER_PASS = '   ';
-    await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/USER_PASS/);
+    process.env.SMTP_PASS = '   ';
+    await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/SMTP_PASS/);
     expect(h.createTransport).not.toHaveBeenCalled();
   });
 
-  it('USER_PASS là API key (xkeysib) thì nói thẳng sai loại khoá', async () => {
+  it('SMTP_PASS là API key (xkeysib) thì nói thẳng sai loại khoá', async () => {
     // Nhầm lẫn đã xảy ra: API key dùng vào SMTP luôn fail bằng 401 khó hiểu.
-    process.env.USER_PASS = 'xkeysib-v1-abc';
+    process.env.SMTP_PASS = 'xkeysib-v1-abc';
     const loi = await new AuthMailer().send(MAIL).catch((e: Error) => e);
     expect(String(loi?.message)).toContain('xsmtpsib');
     expect(String(loi?.message)).toContain('xkeysib');
@@ -138,7 +138,7 @@ describe('dựng transport Brevo', () => {
   });
 
   it('bỏ khoảng trắng thừa quanh biến môi trường trước khi đưa vào auth', async () => {
-    process.env.USER_LOGIN = '  gocode@brevo.test  ';
+    process.env.SMTP_USER = '  gocode@brevo.test  ';
     process.env.MAIL_FROM = '  no-reply@gocode.vn  ';
     await new AuthMailer().send(MAIL);
     expect(h.createTransport.mock.calls[0][0]).toMatchObject({

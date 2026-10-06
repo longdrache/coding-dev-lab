@@ -1,7 +1,12 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../src/generated/prisma/client.ts';
 import * as bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
+import 'dotenv/config';
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({  connectionString: process.env.USE_DATABASE_TEST === '1'
+        ? process.env.DATABASE_TEST_URL
+        : process.env.DATABASE_URL}),
+});
 
 const users = [
   {
@@ -9,19 +14,15 @@ const users = [
     name: 'Test User',
     password: 'password123',
     role: 'user',
+    emailVerifiedAt: new Date(),
   },
   {
     email: 'vip@gocode.local',
     name: 'VIP User',
     password: 'password123',
     role: 'vip',
+    emailVerifiedAt: new Date(),
     vipExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-  },
-  {
-    email: 'admin@gocode.local',
-    name: 'Admin User',
-    password: 'password123',
-    role: 'admin',
   },
 ];
 

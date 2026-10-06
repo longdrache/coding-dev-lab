@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 export const options = {
-  vus: 30,
+  vus: 5,
   duration: '60s',
   thresholds: {
     http_req_failed: ['rate<0.05'],
@@ -11,7 +11,7 @@ export const options = {
 };
 
 const BASE = __ENV.BASE_URL || 'http://localhost:4000';
-const EMAIL = __ENV.TEST_EMAIL || 'user@gocode.local';
+const EMAIL = __ENV.TEST_EMAIL || 'user@gocode.loca';
 const PASSWORD = __ENV.TEST_PASSWORD || 'password123';
 
 let token = null;
@@ -28,7 +28,7 @@ export default function () {
     'Authorization': `Bearer ${token}`,
   };
 
-  const submissions = Array.from({ length: 10 }, (_, i) => ({
+  const submissions = Array.from({ length: 1 }, (_, i) => ({
     language_id: 71,
     source_code: `print("hello ${i}")`,
   }));

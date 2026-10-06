@@ -37,12 +37,12 @@ export class AuthMailer implements AuthMailPort {
    * người đọc log phải biết chính xác cần điền gì, không phải đoán.
    */
   private readConfig(): { login: string; key: string; from: string } {
-    const login = (process.env.USER_LOGIN ?? '').trim();
-    const key = (process.env.USER_PASS ?? '').trim();
+    const login = (process.env.SMTP_USER ?? '').trim();
+    const key = (process.env.SMTP_PASS ?? '').trim();
     const from = (process.env.MAIL_FROM ?? '').trim();
     const thieu = [
-      ...(login ? [] : ['USER_LOGIN']),
-      ...(key ? [] : ['USER_PASS']),
+      ...(login ? [] : ['SMTP_USER']),
+      ...(key ? [] : ['SMTP_PASS']),
       ...(from ? [] : ['MAIL_FROM']),
     ];
     if (thieu.length > 0) {

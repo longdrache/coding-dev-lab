@@ -33,8 +33,9 @@ export function useProblem(slug: string) {
   const { data, error, isLoading, mutate } = useSWR<Problem>(
     slug ? `${API_URL}/api/problems/${encodeURIComponent(slug)}` : null,
     authedFetcher,
-    { revalidateIfStale: true },
+    { revalidateIfStale: false}
   );
+  console.log("useProblem", slug, data, error, isLoading);
   // Chỉ coi là "không tồn tại" khi BE **thật sự** trả 404. Mọi thứ khác — mạng
   // chết, CORS, 500 — là lỗi tải, và báo thành "không tìm thấy" khiến một bài có
   // thật bị hiện thành trang 404, không có nút thử lại.

@@ -14,7 +14,7 @@ const SLUG_VIP = 'coin-change';
 const TEN_VIP = 'Đổi tiền ít xu nhất';
 const SLUG_THUONG = 'two-sum';
 const TEN_THUONG = 'Hai số có tổng bằng mục tiêu';
-
+const PREMIUM="Đây là bài GoCode Premium";
 /**
  * Header CORS cho response giả.
  *
@@ -91,7 +91,7 @@ async function timBaiTrongDanhSach(page: import('@playwright/test').Page, tuKhoa
   // `isConnected`), đủ để Playwright báo strict mode violation "resolved to 2
   // elements" và hỏng cả test. Lọc theo visibility thì đúng một cái, và `fill`
   // vẫn tự chờ nên lúc chỉ có bản ẩn thì không sao.
-  await page.getByPlaceholder(/Tìm kiếm bài tập/).filter({ visible: true }).fill(tuKhoa);
+  await page.getByPlaceholder(/Tìm kiếm bài tập/).fill(tuKhoa);
 }
 
 test.describe('bài VIP: khách thấy tiêu đề kèm dấu khoá trong danh sách', () => {
@@ -112,7 +112,7 @@ test.describe('bài VIP: mở ra thì bị chặn, có nút nâng cấp', () => 
   test('khách bấm bài VIP thấy màn khoá, không thấy đề bài', async ({ page }) => {
     await page.goto(`/problem/${SLUG_VIP}`);
 
-    await expect(page.getByRole('heading', { name: new RegExp(TEN_VIP) })).toBeVisible({
+    await expect(page.getByRole('heading', { name: new RegExp(PREMIUM) })).toBeVisible({
       timeout: 60_000,
     });
     // Nút nâng cấp phải dẫn tới trang bảng giá, không phải slug bài ghép vào URL.

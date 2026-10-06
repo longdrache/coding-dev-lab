@@ -1,227 +1,162 @@
-// import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-// const API = 'http://localhost:4000';
+const API = 'http://localhost:4000';
 
-// type FakeUser = {
-//   id: number;
-//   email: string;
-//   name: string | null;
-//   role: 'user' | 'vip' | 'admin';
-//   avatarUrl: string | null;
-// };
+type FakeUser = {
+  id: number;
+  email: string;
+  name: string | null;
+  role: 'user' | 'vip' | 'admin';
+  avatarUrl: string | null;
+  password: string;
+};
 
-// const USER: FakeUser = {
-//   id: 1,
-//   email: 'e2e@gocode.local',
-//   name: 'E2E User',
-//   role: 'user',
-//   avatarUrl: null,
-// };
+const USER: FakeUser = {
+  id: 1,
+  email: 'user@gocode.local',
+  name: 'E2E User',
+  role: 'user',
+  avatarUrl: null,
+  password: 'password123',
+};
+const VIP_USER: FakeUser = {
+  id: 2,
+  email: 'vip@gocode.local',
+  name: 'VIP User',
+  role: 'vip',
+  avatarUrl: null,
+  password: 'password123',
+};
+async function signIn(page: Page, user: FakeUser) {
+  const loginRes = await page.context().request.post(`${API}/api/auth/login`, {
+    data: { email: user.email, password: user.password },
+  });
+  expect(loginRes.ok()).toBeTruthy();
+  const cookies = await page.context().cookies();
+  const sessionCookie = cookies.find((c) => c.name === 'session');
+  const refreshCookie = cookies.find((c) => c.name === 'refresh');
+  expect(sessionCookie).toBeTruthy();
+  expect(refreshCookie).toBeTruthy();
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: /^Tài khoản:/ })).toBeVisible({
+    timeout: 60_000,
+  });
+}
 
-// async function signIn(page: Page, user: FakeUser) {
-//   await page.route(`${API}/api/auth/me`, (route) =>
-//     route.fulfill({
-//       status: 200,
-//       contentType: 'application/json',
-//       body: JSON.stringify({ user, expiresIn: 900 }),
-//     }),
-//   );
-//   await page.route(`${API}/api/auth/logout`, (route) =>
-//     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-//   );
-//   await page.context().addCookies([
-//     { name: 'session', value: 'fake-session-token', domain: 'localhost', path: '/' },
-//     { name: 'refresh', value: 'fake-refresh-token', domain: 'localhost', path: '/' },
-//   ]);
-//   await page.goto('/');
-//   await expect(page.getByRole('button', { name: /^Tài khoản:/ })).toBeVisible({
-//     timeout: 60_000,
-//   });
-// }
+test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài → dashboard', () => {
+  test('duyệt danh sách bài tập', async ({ page }) => {
+    await signIn(page, USER);
+    await page.goto('/problem');
+    await expect(page.getByRole('link', { name: /Hai số có tổng/ }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+  });
 
-// test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài → dashboard', () => {
-//   test('duyệt danh sách bài tập', async ({ page }) => {
-//     await signIn(page, USER);
-//     await page.goto('/problem');
-//     await expect(page.getByRole('link', { name: /Hai số có tổng/ }).first()).toBeVisible({
-//       timeout: 30_000,
-//     });
-//   });
+  test('mở bài tập thường và xem đề bài', async ({ page }) => {
+    await signIn(page, USER);
+    await page.goto('/problem/two-sum');
+    await expect(page.getByRole('heading', { name: /Hai số có tổng/ })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.locator('#editor')).toBeVisible();
+  });
 
-//   test('mở bài tập và xem đề bài', async ({ page }) => {
-//     await signIn(page, USER);
-//     await page.goto('/problem/two-sum');
-//     await expect(page.getByRole('heading', { name: /Hai số có tổng/ })).toBeVisible({
-//       timeout: 30_000,
-//     });
-//     await expect(page.locator('#editor')).toBeVisible({ timeout: 30_000 });
-//   });
+  test('bài VIP bị khoá với tài khoản thường', async ({ page }) => {
+    await signIn(page, USER);
+    await page.goto('/problem/merge-intervals');
+   
+     await expect(page.getByRole('heading', { name: /GoCode Premium/ })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.locator('#editor')).toHaveCount(0);
+  });
 
-//   test('nộp bài và xem kết quả', async ({ page }) => {
-//     await signIn(page, USER);
-//     await page.goto('/problem/two-sum');
+  test('nộp bài và xem kết quả', async ({ page }) => {
+    await signIn(page, USER);
+    await page.goto('/problem/two-sum');
 
-//     await expect(page.locator('#editor')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('#editor')).toBeVisible({ timeout: 30_000 });
 
-//     const submitBtn = page.getByRole('button', { name: /Nộp bài/ });
-//     await expect(submitBtn).toBeVisible();
+    const submitBtn = page.getByRole('button', { name: /Nộp bài/ });
+    await expect(submitBtn).toBeVisible();
 
-//     await page.locator('#editor').click();
-//     await page.keyboard.press('Control+A');
-//     await page.keyboard.type(
-//       'def two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i\n    return []',
-//     );
+    await page.locator('#editor').click();
+    // await page.keyboard.press('Control+A');
+    await page.keyboard.type(
+      'def two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i\n    return []',
+    );
 
-//     const resultPromise = page.waitForResponse((r) => r.url().includes('/api/submissions') && r.status() === 200);
-//     await submitBtn.click();
-//     await resultPromise;
-//     await expect(page.getByText(/Kết quả|Đúng|Sai/).first()).toBeVisible({
-//       timeout: 60_000,
-//     });
-//   });
+    const resultPromise = page.waitForResponse((r) => r.url().includes('/api/problems/') && r.status() === 201);
+    await submitBtn.click();
+    await resultPromise;
+    await expect(page.getByText(/Kết quả|Đúng|Sai/).first()).toBeVisible({
+      timeout: 60_000,
+    });
+  });
 
-//   test('xem lịch sử nộp bài', async ({ page }) => {
-//     await signIn(page, USER);
-//     await page.goto('/problem/two-sum');
+  test('xem lịch sử nộp bài', async ({ page }) => {
+    await signIn(page, USER);
+    await page.goto('/problem/two-sum');
 
-//     await expect(page.locator('#editor')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('#editor')).toBeVisible({ timeout: 30_000 });
 
-//     const historyTab = page.getByRole('tab', { name: /Lịch sử/ });
-//     if (await historyTab.count()) {
-//       await historyTab.click();
-//       await expect(page.getByText(/Lịch sử nộp/).first()).toBeVisible({
-//         timeout: 30_000,
-//       });
-//     }
-//   });
+    const historyTab = page.getByRole('tab', { name: /Lịch sử/ });
+    if (await historyTab.count()) {
+      await historyTab.click();
+      await expect(page.getByText(/Lịch sử nộp/).first()).toBeVisible({
+        timeout: 30_000,
+      });
+    }
+  });
 
-//   test('xem dashboard tiến độ', async ({ page }) => {
-//     await signIn(page, USER);
-//     await page.goto('/');
+  test('xem dashboard tiến độ', async ({ page }) => {
+    await signIn(page, USER);
+    await page.goto('/');
 
-//     const dashboardLink = page.getByRole('link', { name: /Tiến độ/ });
-//     if (await dashboardLink.count()) {
-//       await dashboardLink.click();
-//       await expect(page.getByText(/Chuỗi|Tiến độ/).first()).toBeVisible({
-//         timeout: 30_000,
-//       });
-//     }
-//   });
+    const dashboardLink = page.getByRole('link', { name: /Tiến độ/ });
+    if (await dashboardLink.count()) {
+      await dashboardLink.click();
+      await expect(page.getByText(/Chuỗi|Tiến độ/).first()).toBeVisible({
+        timeout: 30_000,
+      });
+    }
+  });
 
-//   test('xem trang premium', async ({ page }) => {
-//     await signIn(page, USER);
-//     await page.goto('/premium');
-//     await expect(page.getByText(/1 Tháng/).first()).toBeVisible({ timeout: 30_000 });
-//     await expect(page.getByText(/1 Năm/).first()).toBeVisible();
-//   });
+  test('xem trang premium', async ({ page }) => {
+    await signIn(page, USER);
+    await page.goto('/premium');
+    await expect(page.getByText(/1 Tháng/).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/1 Năm/).first()).toBeVisible();
+  });
 
-//   test('đăng xuất', async ({ page }) => {
-//     await signIn(page, USER);
-//     const avatarBtn = page.getByRole('button', { name: /^Tài khoản:/ });
-//     await avatarBtn.click();
-//     await page.getByRole('menuitem', { name: /Đăng xuất/ }).click();
-//     await expect(page.getByRole('button', { name: /Đăng nhập/ }).first()).toBeVisible({
-//       timeout: 30_000,
-//     });
-//   });
-// });
+  test('đăng xuất', async ({ page }) => {
+    await signIn(page, USER);
+    const avatarBtn = page.getByRole('button', { name: /^Tài khoản:/ });
+    await avatarBtn.click();
+    await page.getByRole('menuitem', { name: /Đăng xuất/ }).click();
+    await expect(page.getByRole('link', { name: /Đăng nhập/ }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+  });
+});
 
-// test.describe('Tích hợp API: luồng nộp bài', () => {
-//   test('POST /api/submissions trả về kết quả', async ({ page }) => {
-//     await signIn(page, USER);
+test.describe('Luồng VIP: người dùng premium truy cập bài VIP', () => {
+  test('VIP truy cập bài VIP', async ({ page }) => {
+    await signIn(page, VIP_USER);
+    await page.goto('/problem/coin-change');
+    const thuLai = page.getByRole('button', { name: /Thử lại/ });
+        const noiDung = page.getByRole('heading', { name: /Đổi tiền ít xu nhất/ });
+        // Chờ **một trong hai** xuất hiện rồi mới quyết định, thay vì dò ngay sau
+        // `goto`: lúc đó trang còn ở skeleton nên `.count()` trả 0 và nút không bao
+        // giờ được bấm — đó chính là lý do test này chập chờn.
+        await expect(thuLai.or(noiDung).first()).toBeVisible({ timeout: 60_000 });
+        if (await thuLai.count()) await thuLai.click();
+    await expect(page.locator('#editor')).toBeVisible();
+  });
 
-//     const response = await page.request.post(`${API}/api/submissions`, {
-//       data: {
-//         problemSlug: 'two-sum',
-//         languageId: 71,
-//         sourceCode: 'def two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i\n    return []',
-//       },
-//     });
-
-//     expect(response.status()).toBe(200);
-//     const body = await response.json();
-//     expect(body).toHaveProperty('token');
-//   });
-
-//   test('GET /api/history trả về lịch sử nộp bài', async ({ page }) => {
-//     await signIn(page, USER);
-
-//     const response = await page.request.get(`${API}/api/history`);
-//     expect(response.status()).toBe(200);
-//     const body = await response.json();
-//     expect(Array.isArray(body)).toBe(true);
-//   });
-
-//   test('GET /api/progress/dashboard trả về dữ liệu tiến độ', async ({ page }) => {
-//     await signIn(page, USER);
-
-//     const response = await page.request.get(`${API}/api/progress/dashboard`);
-//     expect(response.status()).toBe(200);
-//     const body = await response.json();
-//     expect(body).toHaveProperty('streak');
-//     expect(body).toHaveProperty('heatmap');
-//     expect(body).toHaveProperty('badges');
-//   });
-
-//   test('GET /api/problems trả về danh sách bài tập', async ({ page }) => {
-//     await signIn(page, USER);
-
-//     const response = await page.request.get(`${API}/api/problems`);
-//     expect(response.status()).toBe(200);
-//     const body = await response.json();
-//     expect(Array.isArray(body)).toBe(true);
-//     expect(body.length).toBeGreaterThan(0);
-//   });
-
-//   test('GET /api/problems/:slug trả về chi tiết bài tập', async ({ page }) => {
-//     await signIn(page, USER);
-
-//     const response = await page.request.get(`${API}/api/problems/two-sum`);
-//     expect(response.status()).toBe(200);
-//     const body = await response.json();
-//     expect(body).toHaveProperty('slug', 'two-sum');
-//     expect(body).toHaveProperty('title');
-//     expect(body).toHaveProperty('description');
-//   });
-// });
-
-// test.describe('Luồng VIP: người dùng premium truy cập bài VIP', () => {
-//   test('VIP truy cập bài VIP', async ({ page }) => {
-//     await signIn(page, { ...USER, role: 'vip' });
-//     await page.route(`${API}/api/problems/coin-change`, (route) =>
-//       route.fulfill({
-//         status: 200,
-//         contentType: 'application/json',
-//         body: JSON.stringify({
-//           slug: 'coin-change',
-//           title: 'Đổi tiền ít xu nhất',
-//           description: 'Bài toán đổi tiền',
-//           isVip: true,
-//         }),
-//       }),
-//     );
-//     await page.goto('/problem/coin-change');
-//     await expect(page.getByRole('heading', { name: /Đổi tiền ít xu nhất/ })).toBeVisible({
-//       timeout: 30_000,
-//     });
-//     await expect(page.locator('#editor')).toBeVisible();
-//   });
-
-//   test('VIP không thấy nút nâng cấp', async ({ page }) => {
-//     await signIn(page, { ...USER, role: 'vip' });
-//     await page.route(`${API}/api/problems/coin-change`, (route) =>
-//       route.fulfill({
-//         status: 200,
-//         contentType: 'application/json',
-//         body: JSON.stringify({
-//           slug: 'coin-change',
-//           title: 'Đổi tiền ít xu nhất',
-//           description: 'Bài toán đổi tiền',
-//           isVip: true,
-//         }),
-//       }),
-//     );
-//     await page.goto('/problem/coin-change');
-//     await expect(page.getByRole('link', { name: /Nâng cấp/ })).toHaveCount(0);
-//   });
-// });
+  test('VIP không thấy nút nâng cấp', async ({ page }) => {
+    await signIn(page, VIP_USER);
+    await page.goto('/problem/coin-change');
+    await expect(page.getByRole('link', { name: /Nâng cấp/ })).toHaveCount(0);
+  });
+});

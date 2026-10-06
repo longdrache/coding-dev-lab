@@ -5,9 +5,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import AuthShell from "./AuthShell";
-import ForgotPasswordPage from "@/app/forgot-password/page";
-import ResetPasswordPage from "@/app/reset-password/page";
-import NotFound from "@/app/not-found";
+import ForgotPasswordPage from "../../app/forgot-password/page";
+import ResetPasswordPage from "../../app/reset-password/page";
+import NotFound from "../../app/not-found";
 
 /**
  * Kicker `// …` đã bị gỡ khỏi màn auth, trang 404 và trang bài — rồi **quay lại**

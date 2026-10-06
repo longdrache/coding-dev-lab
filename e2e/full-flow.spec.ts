@@ -56,17 +56,22 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
   test('mở bài tập thường và xem đề bài', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/two-sum');
-    await expect(page.getByRole('heading', { name: /Hai số có tổng/ })).toBeVisible({
-      timeout: 30_000,
-    });
+
+    const thuLai = page.getByRole('button', { name: /Thử lại/ });
+    const noiDung = page.getByRole('heading', { name: /Hai số có tổng/ });
+    // Chờ **một trong hai** xuất hiện rồi mới quyết định, thay vì dò ngay sau
+    // `goto`: lúc đó trang còn ở skeleton nên `.count()` trả 0 và nút không bao
+    // giờ được bấm — đó chính là lý do test này chập chờn.
+    await expect(thuLai.or(noiDung).first()).toBeVisible({ timeout: 60_000 });
+    if (await thuLai.count()) await thuLai.click();
     await expect(page.locator('#editor')).toBeVisible();
   });
 
   test('bài VIP bị khoá với tài khoản thường', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/merge-intervals');
-   
-     await expect(page.getByRole('heading', { name: /GoCode Premium/ })).toBeVisible({
+
+    await expect(page.getByRole('heading', { name: /GoCode Premium/ })).toBeVisible({
       timeout: 30_000,
     });
     await expect(page.locator('#editor')).toHaveCount(0);
@@ -75,7 +80,8 @@ test.describe('Luồng đầy đủ: đăng nhập → duyệt → nộp bài �
   test('nộp bài và xem kết quả', async ({ page }) => {
     await signIn(page, USER);
     await page.goto('/problem/two-sum');
-
+    const thuLai = page.getByRole('button', { name: /Thử lại/ });
+    if (await thuLai.count()) await thuLai.click();
     await expect(page.locator('#editor')).toBeVisible({ timeout: 30_000 });
 
     const submitBtn = page.getByRole('button', { name: /Nộp bài/ });
@@ -146,12 +152,12 @@ test.describe('Luồng VIP: người dùng premium truy cập bài VIP', () => {
     await signIn(page, VIP_USER);
     await page.goto('/problem/coin-change');
     const thuLai = page.getByRole('button', { name: /Thử lại/ });
-        const noiDung = page.getByRole('heading', { name: /Đổi tiền ít xu nhất/ });
-        // Chờ **một trong hai** xuất hiện rồi mới quyết định, thay vì dò ngay sau
-        // `goto`: lúc đó trang còn ở skeleton nên `.count()` trả 0 và nút không bao
-        // giờ được bấm — đó chính là lý do test này chập chờn.
-        await expect(thuLai.or(noiDung).first()).toBeVisible({ timeout: 60_000 });
-        if (await thuLai.count()) await thuLai.click();
+    const noiDung = page.getByRole('heading', { name: /Đổi tiền ít xu nhất/ });
+    // Chờ **một trong hai** xuất hiện rồi mới quyết định, thay vì dò ngay sau
+    // `goto`: lúc đó trang còn ở skeleton nên `.count()` trả 0 và nút không bao
+    // giờ được bấm — đó chính là lý do test này chập chờn.
+    await expect(thuLai.or(noiDung).first()).toBeVisible({ timeout: 60_000 });
+    if (await thuLai.count()) await thuLai.click();
     await expect(page.locator('#editor')).toBeVisible();
   });
 

@@ -76,6 +76,7 @@ export default function AuthForm({
   const [done, setDone] = useState<"sent" | "signedin" | null>(null);
   /** Câu của màn "đã gửi link" sau khi bấm "Gửi lại link" lần nữa. */
   const [notice, setNotice] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
   /**
    * Giữ qua suốt vòng đời component, tạo **lười** trong handler chứ không phải
    * lúc render: đây là biến mang trạng thái, dựng lại mỗi lần render thì lần
@@ -126,12 +127,19 @@ export default function AuthForm({
    * truyền `setState` của React vào làm hiệu ứng; `effects` dựng **mỗi lần bấm**
    * nên `refresh` luôn là bản mới nhất, không phải bản của render đầu tiên.
    */
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const id = setTimeout(() => setResendCooldown((v) => v - 1), 1000);
+    return () => clearTimeout(id);
+  }, [resendCooldown]);
+
   async function run(action: AuthAction) {
     const runner = (runnerRef.current ??= createAuthRunner());
     await runner.run(
       { action, mode, email, password },
       { setPending, setError, setNotice, setDone, refresh },
     );
+    if (action === "resend") setResendCooldown(10);
   }
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -171,7 +179,7 @@ export default function AuthForm({
         <button
           type="button"
           onClick={() => void run("resend")}
-          disabled={pending !== null}
+          disabled={pending !== null || resendCooldown > 0}
           className={`${SECONDARY} mt-5`}
         >
           {pending !== null ? (
@@ -179,7 +187,7 @@ export default function AuthForm({
           ) : (
             <Send aria-hidden className="size-4" />
           )}
-          {waiting || "Gửi lại link"}
+          {resendCooldown > 0 ? `Gửi lại sau ${resendCooldown}s` : waiting || "Gửi lại link"}
         </button>
 
         <p className={`${FOOTER} mt-4`}>

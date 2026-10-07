@@ -191,6 +191,12 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       DISABLE_RATE_LIMIT: '1'
       USE_DATABASE_TEST: '10'
+      # Judge0 chấm bài thật cho test "nộp bài": thiếu là `POST
+      # :slug/submit` ném 502 (không kết nối được localhost:2358) và
+      # Playwright timeout ở `waitForResponse` 201. Hai secrets này lấy từ
+      # Settings → Secrets → Actions của repo.
+      JUDGE0_URL: ${{ secrets.JUDGE0_URL }}
+      JUDGE0_API_TOKEN: ${{ secrets.JUDGE0_API_TOKEN }}
       
     steps:
       - name: Checkout

@@ -50,13 +50,10 @@ export default function AuthForm({
   mode: AuthMode;
   /**
    * Đường dẫn người dùng định tới trước khi bị đá sang đây, lấy từ
-   * `?redirect_url=` qua `safeRedirect`. Mặc định `/`.
+   * `?redirect_url=` qua `safeRedirect` (đã loại URL ngoài). Mặc định `/`.
    *
-   * **Không còn quyết định đích đến sau khi đăng nhập** — sau khi vào được thì
-   * đi thẳng về trang chủ. Prop này còn lại vì nút Google vẫn gửi nó lên BE
-   * (`googleStartUrl`), và BE vẫn lưu nó vào dòng `UserOAuthState`; bỏ hẳn sẽ
-   * là xoá luôn lớp kiểm `safeInternalPath` ở hai đầu, mà lớp đó phải còn ngay
-   * cả khi đích cuối đang là trang chủ.
+   * Đăng nhập thường xong thì về đúng chỗ này — cùng hành vi với luồng
+   * Google (BE lưu nó vào `UserOAuthState` rồi đưa về sau callback).
    */
   redirectTo?: string;
   /**
@@ -94,7 +91,8 @@ export default function AuthForm({
   const waiting = pendingLabel(pending);
 
   /**
-   * Đã có phiên thì đi thẳng về trang chủ.
+   * Có phiên thì về đúng chỗ người dùng định tới (`?redirect_url=`, mặc định
+   * `/`).
    *
    * Chạy ở `useEffect` chứ không phải ngay trong `run()` vì `run()` gọi
    * `await refresh()` trước: `AuthProvider` phải kịp đọc lại `/me` và giữ
@@ -108,8 +106,8 @@ export default function AuthForm({
    */
   useEffect(() => {
     if (done !== "signedin") return;
-    router.replace("/");
-  }, [done, router]);
+    router.replace(redirectTo);
+  }, [done, router, redirectTo]);
 
   /**
    * Một đường duy nhất cho cả lần bấm đầu và lần bấm "gửi lại", nên hai màn
@@ -201,16 +199,19 @@ export default function AuthForm({
   }
 
   if (done === "signedin") {
-    // Sau khi đăng nhập xong thì đi thẳng về trang chủ — kể cả khi vào từ
-    // `?redirect_url=`. Nút bên dưới **không phải** đường thoát dự phòng cho
-    // người bấm nhầm: `router.replace` là chuyển trang mềm, nên nếu nó ném (mạng
-    // chặn, middleware lỗi) thì người dùng vẫn còn một cách vào bằng tay.
+    // Nút bên dưới **không phải** đường thoát dự phòng cho người bấm nhầm:
+    // `router.replace` là chuyển trang mềm, nên nếu nó ném (mạng chặn,
+    // middleware lỗi) thì người dùng vẫn còn một cách đi tiếp bằng tay — cùng
+    // đích với `replace` ở trên, không phải lúc nào cũng trang chủ.
+    const home = redirectTo === "/";
     return (
       <div className={CARD}>
         <h2 className={TITLE}>Đã đăng nhập</h2>
-        <p className={BODY}>Tài khoản đã mở. Đang đưa bạn về trang chủ…</p>
-        <Link href="/" className={`${PRIMARY} mt-5`}>
-          Vào trang chủ
+        <p className={BODY}>
+          {home ? "Tài khoản đã mở. Đang đưa bạn về trang chủ…" : "Tài khoản đã mở. Đang đưa bạn đi tiếp…"}
+        </p>
+        <Link href={redirectTo} className={`${PRIMARY} mt-5`}>
+          {home ? "Vào trang chủ" : "Tiếp tục"}
         </Link>
       </div>
     );

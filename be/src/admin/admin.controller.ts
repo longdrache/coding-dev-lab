@@ -104,7 +104,7 @@ export class AdminController {
   @Throttle({ default: { limit: 100, ttl: 60_000 } })
   async refresh(@Req() req: CookieRequest, @Res({ passthrough: true }) res: CookieResponse) {
     const token = req.cookies?.admin_refresh ?? readRawCookie(req.headers?.cookie, 'admin_refresh');
-    const r = token ? this.svc.refresh(token) : null;
+    const r = token ? await this.svc.refresh(token) : null;
     if (!r) {
       res.clearCookie('admin_token', { path: '/' });
       res.clearCookie('admin_refresh', { path: '/' });

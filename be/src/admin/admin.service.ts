@@ -9,7 +9,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { SignJWT, importPKCS8, importSPKI, jwtVerify } from 'jose';
 import nodemailer from 'nodemailer';
 import { DatabaseService } from '../database/database.service.ts';
 import { CreateProblemDto } from './dto/create-problem.dto.ts';
@@ -46,6 +46,18 @@ export const ADMIN_REFRESH_TTL = 7 * 24 * 60 * 60;
 const CLAIM_TYPE = 'typ';
 const TYPE_ACCESS = 'access';
 const TYPE_REFRESH = 'refresh';
+
+// Cache khoá theo chuỗi PEM gốc (cùng mẫu `tokens.ts`): nạp khoá RSA mỗi
+// request tốn hàng ms; đổi chuỗi trong test thì nạp lại đúng khoá mới.
+const keyCache = new Map<string, Promise<CryptoKey>>();
+
+function cachedKey(raw: string, load: (pem: string) => Promise<CryptoKey>): Promise<CryptoKey> {
+  const hit = keyCache.get(raw);
+  if (hit) return hit;
+  const p = load(raw);
+  keyCache.set(raw, p);
+  return p;
+}
 
 @Injectable()
 export class AdminService {
@@ -112,8 +124,8 @@ export class AdminService {
     // access token, tức đánh cắp được thì dùng tới 7 ngày — đúng cái hạn 30 phút
     // mà ta cố tình đặt ra.
     return {
-      token: this.sign(TYPE_ACCESS, ADMIN_ACCESS_TTL),
-      refreshToken: this.sign(TYPE_REFRESH, ADMIN_REFRESH_TTL),
+      token: await this.sign(TYPE_ACCESS, ADMIN_ACCESS_TTL),
+      refreshToken: await this.sign(TYPE_REFRESH, ADMIN_REFRESH_TTL),
     };
   }
 
@@ -121,11 +133,13 @@ export class AdminService {
    * Đổi refresh token lấy access token mới. Trả `null` (không ném) khi token không
    * dùng được — cùng lý do `AuthService.refresh`: client tự xoá phiên.
    */
-  refresh(refreshToken: string): { token: string; refreshToken: string } | null {
+  async refresh(
+    refreshToken: string,
+  ): Promise<{ token: string; refreshToken: string } | null> {
     if (!refreshToken) return null;
     let claims: unknown;
     try {
-      claims = this.verifyJwt(refreshToken);
+      claims = await this.verifyJwt(refreshToken);
     } catch {
       return null;
     }
@@ -134,23 +148,43 @@ export class AdminService {
     const c = claims as { role?: unknown; [CLAIM_TYPE]?: unknown } | undefined;
     if (c?.[CLAIM_TYPE] !== TYPE_REFRESH || c?.role !== 'admin') return null;
     return {
-      token: this.sign(TYPE_ACCESS, ADMIN_ACCESS_TTL),
-      refreshToken: this.sign(TYPE_REFRESH, ADMIN_REFRESH_TTL),
+      token: await this.sign(TYPE_ACCESS, ADMIN_ACCESS_TTL),
+      refreshToken: await this.sign(TYPE_REFRESH, ADMIN_REFRESH_TTL),
     };
   }
 
-  private sign(type: string, expiresIn: number): string {
-    return jwt.sign({ sub: 'admin', role: 'admin', [CLAIM_TYPE]: type }, this.getPrivateKey(), {
-      algorithm: 'RS256',
-      expiresIn,
-    });
+  /**
+   * Ký RS256 bằng private key — cùng claims và hạn như bản `jsonwebtoken` cũ
+   * (`sub`/`role`/`typ` + `expiresIn` giây), nên token cũ/mới verify chéo được
+   * và BFF admin không cần đổi gì (JWT là chuẩn mở, không phụ thuộc thư viện ký).
+   */
+  private async sign(type: string, expiresIn: number): Promise<string> {
+    return new SignJWT({ sub: 'admin', role: 'admin', [CLAIM_TYPE]: type })
+      .setProtectedHeader({ alg: 'RS256' })
+      .setIssuedAt()
+      .setExpirationTime(`${expiresIn}s`)
+      .sign(await cachedKey(this.getPrivateKey(), (pem) => importPKCS8(pem, 'RS256')));
   }
 
-  verifyJwt(token: string): any {
+  /**
+   * Xác minh chữ ký RS256 rồi trả payload (không bọc `{ payload }` của jose —
+   * callers cũ nhận thẳng payload từ `jsonwebtoken`, giữ nguyên hình đó).
+   *
+   * Nhánh rơi HS256 dev giữ nguyên ngữ nghĩa cũ: production thiếu public key là
+   * 401 ngay; dev không secret là 401 `Missing JWT key`; secret sai thì lỗi gốc
+   * ném thẳng ra (trước đây là `JsonWebTokenError`, giờ là lỗi của jose — cùng
+   * là "ném", callers đều bắt chung).
+   */
+  async verifyJwt(token: string): Promise<any> {
     const publicKey = this.getPublicKey();
     if (publicKey) {
       try {
-        return jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as any;
+        const { payload } = await jwtVerify(
+          token,
+          await cachedKey(publicKey, (pem) => importSPKI(pem, 'RS256')),
+          { algorithms: ['RS256'] },
+        );
+        return payload;
       } catch {
         // Rơi xuống fallback HS256 bên dưới để tương thích cookie cũ
       }
@@ -162,7 +196,9 @@ export class AdminService {
     }
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new UnauthorizedException('Missing JWT key');
-    return jwt.verify(token, secret) as any;
+    // jose nhận thẳng Uint8Array làm khóa HMAC — không cần bọc KeyObject.
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+    return payload;
   }
 
   // stubs kept for backward compat with scaffold (unused but referenced in plan)

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Judge0Controller } from './judge0.controller.ts';
+import { Judge0Service } from './judge0.service.ts';
 
 /**
  * Controller này gần như **toàn bộ** là validate: nó chặn body rác trước khi gọi

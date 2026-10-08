@@ -3,10 +3,9 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { generateKeyPairSync } from 'node:crypto';
-import jwt from 'jsonwebtoken';
 import { PrismaClient } from './../src/generated/prisma/client.ts';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { generateKeyPair, SignJWT } from 'jose';
+import { generateKeyPair, SignJWT, importPKCS8 } from 'jose';
 import { AppModule } from './../src/app.module.ts';
 import { signAccessToken, hashToken } from './../src/auth/tokens.ts';
 import { OAUTH_STATE_COOKIE } from './../src/auth/auth.controller.ts';
@@ -262,11 +261,12 @@ describe('API (e2e)', () => {
    */
   describe('analytics views: SQL thô phải chạy được trên Postgres thật', () => {
     /** Token admin ký bằng đúng khoá mà `AdminGuard` dùng để verify. */
-    function adminCookie(): string {
-      const t = jwt.sign({ sub: 'admin', role: 'admin' }, process.env.ADMIN_JWT_PRIVATE_KEY!, {
-        algorithm: 'RS256',
-        expiresIn: '30m',
-      });
+    async function adminCookie(): Promise<string> {
+      const t = await new SignJWT({ sub: 'admin', role: 'admin' })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setIssuedAt()
+        .setExpirationTime('30m')
+        .sign(await importPKCS8(process.env.ADMIN_JWT_PRIVATE_KEY!, 'RS256'));
       return `admin_token=${t}`;
     }
 
@@ -279,7 +279,7 @@ describe('API (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .get('/api/admin/analytics/views')
-        .set('Cookie', adminCookie())
+        .set('Cookie', await adminCookie())
         .expect(200);
 
       for (const moc of ['today', 'month', 'year'] as const) {
@@ -296,7 +296,7 @@ describe('API (e2e)', () => {
     it('GET /api/admin/analytics/views/recent 200', async () => {
       await request(app.getHttpServer())
         .get('/api/admin/analytics/views/recent')
-        .set('Cookie', adminCookie())
+        .set('Cookie', await adminCookie())
         .expect(200);
     });
   });
@@ -1252,18 +1252,19 @@ describe('API (e2e)', () => {
     const MO_TA_KHAC = 'NOI_DUNG_BAI_PROBE_KHAC_HAI_CHU_THAT_ZYXWVUTSRQP';
 
     /** Token admin ký bằng đúng khoá mà `AdminGuard` dùng để verify. */
-    function adminCookie(): string {
-      const t = jwt.sign({ sub: 'admin', role: 'admin' }, process.env.ADMIN_JWT_PRIVATE_KEY!, {
-        algorithm: 'RS256',
-        expiresIn: '30m',
-      });
+    async function adminCookie(): Promise<string> {
+      const t = await new SignJWT({ sub: 'admin', role: 'admin' })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setIssuedAt()
+        .setExpirationTime('30m')
+        .sign(await importPKCS8(process.env.ADMIN_JWT_PRIVATE_KEY!, 'RS256'));
       return `admin_token=${t}`;
     }
 
-    function doiVip(isVip: boolean) {
+    async function doiVip(isVip: boolean) {
       return request(app.getHttpServer())
         .patch(`/api/admin/problems/${SLUG}/vip`)
-        .set('Cookie', adminCookie())
+        .set('Cookie', await adminCookie())
         .send({ isVip });
     }
 
@@ -1322,7 +1323,7 @@ describe('API (e2e)', () => {
       const truoc = (await db.problem.findUnique({ where: { slug: SLUG } }))!.isVip;
       // Chuỗi "false" là chuỗi truthy: nếu BE ép kiểu thì lệnh "gỡ cờ" lại bật cờ.
       for (const isVip of ['false', 'true', '0', '1']) {
-        await doiVip(isVip as unknown as boolean).expect(400);
+        expect((await doiVip(isVip as unknown as boolean)).status).toBe(400);
       }
       const sau = (await db.problem.findUnique({ where: { slug: SLUG } }))!.isVip;
       expect(sau).toBe(truoc);
@@ -1331,7 +1332,7 @@ describe('API (e2e)', () => {
     it('slug không tồn tại → 404 chứ không phải 500', async () => {
       const res = await request(app.getHttpServer())
         .patch('/api/admin/problems/khong-ton-tai-khong-bao-gio/vip')
-        .set('Cookie', adminCookie())
+        .set('Cookie', await adminCookie())
         .send({ isVip: true });
       expect(res.status).toBe(404);
     });
@@ -1339,14 +1340,16 @@ describe('API (e2e)', () => {
     it('bật cờ → cột `isVip` đổi thật trong DB và response trả về cờ mới', async () => {
       const truoc = await db.problem.findUnique({ where: { slug: SLUG } });
       expect(truoc!.isVip).toBe(false);
-      const res = await doiVip(true).expect(200);
+      const res = await doiVip(true);
+      expect(res.status).toBe(200);
       expect(res.body).toEqual({ slug: SLUG, isVip: true });
       const sau = await db.problem.findUnique({ where: { slug: SLUG } });
       expect(sau!.isVip).toBe(true);
     });
 
     it('tắt cờ → cột `isVip` trở lại false', async () => {
-      const res = await doiVip(false).expect(200);
+      const res = await doiVip(false);
+      expect(res.status).toBe(200);
       expect(res.body).toEqual({ slug: SLUG, isVip: false });
       expect((await db.problem.findUnique({ where: { slug: SLUG } }))!.isVip).toBe(false);
     });
@@ -1367,7 +1370,7 @@ describe('API (e2e)', () => {
           JSON.stringify(listMo.body.find((p: { slug: string }) => p.slug === SLUG)),
         ).toContain(MO_TA);
 
-        await doiVip(true).expect(200);
+        expect((await doiVip(true)).status).toBe(200);
 
         // Sau khi khoá: **ngay lập tức**, không chờ hết TTL cache.
         const khoa = await request(app.getHttpServer()).get(`/api/problems/${SLUG}`).expect(403);
@@ -1403,7 +1406,7 @@ describe('API (e2e)', () => {
         expect(vipDoc.body.description).toBe(MO_TA);
 
         // Tắt cờ: mở lại ngay, không chờ hết TTL.
-        await doiVip(false).expect(200);
+        expect((await doiVip(false)).status).toBe(200);
         const lai = await request(app.getHttpServer()).get(`/api/problems/${SLUG}`).expect(200);
         expect(lai.body.description).toBe(MO_TA);
         const listLai = await request(app.getHttpServer()).get('/api/problems').expect(200);
@@ -1422,7 +1425,7 @@ describe('API (e2e)', () => {
       // Bài "bên kia" tự tạo và tự xoá, không mượn bài nào của seed: bài thật thì
       // cột `isVip` của nó nằm trong tầm tay các test ghim "đúng 20 bài VIP".
       await taoProbe(SLUG_KHAC, MO_TA_KHAC, 'published');
-      await doiVip(true).expect(200);
+      expect((await doiVip(true)).status).toBe(200);
       try {
         // Bài thường vẫn mở được, và vẫn có mô tả trong danh sách.
         const res = await request(app.getHttpServer())

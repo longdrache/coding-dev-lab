@@ -68,7 +68,6 @@ export function denyVipProblem(): never {
     message: PROBLEM_VIP_ONLY_MESSAGE,
   });
 }
-
 export function assertVipProblemAllowed(
   isVip: boolean | null | undefined,
   role: UserRole | null | undefined,

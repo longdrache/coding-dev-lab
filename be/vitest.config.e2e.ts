@@ -12,7 +12,10 @@ export default defineConfig({
     // bắn 429 thay vì kiểm tra hành vi thật — đặc biệt các test bài VIP, nơi
     // 403 mới là kết quả đang cần chứng minh. Biến này **chỉ** có tác dụng với
     // e2e; production không đọc nó.
-    env: { DISABLE_RATE_LIMIT: '1' },
+    env: { 
+      DISABLE_RATE_LIMIT: '1', 
+      DATABASE_URL:'postgresql://postgres:postgres@localhost:55432/gocode'
+    },
     /**
      * Cùng phạm vi đo với `vitest.config.ts`: đây là **lần chạy khác**, nên số
      * coverage của nó khác hẳn lần unit — không dùng chung một ngưỡng để gọi là

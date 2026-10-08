@@ -107,6 +107,7 @@ describe('ProblemsService.findAll', () => {
   it('bài thường giữ nguyên nội dung như trước', async () => {
     const { svc } = makeService({ problems: [normalRow] });
     const rows = await svc.findAll();
+    console.log(rows[0]);
     expect(rows[0]).toMatchObject({
       slug: 'two-sum',
       title: 'Hai số có tổng bằng mục tiêu',

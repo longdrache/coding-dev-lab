@@ -101,8 +101,22 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # SMTP catcher cho integration test (`be/test/*.integration.ts` gửi mail
+      # thật qua `AuthMailer` vào đây). Mặc định Mailpit: SMTP :1025 không auth
+      # không TLS, API đọc mail :8025. Ảnh nhẹ (~tens MB), khởi động tức thì.
+      mailpit:
+        image: axllent/mailpit
+        ports:
+          - 1025:1025
+          - 8025:8025
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode_test
+      # Trỏ mailer thật vào Mailpit thay vì Brevo (xem `AuthMailer.readConfig`:
+      # có `SMTP_HOST` là đi nhánh plaintext local). `MAIL_FROM` giữ bắt buộc
+      # như production — Mailpit chấp nhận mọi địa chỉ.
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      MAIL_FROM: no-reply@gocode.local
     defaults:
       run:
         working-directory: be
@@ -152,6 +166,13 @@ jobs:
       # tệ hơn là 42 test trình duyệt vẫn không được chạy.
       - name: Test (API e2e)
         run: pnpm test:e2e
+
+      # Integration (DB thật): service thật + Postgres thật, chỉ mock mailer
+      # (`be/test/*.integration.ts`). Chạy sau API e2e; spec tự truncate và dọn
+      # bảng auth (User, UserToken, ActivityDay...) nên không dẫm dữ liệu seed.
+      # `DATABASE_URL` lấy từ env job; `guard-e2e-db.mjs` chặn trỏ nhầm Neon.
+      - name: Test (integration)
+        run: pnpm test:integration
 
       - name: Build
         run: pnpm build

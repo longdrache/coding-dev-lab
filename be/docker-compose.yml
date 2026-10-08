@@ -27,6 +27,15 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # SMTP catcher cho dev/integration test: BE trỏ SMTP_HOST=localhost,
+  # SMTP_PORT=1025 (xem `AuthMailer.readConfig`); đọc mail đã gửi ở :8025.
+  # Không auth, không TLS — đúng mặc định Mailpit.
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   judge0-server:
     image: judge0/judge0:latest
     ports:

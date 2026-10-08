@@ -17,7 +17,7 @@ const MAIL = { to: 'a@b.co', subject: 'Xác nhận email', text: 'ma: 123' };
 const OLD_ENV = { ...process.env };
 /**
  * Mọi biến mail, kể cả biến Mailtrap đã bỏ — dọn sạch để `.env` của máy không lách test.
- * Các biến mail (`USER_LOGIN`/`USER_PASS`) phải nằm trong
+ * Các biến mail (`SMTP_USER`/`SMTP_PASS`) phải nằm trong
  * danh sách: máy dev nào cũng có thể còn sót một trong hai bên, và biến thừa lọt vào
  * làm một test "thiếu cấu hình" xanh vì lý do sai.
  */
@@ -25,6 +25,8 @@ const MAIL_VARS = [
   'SMTP_USER',
   'SMTP_PASS',
   'MAIL_FROM',
+  'SMTP_HOST',
+  'SMTP_PORT',
   'EMAIL_HOST',
   'EMAIL_PORT',
   'EMAIL_USERNAME',
@@ -42,7 +44,7 @@ beforeEach(() => {
   h.createTransport.mockReset().mockReturnValue({ sendMail: h.sendMail });
   error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   // Bộ ba hợp lệ. Tên biến lấy từ `AuthMailer.readConfig()` (`auth.mailer.ts:40-42`)
-  // chứ không từ tài liệu: `USER_LOGIN`/`USER_PASS` là hai biến mailer này thực sự
+  // chứ không từ tài liệu: `SMTP_USER`/`SMTP_PASS` là hai biến mailer này thực sự
   // đọc. Test nào muốn khác thì set lại trong chính nó — không thừa hưởng từ `.env`
   // của máy (bài học từ f4d04c4).
   process.env.SMTP_USER = 'gocode@brevo.test';
@@ -163,5 +165,51 @@ describe('lỗi gửi mail phải để lại dấu vết', () => {
     h.sendMail.mockRejectedValue('chết');
     await expect(new AuthMailer().send(MAIL)).rejects.toBe('chết');
     expect(String(error.mock.calls[0][0])).toContain('unknown');
+  });
+});
+
+describe('override SMTP_HOST cho Mailpit/Mailhog local (integration test)', () => {
+  beforeEach(() => {
+    process.env.SMTP_HOST = '127.0.0.1';
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
+  });
+
+  it('plaintext, không auth, cổng mặc định 1025', async () => {
+    await new AuthMailer().send(MAIL);
+    expect(h.createTransport).toHaveBeenCalledTimes(1);
+    expect(h.createTransport.mock.calls[0][0]).toEqual({
+      host: '127.0.0.1',
+      port: 1025,
+      secure: false,
+      ignoreTLS: true,
+    });
+  });
+
+  it('SMTP_PORT custom được tôn trọng', async () => {
+    process.env.SMTP_PORT = '2525';
+    await new AuthMailer().send(MAIL);
+    expect(h.createTransport.mock.calls[0][0]).toMatchObject({ port: 2525 });
+  });
+
+  it('SMTP_PORT rác thì ném tên biến, không dựng transport', async () => {
+    process.env.SMTP_PORT = 'cong-rác';
+    await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/SMTP_PORT/);
+    expect(h.createTransport).not.toHaveBeenCalled();
+  });
+
+  it('thiếu MAIL_FROM thì ném dù đã override host', async () => {
+    delete process.env.MAIL_FROM;
+    await expect(new AuthMailer().send(MAIL)).rejects.toThrow(/MAIL_FROM/);
+    expect(h.createTransport).not.toHaveBeenCalled();
+  });
+
+  it('có SMTP_USER thì kèm auth (Mailpit có bật auth)', async () => {
+    process.env.SMTP_USER = 'postmaster';
+    process.env.SMTP_PASS = 'secret';
+    await new AuthMailer().send(MAIL);
+    expect(h.createTransport.mock.calls[0][0]).toMatchObject({
+      auth: { user: 'postmaster', pass: 'secret' },
+    });
   });
 });

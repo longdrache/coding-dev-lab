@@ -5,7 +5,9 @@ import { AdminService } from './admin.service.ts';
 export class AdminGuard implements CanActivate {
   constructor(private svc: AdminService) {}
 
-  canActivate(ctx: ExecutionContext): boolean {
+  // `async` vì `verifyJwt` dùng jose (WebCrypto, async-only) — Nest chờ guard
+  // trả Promise<boolean> bình thường, route không đổi gì.
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req: any = ctx.switchToHttp().getRequest();
     let token: string | undefined = req.cookies?.admin_token;
 
@@ -29,7 +31,7 @@ export class AdminGuard implements CanActivate {
 
     if (!token) throw new UnauthorizedException('Thiếu admin token');
     try {
-      const p = this.svc.verifyJwt(token);
+      const p = await this.svc.verifyJwt(token);
       if (p.role !== 'admin') throw new Error('invalid role');
       // Token làm mới 7 ngày **không** được dùng thay access token: nếu cho qua,
       // thì hạn 30 phút của access token mất tác dụng (đánh cắp refresh token là

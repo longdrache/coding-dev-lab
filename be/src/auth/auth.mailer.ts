@@ -25,8 +25,12 @@ import type { AuthMailPort, Mail } from './auth.service.ts';
  * không ai nhìn thấy. `AuthService` bắt lỗi này ở cả ba luồng nên nó không nổi ra
  * ngoài HTTP; nó lên log ở mức `error`.
  */
-const SMTP_HOST = 'smtp-relay.brevo.com';
-const SMTP_PORT = 587;
+const BREVO_HOST = 'smtp-relay.brevo.com';
+const BREVO_PORT = 587;
+
+type SmtpTarget =
+  | { host: string; port: number; secure: false; requireTLS: true; auth: { user: string; pass: string } }
+  | { host: string; port: number; secure: false; ignoreTLS: true; auth?: { user: string; pass: string } };
 
 @Injectable()
 export class AuthMailer implements AuthMailPort {
@@ -35,43 +39,73 @@ export class AuthMailer implements AuthMailPort {
   /**
    * Đọc và kiểm tra cấu hình. Ném ra tên biến còn thiếu thay vì tự bịa giá trị:
    * người đọc log phải biết chính xác cần điền gì, không phải đoán.
+   *
+   * Hai chế độ, chung một `MAIL_FROM` (nodemailer luôn cần sender):
+   * - Mặc định (không đặt `SMTP_HOST`): Brevo production — giữ nguyên mọi ràng
+   *   buộc cũ (bắt buộc SMTP_USER/SMTP_PASS, chặn nhầm API key, STARTTLS).
+   * - Override (`SMTP_HOST` trỏ Mailpit/Mailhog local): plaintext, auth chỉ khi
+   *   có SMTP_USER — Mailpit/Mailhog mặc định không auth, không TLS. Chế độ này
+   *   sinh ra cho integration test (`be/test/*.integration.ts`); production
+   *   không bao giờ đặt `SMTP_HOST` nên không đổi hành vi production.
    */
-  private readConfig(): { login: string; key: string; from: string } {
+  private readConfig(): { target: SmtpTarget; from: string } {
+    const from = (process.env.MAIL_FROM ?? '').trim();
+    const overrideHost = (process.env.SMTP_HOST ?? '').trim();
+    if (!overrideHost) {
+      const login = (process.env.SMTP_USER ?? '').trim();
+      const key = (process.env.SMTP_PASS ?? '').trim();
+      const thieu = [
+        ...(login ? [] : ['SMTP_USER']),
+        ...(key ? [] : ['SMTP_PASS']),
+        ...(from ? [] : ['MAIL_FROM']),
+      ];
+      if (thieu.length > 0) {
+        throw new Error(
+          `Chưa cấu hình gửi mail qua Brevo — thiếu ${thieu.join(', ')}. `
+          + 'Lấy ở Brevo → Senders & Domains (phải xác minh) và Brevo → SMTP & API.',
+        );
+      }
+      // API key (`xkeysib-`) dùng vào SMTP luôn fail bằng 401 khó hiểu. Chặn ở đây
+      // biến "sai một dấu" thành một dòng log nói thẳng nguyên nhân.
+      if (key.startsWith('xkeysib-')) {
+        throw new Error(
+          'USER_PASS đang là API key (xkeysib-…) chứ không phải SMTP key (xsmtpsib-…). '
+          + 'Hai loại khoá này không dùng thay nhau được — lấy đúng loại ở Brevo → SMTP & API.',
+        );
+      }
+      return {
+        target: { host: BREVO_HOST, port: BREVO_PORT, secure: false, requireTLS: true, auth: { user: login, pass: key } },
+        from,
+      };
+    }
+    if (!from) {
+      throw new Error(
+        'Chế độ SMTP local cần MAIL_FROM làm địa chỉ gửi (Mailpit chấp nhận mọi địa chỉ).',
+      );
+    }
+    const portRaw = (process.env.SMTP_PORT ?? '1025').trim();
+    const port = Number(portRaw);
+    if (!Number.isInteger(port) || port <= 0) {
+      throw new Error(`SMTP_PORT phải là cổng hợp lệ, đang là: ${portRaw}`);
+    }
     const login = (process.env.SMTP_USER ?? '').trim();
     const key = (process.env.SMTP_PASS ?? '').trim();
-    const from = (process.env.MAIL_FROM ?? '').trim();
-    const thieu = [
-      ...(login ? [] : ['SMTP_USER']),
-      ...(key ? [] : ['SMTP_PASS']),
-      ...(from ? [] : ['MAIL_FROM']),
-    ];
-    if (thieu.length > 0) {
-      throw new Error(
-        `Chưa cấu hình gửi mail qua Brevo — thiếu ${thieu.join(', ')}. `
-        + 'Lấy ở Brevo → Senders & Domains (phải xác minh) và Brevo → SMTP & API.',
-      );
-    }
-    // API key (`xkeysib-`) dùng vào SMTP luôn fail bằng 401 khó hiểu. Chặn ở đây
-    // biến "sai một dấu" thành một dòng log nói thẳng nguyên nhân.
-    if (key.startsWith('xkeysib-')) {
-      throw new Error(
-        'USER_PASS đang là API key (xkeysib-…) chứ không phải SMTP key (xsmtpsib-…). '
-        + 'Hai loại khoá này không dùng thay nhau được — lấy đúng loại ở Brevo → SMTP & API.',
-      );
-    }
-    return { login, key, from };
+    return {
+      target: {
+        host: overrideHost,
+        port,
+        secure: false,
+        ignoreTLS: true,
+        ...(login && key ? { auth: { user: login, pass: key } } : {}),
+      },
+      from,
+    };
   }
 
   async send(m: Mail): Promise<void> {
-    const { login, key, from } = this.readConfig();
+    const { target, from } = this.readConfig();
     try {
-      const transport = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: SMTP_PORT,
-        secure: false,
-        requireTLS: true,
-        auth: { user: login, pass: key },
-      });
+      const transport = nodemailer.createTransport({ ...target });
       await transport.sendMail({
         from: from,
         to: [{ address: m.to }],

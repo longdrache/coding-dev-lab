@@ -8,13 +8,14 @@
 
 GoCode is a full-stack algorithm practice platform for students. Users read problem statements, write code in a Monaco editor, submit solutions, and receive instant judging results from Judge0. The platform gamifies learning with streaks, heatmaps, and badges, and monetizes via a Premium/VIP subscription tier (Stripe).
 
-**Production URL:** [https://go-code-vn.vercel.app/](https://go-code-vn.vercel.app/)
+**Demo:** [https://go-code-vn.vercel.app/](https://go-code-vn.vercel.app/)
 
 ---
 
 ## Features
 
 ### Core Platform
+
 - Problem library across 8 topics (Arrays & Pointers, Strings, Linked Lists, Stack & Queue, Trees & Graphs, Dynamic Programming, Sorting & Searching, Hashing & Sets)
 - Code editor with Monaco Editor and syntax highlighting
 - Instant judging via Judge0 (CPU 2s, RAM 128MB limits)
@@ -22,19 +23,24 @@ GoCode is a full-stack algorithm practice platform for students. Users read prob
 - Submission history (last 50 per problem)
 
 ### Gamification
+
 - Streak system (consecutive days with activity, Vietnam timezone UTC+7)
 - Activity heatmap (35-day visualization)
 - 12 badges unlocked by streak length, problems solved, and difficulty milestones
 - Solved & favorites (server-side storage, synced across devices)
 
 ### Authentication
+
 - Email/password registration with email verification (24-hour token)
+- Login with unverified email returns a distinct 401 (not generic bad-credentials) and the sign-in screen offers a resend-verification button (10s cooldown)
+- Post-login redirect honors `?redirect_url=` (internal paths only, open-redirect filtered)
 - Google OAuth 2.0 with PKCE S256
 - JWT RS256 access tokens (15-min expiry) + refresh tokens (30-day, per-device rotation, max 10 sessions)
 - Password reset via email (1-hour expiry)
 - Timing attack prevention (dummy bcrypt hash for non-existent users)
 
 ### Premium/VIP
+
 - 3 plans: 200 VND/day, 1,000 VND/month, 2,000 VND/year
 - Stripe Checkout with VND currency
 - Webhook idempotency via `StripeEvent` table
@@ -42,6 +48,7 @@ GoCode is a full-stack algorithm practice platform for students. Users read prob
 - VIP-only problems (per-problem flag)
 
 ### Admin Dashboard
+
 - 30-day analytics, online count, daily charts, top problems, recent logins by country
 - User management (list, search by email/name/ID)
 - Problem management (CRUD, publish/unpublish, VIP flag toggle)
@@ -49,19 +56,58 @@ GoCode is a full-stack algorithm practice platform for students. Users read prob
 - Q&A management (read questions, reply via email)
 
 ### Q&A Support
+
 - Public submission (guests can submit questions, rate limited: 5/minute)
 - Admin reply via Brevo SMTP with HTML template
 
 ### Analytics & Presence
+
 - Page view tracking (fire-and-forget, IP hashed with salt)
 - Login analytics (country detection via Vercel header or ip-api.com)
 - Online presence (in-memory heartbeat with 45-second TTL)
 
 ---
 
+## Screenshots
+
+### App
+
+| Landing | Problem list |
+|---|---|
+| ![Landing](docs/images/trang-chu.png) | ![Problem list](docs/images/danh-sach-bai.png) |
+
+| Problem editor | VIP locked problem |
+|---|---|
+| ![Problem editor](docs/images/bai-tap-mon-code.png) | ![VIP locked problem](docs/images/bai-vip.png) |
+
+| Google sign-in | Premium plans |
+|---|---|
+| ![Google sign-in](docs/images/dang-nhap-google.png) | ![Premium plans](docs/images/premium.png) |
+
+| Streak & badges | Progress by topic |
+|---|---|
+| ![Streak and badges](docs/images/streak-va-huy-hieu.png) | ![Progress by topic](docs/images/tien-do-theo-chu-de.png) |
+
+### Admin dashboard
+
+| Dashboard | Problem management |
+|---|---|
+| ![Admin dashboard](docs/images/admin-dashboard.png) | ![Problem management](docs/images/admin-quan-ly-bai-tap.png) |
+
+| Submissions review | Students |
+|---|---|
+| ![Submissions review](docs/images/admin-bai-nop.png) | ![Students](docs/images/admin-hoc-vien.png) |
+
+| Q&A |
+|---|
+| ![Q&A](docs/images/admin-hoi-dap.png) |
+
+---
+
 ## Tech Stack
 
 ### Frontend
+
 - **Framework:** Next.js 16.3 (App Router) + React 19.2
 - **Language:** TypeScript
 - **UI Library:** shadcn/ui, Tailwind CSS 4, lucide-react
@@ -71,6 +117,7 @@ GoCode is a full-stack algorithm practice platform for students. Users read prob
 - **Animation:** Framer Motion 13, GSAP 3
 
 ### Backend
+
 - **Framework:** NestJS 12 (ESM)
 - **Language:** TypeScript
 - **ORM:** Prisma 7
@@ -83,13 +130,15 @@ GoCode is a full-stack algorithm practice platform for students. Users read prob
 - **Rate Limiting:** Custom ThrottleGuard (in-memory, per-IP per-route)
 
 ### Database
+
 - **Database:** PostgreSQL (Neon Postgres serverless)
 
 ### Infrastructure
+
 - **Package Manager:** pnpm 10.15 (workspace)
 - **Deployment:** Vercel (3 separate projects: FE, Admin, BE)
-- **Containerization:** Docker Compose (PostgreSQL + Judge0)
-- **Testing:** Vitest 4, Supertest, Playwright 16, k6
+- **Containerization:** Docker Compose (PostgreSQL + Judge0 + Mailpit)
+- **Testing:** Vitest 4, Supertest, Playwright 16, Mailpit (local SMTP catcher), k6
 - **Linting:** oxlint
 
 ---
@@ -126,19 +175,18 @@ AuthController
   ↓
 AuthService.login()
   ↓
-UserRepository.findByEmail()
-  ↓
-Prisma → PostgreSQL
+DatabaseService (Prisma) → PostgreSQL
   ↓
 bcryptjs.compare()
   ↓
-Generate JWT RS256 access token (15 min)
+Unverified email → 401 distinct message (resend link offered)
+Verified → Generate JWT RS256 access token (15 min)
   ↓
 Generate refresh token (30 days, hashed)
   ↓
 Set httpOnly + Secure + SameSite=None cookies
   ↓
-Client
+Client → redirect to `?redirect_url=` (default `/`)
 ```
 
 ### Code Submission Flow
@@ -188,6 +236,7 @@ Database (PostgreSQL)
 ```
 
 ### Modules
+
 - `auth` — Authentication (JWT, OAuth, tokens, refresh rotation)
 - `judge0` — Code execution service (submit, poll, batch)
 - `problems` — Problem management (CRUD, VIP policy, caching)
@@ -325,182 +374,104 @@ erDiagram
 
 ---
 
-## Database Design
-
-**PostgreSQL** via Prisma 7 — 14 tables, 3 schemas (public, auth, app).
-
-### Schema Overview
-
-| Schema | Tables | Purpose |
-|--------|--------|---------|
-| `public` | `User`, `UserToken`, `UserAccount`, `UserOAuthState` | Core identity & sessions |
-| `app` | `Problem`, `Submission`, `SolvedProblem`, `FavoriteProblem`, `UserBadge`, `ActivityDay` | Learning data |
-| `analytics` | `PageView`, `LoginEvent`, `StripeEvent` | Observability |
-
-### Entity Relationships
-
-```
-User (1) ───< UserToken (refresh tokens, per-device)
-User (1) ───< UserAccount (OAuth links)
-User (1) ───< UserOAuthState (transient, TTL 10min)
-User (1) ───< Problem (author)
-User (1) ───< Submission
-User (1) ───< SolvedProblem
-User (1) ───< FavoriteProblem
-User (1) ───< UserBadge
-User (1) ───< ActivityDay
-User (1) ───< PageView (nullable userId for guests)
-User (1) ───< LoginEvent (nullable userId for guests)
-```
-
-### Key Indexes
-
-| Table | Index | Reason |
-|-------|-------|--------|
-| `User` | `email` UNIQUE | Login lookup |
-| `UserToken` | `(userId, type)` | Session queries |
-| `UserToken` | `tokenHash` | Refresh token lookup |
-| `UserAccount` | `(provider, providerUserId)` UNIQUE | OAuth account matching |
-| `UserOAuthState` | `expiresAt` | Sweep expired states |
-| `Problem` | `slug` UNIQUE | Problem lookup |
-| `Submission` | `(userId, problemSlug)` | User's submissions for a problem |
-| `SolvedProblem` | `(userId, slug)` UNIQUE | Prevent duplicate solves |
-| `ActivityDay` | `(userId, date)` UNIQUE | Streak calculation |
-| `PageView` | `(ipHash, createdAt)` | Unique visitor counting |
-| `LoginEvent` | `(userId, createdAt)` | Login history |
-
-### Design Decisions
-
-- **Soft deletes**: `User.deletedAt` — preserve data integrity for foreign keys
-- **UUID vs Int**: `User.id` is Int (fast joins), other tables use UUID (distributed-safe)
-- **JSON columns**: `Problem.tests`, `Problem.hiddenTests` — flexible schema, validated in app layer
-- **Nullable analytics**: `PageView.userId`, `LoginEvent.userId` nullable — track guests without fake users
-- **TTL cache**: `UserOAuthState` has `expiresAt` index for periodic cleanup
-- **Idempotency**: `StripeEvent.eventId` PK prevents duplicate webhook processing
-
----
-
 ## API
 
 ### Authentication (`/api/auth`)
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/register` | Public | Register (20/hr limit) |
-| POST | `/login` | Public | Login (30/15min limit) |
-| POST | `/refresh` | Cookie | Refresh session (100/min) |
-| POST | `/logout` | Cookie | Logout current device |
-| POST | `/logout-all` | JWT | Logout all devices |
-| POST | `/forgot-password` | Public | Request reset (20/hr) |
-| POST | `/resend-verification` | Public | Resend verification (20/hr) |
-| POST | `/reset-password` | Public | Reset with token (20/hr) |
-| GET | `/verify?token=` | Public | Verify email (20/min) |
-| GET | `/me` | JWT | Current user |
-| GET | `/oauth/google/start` | Public | Start Google OAuth (20/hr) |
-| GET | `/oauth/google/callback` | Public | Google OAuth callback (20/hr) |
-
-## Database Design
-
-Postgres via Prisma 7 — 14 tables across 3 schemas (public, auth, app).
-
-| Table | Role |
-| ----- | ---- |
-| `User` | Account: `role` (user/vip/admin), `vipExpiresAt`, `premiumPlan`, `stripeSubscriptionId` |
-| `UserToken` | Refresh token per device (rotation, revocation per device) |
-| `UserAccount` | OAuth link — unique `(provider, providerUserId)` |
-| `UserOAuthState` | Transient OAuth state (PK is `stateHash`, TTL indexed) |
-| `ActivityDay` | Streak/heatmap — unique `(userId, date)` |
-| `SolvedProblem` | Solved problems — unique `(userId, slug)` |
-| `FavoriteProblem` | Favorites — unique `(userId, slug)` |
-| `UserBadge` | Badges — unique `(userId, badgeId)` |
-| `Problem` | Problem: `isVip`, `tests`, `hiddenTests` (JSON), `starterCodes` |
-| `Submission` | History: `status`, `passed`, `time`, `memory`, `sourceCode` |
-| `QnaQuestion` | Support questions (guest allowed, nullable `userId`) |
-| `StripeEvent` | Processed webhook events — idempotency |
-| `PageView` | Page analytics — `ipHash` (no raw IP) |
-| `LoginEvent` | Login log — `ipHash`, `country` |
-
-Key relations: `User` 1—N all data tables. `onDelete: Cascade` for user-owned data; `QnaQuestion`/`PageView`/`LoginEvent` preserve rows on user deletion (nullable `userId`).
+| Method | Endpoint                   | Auth   | Description                   |
+| ------ | -------------------------- | ------ | ----------------------------- |
+| POST   | `/register`              | Public | Register (20/hr limit)        |
+| POST   | `/login`                 | Public | Login (30/15min limit)        |
+| POST   | `/refresh`               | Cookie | Refresh session (100/min)     |
+| POST   | `/logout`                | Cookie | Logout current device         |
+| POST   | `/logout-all`            | JWT    | Logout all devices            |
+| POST   | `/forgot-password`       | Public | Request reset (20/hr)         |
+| POST   | `/resend-verification`   | Public | Resend verification (20/hr)   |
+| POST   | `/reset-password`        | Public | Reset with token (20/hr)      |
+| GET    | `/verify?token=`         | Public | Verify email (20/min)         |
+| GET    | `/me`                    | JWT    | Current user                  |
+| GET    | `/oauth/google/start`    | Public | Start Google OAuth (20/hr)    |
+| GET    | `/oauth/google/callback` | Public | Google OAuth callback (20/hr) |
 
 ### Problems (`/api/problems`)
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/` | Optional | List published problems |
-| GET | `/:slug` | Optional | Problem detail (VIP-gated) |
-| POST | `/:slug/submit` | JWT | Submit solution (10/min) |
+| Method | Endpoint          | Auth     | Description                |
+| ------ | ----------------- | -------- | -------------------------- |
+| GET    | `/`             | Optional | List published problems    |
+| GET    | `/:slug`        | Optional | Problem detail (VIP-gated) |
+| POST   | `/:slug/submit` | JWT      | Submit solution (10/min)   |
 
 ### Submissions (`/api/submissions`, `/api/history`)
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/api/submissions` | JWT | Single submission (20/min) |
-| POST | `/api/submissions/batch` | JWT | Batch submit (20/min) |
-| GET | `/api/submissions/batch?tokens=` | JWT | Poll batch (100/min) |
-| GET | `/api/submissions/:token` | JWT | Get submission result |
-| GET | `/api/history` | JWT | User submission history |
-| POST | `/api/history` | JWT | Create submission record (30/min) |
+| Method | Endpoint                           | Auth | Description                       |
+| ------ | ---------------------------------- | ---- | --------------------------------- |
+| POST   | `/api/submissions`               | JWT  | Single submission (20/min)        |
+| POST   | `/api/submissions/batch`         | JWT  | Batch submit (20/min)             |
+| GET    | `/api/submissions/batch?tokens=` | JWT  | Poll batch (100/min)              |
+| GET    | `/api/submissions/:token`        | JWT  | Get submission result             |
+| GET    | `/api/history`                   | JWT  | User submission history           |
+| POST   | `/api/history`                   | JWT  | Create submission record (30/min) |
 
 ### Progress (`/api/progress`)
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/dashboard` | JWT | Streak, heatmap, badges, solved |
-| GET | `/solved` | JWT | Solved problems |
-| GET | `/badges` | JWT | Badge list |
-| POST | `/solve` | JWT | Mark problem solved |
-| GET | `/favorites` | JWT | Favorite problems |
-| POST | `/favorites` | JWT | Add favorite |
-| DELETE | `/favorites/:slug` | JWT | Remove favorite |
+| Method | Endpoint             | Auth | Description                     |
+| ------ | -------------------- | ---- | ------------------------------- |
+| GET    | `/dashboard`       | JWT  | Streak, heatmap, badges, solved |
+| GET    | `/solved`          | JWT  | Solved problems                 |
+| GET    | `/badges`          | JWT  | Badge list                      |
+| POST   | `/solve`           | JWT  | Mark problem solved             |
+| GET    | `/favorites`       | JWT  | Favorite problems               |
+| POST   | `/favorites`       | JWT  | Add favorite                    |
+| DELETE | `/favorites/:slug` | JWT  | Remove favorite                 |
 
 ### Premium (`/api/premium`)
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/checkout` | JWT | Create Stripe checkout |
-| GET | `/status` | JWT | VIP status |
-| POST | `/grant-vip` | Admin | Grant VIP to user |
-| POST | `/cancel-vip` | Admin | Cancel VIP |
-| POST | `/webhook` | Stripe | Stripe webhook |
-| POST | `/check-expired` | JWT | Check/downgrade expired VIP |
+| Method | Endpoint           | Auth   | Description                 |
+| ------ | ------------------ | ------ | --------------------------- |
+| POST   | `/checkout`      | JWT    | Create Stripe checkout      |
+| GET    | `/status`        | JWT    | VIP status                  |
+| POST   | `/grant-vip`     | Admin  | Grant VIP to user           |
+| POST   | `/cancel-vip`    | Admin  | Cancel VIP                  |
+| POST   | `/webhook`       | Stripe | Stripe webhook              |
+| POST   | `/check-expired` | JWT    | Check/downgrade expired VIP |
 
 ### Admin (`/api/admin`)
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/login` | Public | Admin login (5/min) |
-| POST | `/refresh` | Cookie | Refresh admin token (100/min) |
-| POST | `/logout` | Cookie | Admin logout |
-| GET | `/me` | Admin | Current admin |
-| GET | `/stats` | Admin | Dashboard stats |
-| GET | `/analytics/views` | Admin | View analytics |
-| GET | `/analytics/views/recent` | Admin | Recent views |
-| GET | `/analytics/logins` | Admin | Login analytics |
-| GET | `/qna` | Admin | List Q&A |
-| DELETE | `/qna/:id` | Admin | Delete Q&A |
-| POST | `/qna/:id/reply` | Admin | Reply via email |
-| GET | `/users` | Admin | List users |
-| GET | `/submissions` | Admin | List submissions |
-| GET | `/problems` | Admin | List all problems |
-| GET | `/problems/:slug` | Admin | Problem detail |
-| POST | `/problems` | Admin | Create problem |
-| PUT | `/problems/:slug` | Admin | Update problem |
-| DELETE | `/problems/:slug` | Admin | Delete problem |
-| POST | `/problems/:slug/approve` | Admin | Publish problem |
-| POST | `/problems/:slug/unpublish` | Admin | Unpublish problem |
-| PATCH | `/problems/:slug/vip` | Admin | Toggle VIP flag |
+| Method | Endpoint                      | Auth   | Description                   |
+| ------ | ----------------------------- | ------ | ----------------------------- |
+| POST   | `/login`                    | Public | Admin login (5/min)           |
+| POST   | `/refresh`                  | Cookie | Refresh admin token (100/min) |
+| POST   | `/logout`                   | Cookie | Admin logout                  |
+| GET    | `/me`                       | Admin  | Current admin                 |
+| GET    | `/stats`                    | Admin  | Dashboard stats               |
+| GET    | `/analytics/views`          | Admin  | View analytics                |
+| GET    | `/analytics/views/recent`   | Admin  | Recent views                  |
+| GET    | `/analytics/logins`         | Admin  | Login analytics               |
+| GET    | `/qna`                      | Admin  | List Q&A                      |
+| DELETE | `/qna/:id`                  | Admin  | Delete Q&A                    |
+| POST   | `/qna/:id/reply`            | Admin  | Reply via email               |
+| GET    | `/users`                    | Admin  | List users                    |
+| GET    | `/submissions`              | Admin  | List submissions              |
+| GET    | `/problems`                 | Admin  | List all problems             |
+| GET    | `/problems/:slug`           | Admin  | Problem detail                |
+| POST   | `/problems`                 | Admin  | Create problem                |
+| PUT    | `/problems/:slug`           | Admin  | Update problem                |
+| DELETE | `/problems/:slug`           | Admin  | Delete problem                |
+| POST   | `/problems/:slug/approve`   | Admin  | Publish problem               |
+| POST   | `/problems/:slug/unpublish` | Admin  | Unpublish problem             |
+| PATCH  | `/problems/:slug/vip`       | Admin  | Toggle VIP flag               |
 
 ### Other
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/api/presence/online` | Public | Online count |
-| POST | `/api/presence/heartbeat` | Public | Heartbeat |
-| POST | `/api/views/track` | Public | Track page view (30/min) |
-| POST | `/api/qna` | Public | Submit question (5/min) |
-| POST | `/api/activity/login` | JWT | Record login |
-| POST | `/api/activity/run` | JWT | Record run |
-| GET | `/api/activity/me` | JWT | Activity map |
+| Method | Endpoint                    | Auth   | Description              |
+| ------ | --------------------------- | ------ | ------------------------ |
+| GET    | `/api/presence/online`    | Public | Online count             |
+| POST   | `/api/presence/heartbeat` | Public | Heartbeat                |
+| POST   | `/api/views/track`        | Public | Track page view (30/min) |
+| POST   | `/api/qna`                | Public | Submit question (5/min)  |
+| POST   | `/api/activity/login`     | JWT    | Record login             |
+| POST   | `/api/activity/run`       | JWT    | Record run               |
+| GET    | `/api/activity/me`        | JWT    | Activity map             |
 
 ---
 
@@ -515,24 +486,24 @@ AuthController
   ↓
 AuthService.login()
   ↓
-UserRepository.findByEmail()
-  ↓
-Prisma → PostgreSQL
+DatabaseService (Prisma) → PostgreSQL
   ↓
 bcryptjs.compare()
   ↓
-Generate JWT RS256 access token (15 min)
+Unverified email → 401 distinct message (resend link offered)
+Verified → Generate JWT RS256 access token (15 min)
   ↓
 Generate refresh token (30 days, hashed)
   ↓
 Set httpOnly + Secure + SameSite=None cookies
   ↓
-Client
+Client → redirect to `?redirect_url=` (default `/`)
 ```
 
 - **Access Tokens:** JWT RS256, 15-minute expiry, `httpOnly` + `Secure` + `SameSite=None` cookies
 - **Refresh Tokens:** 30-day expiry, per-device rotation, max 10 concurrent sessions, 30-second rotation grace period
 - **OAuth:** Google OAuth 2.0 with PKCE S256, state stored hashed in DB
+- **Unverified login:** distinct 401 message (FE shows resend-verification button), never the generic bad-credentials message
 - **Timing Attack Prevention:** `burnCompare` with dummy bcrypt hash for non-existent users
 - **Login CSRF Protection:** `g_oauth_state` cookie bound to browser
 - **Account Linking:** Google accounts matched by `sub` (not email), with conflict detection
@@ -551,26 +522,6 @@ Client
 **Reason:** Judge0 provides sandboxed execution, supports 60+ languages, and offers configurable CPU/memory limits via a simple HTTP API.
 
 **Trade-off:** Requires self-hosting and monitoring the Judge0 service separately.
-
-### Why JWT RS256 over HS256?
-
-**Problem:** Symmetric signing (HS256) requires the same secret on all services, making key rotation and service-to-service trust harder.
-
-**Decision:** Use RS256 (RSA asymmetric) for JWT signing.
-
-**Reason:** Allows separate services to verify tokens using only the public key, enabling better key management and service isolation.
-
-**Trade-off:** Slightly higher computational cost for signing/verification compared to symmetric algorithms.
-
-### Why Refresh Token Rotation?
-
-**Problem:** Stolen refresh tokens could be used indefinitely to generate new access tokens.
-
-**Decision:** Implement per-device refresh token rotation with a 30-second grace period.
-
-**Reason:** Each refresh token can only be used once; a new token is issued on each refresh. The grace period handles concurrent requests.
-
-**Trade-off:** Increases complexity in token management and requires tracking token state in the database.
 
 ### Why In-Memory Caching?
 
@@ -605,37 +556,51 @@ Client
 
 ## Testing
 
-- **Unit Tests:** 744 Vitest tests (86.5% line coverage)
-- **E2E Tests:** 13 Playwright tests
-- **Performance Tests:** 2 k6 load test scenarios
+Four layers, each with its own config, command, and database — they never share state:
+
+- **BE unit (752 tests, 45 files):** `pnpm --dir be test` — services against a hand-rolled fake DB, controllers with stubbed services, pure-function specs. Fast (~20s), no infrastructure needed. `pnpm --dir be test:cov` enforces coverage gates (lines 80 / branches 75).
+- **BE integration (45 tests: auth 8 + submissions 10 + vip 9 + progress 8 + oauth 10, growing per module):** `pnpm --dir be test:integration` — real services + real Postgres + real SMTP (Mailpit). Needs a migrated test DB and Mailpit running (see Docker section). The mail path is never stubbed: verification tokens are read from mails Mailpit actually catches. Judge0 is the only stub, at the `fetch` boundary (real HTTP shape, base64 verdicts).
+- **BE API e2e (136 tests):** `pnpm --dir be test:e2e` — real Nest app over real HTTP (Supertest) against Postgres. `guard-e2e-db.mjs` refuses to run against Neon production.
+- **FE unit (308 tests, 17 files):** `pnpm --dir FE test` — pure-TS lib tests (auth error mapping, cooldowns, URL builders).
+- **Playwright (52 tests, 5 files):** `pnpm test:e2e` (repo root) — real Chromium against real FE (:3000) + real BE (:4000) + Postgres + Judge0. Covers smoke, full user flow, VIP gating, account menu, header wrapping.
+- **Load (2 k6 scenarios):** `be/tests/performance/judge0-load-test.js`, `problems-load-test.js` — manual runs when needed, not in CI.
+
+### Test Statistics
+
+| Suite | Spec files | Tests | Infra needed | Runs in CI |
+|---|---|---|---|---|
+| BE unit | 45 | 752 | none | ✅ Backend checks (+coverage gates lines 80 / branches 75, currently 87.1 / 76.6) |
+| BE integration | 5 (+2 helpers) | 45 | test Postgres + Mailpit | ✅ Backend checks |
+| BE API e2e | 1 | 136 | test Postgres | ✅ Backend checks |
+| FE unit | 17 | 308 | none | ✅ Frontend checks |
+| Playwright | 5 | 52 | FE + BE + Postgres + Judge0 | ✅ Playwright e2e |
+| k6 load | 2 scripts | 2 scenarios | staging env | ❌ manual |
+| **Total automated** | — | **1293** | — | — |
 
 ```bash
-# Run unit tests
+# All DB-backed suites share ONE test database (never the dev/Neon DB).
+# Create it once on the compose Postgres, then migrate it:
+docker compose exec postgres psql -U postgres -c "CREATE DATABASE gocode_test;"
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gocode_test
+pnpm --dir be exec prisma migrate deploy
+
+# BE unit + coverage gates (no infra needed)
 pnpm --dir be test
+pnpm --dir be test:cov
+
+# BE integration (needs Mailpit too — started by compose below;
+# MAILPIT_URL defaults to http://localhost:8025)
+pnpm --dir be test:integration
+
+# BE API e2e (same DATABASE_URL as above; guard-e2e-db.mjs refuses Neon)
+pnpm --dir be test:e2e
+
+# FE unit
 pnpm --dir FE test
 
-# Run E2E tests
+# Playwright (needs BE :4000 + FE :3000 + Postgres + Judge0 running,
+# and seed-users in the DB the BE serves — see Setup below)
 pnpm test:e2e
-```
-
-### Test Environment Setup
-
-For load testing or isolated test runs, use a separate `.env.test` file:
-
-```bash
-cp be/.env.test.example be/.env.test
-# Edit be/.env.test with your test database credentials
-```
-
-Key test environment variables:
-- `DATABASE_URL`: Point to a dedicated test database (not production)
-- `DISABLE_RATE_LIMIT=1`: Remove rate limits for load testing
-- `PORT`: Use a non-standard port (e.g., 4100) to avoid conflicts
-
-Run tests with the test environment:
-```bash
-cd be
-pnpm start:dev  # Uses .env.test if present
 ```
 
 ---
@@ -643,10 +608,10 @@ pnpm start:dev  # Uses .env.test if present
 ## Docker / Local Development
 
 ### Prerequisites
+
 - Node.js 18+
 - pnpm 10+
-- PostgreSQL 14+
-- Docker (for Judge0)
+- Docker (provides PostgreSQL + Judge0 + Mailpit via compose — no local Postgres needed)
 
 ### Setup
 
@@ -664,13 +629,17 @@ cp be/.env.example be/.env
 cp FE/.env.example FE/.env
 cp admin/.env.example admin/.env
 
-# Start infrastructure (PostgreSQL + Judge0)
+# Start infrastructure: PostgreSQL (:5432, db `gocode`) + Judge0 (:2358)
+# + Mailpit (SMTP :1025, UI :8025)
 cd be
 docker compose up -d
 
-# Run migrations and seed
-pnpm --dir be exec prisma migrate deploy
-pnpm --dir be exec node scripts/seed-problems.ts
+# Migrate + seed the APP database (compose Postgres, db `gocode`).
+# DATABASE_URL is pinned inline so seeds never follow be/.env (which points to Neon).
+export APP_DB=postgresql://postgres:postgres@localhost:5432/gocode
+DATABASE_URL=$APP_DB pnpm --dir be exec prisma migrate deploy
+DATABASE_URL=$APP_DB pnpm --dir be exec node scripts/seed-problems.ts
+DATABASE_URL=$APP_DB pnpm --dir be exec node scripts/seed-users.ts   # user/vip@gocode.local — needed for local Playwright sign-in
 
 # Start development servers
 cd ..
@@ -679,6 +648,7 @@ pnpm dev-admin         # BE + FE + Admin
 ```
 
 The apps will be available at:
+
 - **Frontend:** http://localhost:3000
 - **Admin:** http://localhost:3001
 - **Backend API:** http://localhost:4000
@@ -689,40 +659,41 @@ The apps will be available at:
 
 ### Backend (`be/.env`)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PORT` | No | Server port (default: 4000) |
-| `DATABASE_URL` | Yes | PostgreSQL connection string (pooled) |
-| `DATABASE_URL_UNPOOLED` | No | Direct connection (bypasses Neon pooler) |
-| `STRIPE_SECRET_KEY` | Yes | Stripe secret key |
-| `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signature verification |
-| `FRONTEND_URL` | Yes | Frontend origin for CORS and email links |
-| `JUDGE0_URL` | Yes | Judge0 URL (default: `http://judge0-server:2358`) |
-| `JUDGE0_API_TOKEN` | Yes | Auth token for Judge0 reverse proxy |
-| `USER_LOGIN` / `USER_PASS` / `MAIL_FROM` | No | Brevo SMTP credentials |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_PASSWORD_HASH` | Yes | Admin login credentials |
-| `ADMIN_JWT_PRIVATE_KEY` / `ADMIN_JWT_PUBLIC_KEY` | Yes | RSA key pair for admin JWT (RS256) |
-| `JWT_SECRET` | No | Legacy HS256 fallback |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Yes | Google OAuth credentials |
-| `IP_HASH_SALT` | No | Salt for IP hashing (privacy) |
-| `DISABLE_RATE_LIMIT` | No | Set to `1` to disable rate limiting |
-| `DISABLE_OAUTH_STATE_SWEEP` | No | Set to `1` to disable OAuth state cleanup |
-| `DISABLE_PREMIUM_SWEEP` | No | Set to `1` to disable VIP expiry sweep |
+| Variable                                                                  | Required | Description                                        |
+| ------------------------------------------------------------------------- | -------- | -------------------------------------------------- |
+| `PORT`                                                                  | No       | Server port (default: 4000)                        |
+| `DATABASE_URL`                                                          | Yes      | PostgreSQL connection string (pooled)              |
+| `DATABASE_URL_UNPOOLED`                                                 | No       | Direct connection (bypasses Neon pooler)           |
+| `STRIPE_SECRET_KEY`                                                     | Yes      | Stripe secret key                                  |
+| `STRIPE_WEBHOOK_SECRET`                                                 | Yes      | Stripe webhook signature verification              |
+| `FRONTEND_URL`                                                          | Yes      | Frontend origin for CORS and email links           |
+| `JUDGE0_URL`                                                            | Yes      | Judge0 base URL (code default `http://localhost:2358`; compose sets `http://judge0-server:2358`) |
+| `JUDGE0_API_TOKEN`                                                      | Yes      | Auth token for Judge0 reverse proxy                |
+| `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM`                             | No       | Brevo SMTP credentials (SMTP key is `xsmtpsib-…`, not API key) |
+| `SMTP_HOST` / `SMTP_PORT`                                               | No       | Override SMTP target for local Mailpit (`localhost`/`1025`); unset = Brevo production |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_PASSWORD_HASH`            | Yes      | Admin login credentials                            |
+| `ADMIN_JWT_PRIVATE_KEY` / `ADMIN_JWT_PUBLIC_KEY`                      | Yes      | RSA key pair for admin JWT (RS256)                 |
+| `JWT_SECRET`                                                            | No       | Legacy HS256 fallback                              |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Yes      | Google OAuth credentials                           |
+| `IP_HASH_SALT`                                                          | No       | Salt for IP hashing (privacy)                      |
+| `DISABLE_RATE_LIMIT`                                                    | No       | Set to`1` to disable rate limiting               |
+| `DISABLE_OAUTH_STATE_SWEEP`                                             | No       | Set to`1` to disable OAuth state cleanup         |
+| `DISABLE_PREMIUM_SWEEP`                                                 | No       | Set to`1` to disable VIP expiry sweep            |
 
 ### Frontend (`FE/.env`)
 
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_API_URL` | Backend URL (default: `http://localhost:4000`) |
-| `NEXT_PUBLIC_CHECKOUT_HOSTS` | Trusted payment hostnames (comma-separated) |
+| Variable                       | Description                                     |
+| ------------------------------ | ----------------------------------------------- |
+| `NEXT_PUBLIC_API_URL`        | Backend URL (default:`http://localhost:4000`) |
+| `NEXT_PUBLIC_CHECKOUT_HOSTS` | Trusted payment hostnames (comma-separated)     |
 
 ### Admin (`admin/.env`)
 
-| Variable | Description |
-|----------|-------------|
-| `BE_API_URL` | Backend URL for BFF proxy (server-side) |
-| `NEXT_PUBLIC_API_URL` | Fallback when `BE_API_URL` is missing |
-| `JWT_SECRET` | HS256 fallback (dev only) |
+| Variable                 | Description                                  |
+| ------------------------ | -------------------------------------------- |
+| `BE_API_URL`           | Backend URL for BFF proxy (server-side)      |
+| `NEXT_PUBLIC_API_URL`  | Fallback when`BE_API_URL` is missing       |
+| `JWT_SECRET`           | HS256 fallback (dev only)                    |
 | `ADMIN_JWT_PUBLIC_KEY` | RSA public key for admin cookie verification |
 
 ---
@@ -746,7 +717,16 @@ coding-dev-lab/
 │   ├── package.json
 │   ├── .env.example
 │   ├── prisma/
-│   │   └── schema.prisma     # 15 database models
+│   │   └── schema.prisma     # 14 database models
+│   ├── test/                 # API e2e + DB/SMTP integration tests (real Postgres + Mailpit)
+│   │   ├── api.e2e-spec.ts
+│   │   ├── auth.integration.ts         # register/verify/login/refresh/resend
+│   │   ├── submissions.integration.ts  # submit judging (Judge0 stubbed at fetch) + history
+│   │   ├── vip.integration.ts          # VIP read policy + VIP lifecycle
+│   │   ├── progress.integration.ts     # streak/heatmap, badges, favorites, login analytics
+│   │   ├── oauth.integration.ts        # Google OAuth: state/PKCE, account link/match
+│   │   ├── db-integration.ts # test-DB guard, truncate, mail helpers
+│   │   └── mailpit.ts        # Mailpit API client
 │   ├── src/
 │   │   ├── main.ts           # Bootstrap (ESM, dotenv, CORS)
 │   │   ├── app.module.ts     # Root module
@@ -764,7 +744,10 @@ coding-dev-lab/
 │   │   ├── database/         # Prisma database service
 │   │   └── common/           # Throttle guard, cache config
 │   ├── tests/performance/    # k6 load tests
-│   └── scripts/              # Seed scripts, E2E guards
+│   ├── scripts/              # Seed scripts, E2E guards, CI JWT keygen
+│   │   ├── seed-problems.ts / seed-users.ts
+│   │   ├── guard-e2e-db.mjs  # refuses to run e2e against Neon production
+│   │   └── gen-ci-jwt-keys.mjs # ephemeral RSA keys for the Playwright CI job
 │
 ├── FE/                       # Frontend (Next.js 16)
 │   ├── package.json
@@ -791,6 +774,7 @@ coding-dev-lab/
 │
 └── e2e/                      # Playwright E2E tests
     ├── smoke.spec.ts
+    ├── full-flow.spec.ts
     ├── account-menu.spec.ts
     ├── header-wrap.spec.ts
     └── vip-problems.spec.ts
@@ -801,11 +785,13 @@ coding-dev-lab/
 ## Deployment
 
 The app is deployed on Vercel as 3 separate projects:
+
 - **Frontend:** [https://go-code-vn.vercel.app/](https://go-code-vn.vercel.app/)
 - **Admin:** Separate Vercel deployment
 - **Backend:** Separate Vercel deployment
 
 Infrastructure:
+
 - **Database:** Neon Postgres (serverless, pooler + direct connection)
 - **Judge0:** Self-hosted on Oracle Cloud VM (free tier)
 
@@ -813,10 +799,11 @@ Infrastructure:
 
 ## CI/CD
 
-A GitHub Actions workflow is configured (`.github/workflows/ci.yml`). The pipeline runs on push and includes:
-- Install dependencies
-- Run tests
-- Build
+A GitHub Actions workflow is configured (`.github/workflows/ci.yml`). The pipeline runs on push and has four jobs:
+
+- **Frontend checks / Admin checks:** install, lint, typecheck, unit tests, build.
+- **Backend checks:** Postgres service + lint + unit tests with coverage gates + migrations + seeds + API e2e + DB/SMTP integration tests + build.
+- **Playwright e2e:** Postgres + Mailpit services, ephemeral RSA keys generated per run (`gen-ci-jwt-keys.mjs`, no long-lived secrets), `DISABLE_RATE_LIMIT=1`, real Judge0 via `JUDGE0_URL` / `JUDGE0_API_TOKEN` repo secrets.
 
 ---
 
@@ -860,11 +847,11 @@ A GitHub Actions workflow is configured (`.github/workflows/ci.yml`). The pipeli
 
 - Designing and implementing a modular NestJS backend with authentication, authorization, and rate limiting
 - Integrating third-party services (Judge0, Stripe, Google OAuth, Brevo SMTP) into a cohesive system
-- Designing a relational database schema with 15 models using Prisma ORM
+- Designing a relational database schema with 14 models using Prisma ORM
 - Implementing JWT-based authentication with refresh token rotation and OAuth 2.0
 - Building a monorepo with pnpm workspaces and deploying to Vercel
 - Implementing webhook idempotency and payment processing with Stripe
-- Writing unit tests (744 tests, 86.5% coverage) and E2E tests with Playwright
+- Writing 1293 automated tests across five layers (752 BE unit at 87.1% line coverage, 45 DB/SMTP integration, 136 API e2e, 308 FE unit, 52 Playwright)
 
 ---
 
@@ -877,21 +864,3 @@ A GitHub Actions workflow is configured (`.github/workflows/ci.yml`). The pipeli
 - Add more programming languages to the problem library
 - Improve observability with structured logging and metrics
 
----
-
-## Demo
-
-**Live URL:** [https://go-code-vn.vercel.app/](https://go-code-vn.vercel.app/)
-
----
-
-## Resume Summary
-
-- Built a full-stack algorithm practice platform using NestJS, Next.js, and PostgreSQL with modular architecture
-- Implemented JWT RS256 authentication with refresh token rotation, Google OAuth 2.0, and role-based access control
-- Designed and implemented a relational database schema with 15 models using Prisma ORM
-- Integrated Judge0 for secure code execution with configurable resource limits
-- Implemented Stripe payment processing with webhook idempotency and subscription management
-- Built an admin dashboard with analytics, user management, and content moderation
-- Deployed 3 applications to Vercel with Docker Compose for local development
-- Wrote 744 unit tests (86.5% coverage) and 13 E2E tests with Playwright

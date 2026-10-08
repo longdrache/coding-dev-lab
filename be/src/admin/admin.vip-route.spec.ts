@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { generateKeyPairSync } from 'node:crypto';
-import jwt from 'jsonwebtoken';
+import { SignJWT, importPKCS8 } from 'jose';
 import { AdminController } from './admin.controller.ts';
 import { AdminGuard } from './admin.guard.ts';
 import { AdminService } from './admin.service.ts';
@@ -79,8 +79,12 @@ describe('PATCH /api/admin/problems/:slug/vip', () => {
     vi.restoreAllMocks();
   });
 
-  function adminToken(payload: Record<string, unknown> = { sub: 'admin', role: 'admin' }) {
-    return jwt.sign(payload, privateKey, { algorithm: 'RS256', expiresIn: '30m' });
+  async function adminToken(payload: Record<string, unknown> = { sub: 'admin', role: 'admin' }) {
+    return new SignJWT(payload)
+      .setProtectedHeader({ alg: 'RS256' })
+      .setIssuedAt()
+      .setExpirationTime('30m')
+      .sign(await importPKCS8(privateKey, 'RS256'));
   }
 
   function patch(slug: string, body: unknown, token?: string) {
@@ -90,14 +94,14 @@ describe('PATCH /api/admin/problems/:slug/vip', () => {
   }
 
   it('admin bật được: 200, cờ true, DB đã đổi', async () => {
-    const res = await patch('bai-01', { isVip: true }, adminToken()).expect(200);
+    const res = await patch('bai-01', { isVip: true }, await adminToken()).expect(200);
     expect(res.body).toEqual({ slug: 'bai-01', isVip: true });
     expect(rows.get('bai-01')!.isVip).toBe(true);
   });
 
   it('admin tắt được: 200, cờ false', async () => {
     rows.set('bai-01', { slug: 'bai-01', isVip: true, status: 'published' } as never);
-    const res = await patch('bai-01', { isVip: false }, adminToken()).expect(200);
+    const res = await patch('bai-01', { isVip: false }, await adminToken()).expect(200);
     expect(res.body).toEqual({ slug: 'bai-01', isVip: false });
     expect(rows.get('bai-01')!.isVip).toBe(false);
   });
@@ -111,28 +115,28 @@ describe('PATCH /api/admin/problems/:slug/vip', () => {
   });
 
   it('token hợp lệ nhưng role không phải admin → 401, không đổi cờ', async () => {
-    await patch('bai-01', { isVip: true }, adminToken({ sub: '1', role: 'user' })).expect(401);
+    await patch('bai-01', { isVip: true }, await adminToken({ sub: '1', role: 'user' })).expect(401);
     expect(rows.get('bai-01')!.isVip).toBe(false);
   });
 
   it('token hợp lệ nhưng role vip → 401 (VIP của user không phải quyền admin)', async () => {
-    await patch('bai-01', { isVip: true }, adminToken({ sub: '1', role: 'vip' })).expect(401);
+    await patch('bai-01', { isVip: true }, await adminToken({ sub: '1', role: 'vip' })).expect(401);
   });
 
   it('isVip là chuỗi "false" → 400, không đổi cờ', async () => {
-    await patch('bai-01', { isVip: 'false' }, adminToken()).expect(400);
+    await patch('bai-01', { isVip: 'false' }, await adminToken()).expect(400);
     expect(rows.get('bai-01')!.isVip).toBe(false);
   });
 
   it('thiếu isVip → 400', async () => {
-    await patch('bai-01', {}, adminToken()).expect(400);
+    await patch('bai-01', {}, await adminToken()).expect(400);
   });
 
   it('slug không tồn tại → 404', async () => {
-    await patch('khong-ton-tai', { isVip: true }, adminToken()).expect(404);
+    await patch('khong-ton-tai', { isVip: true }, await adminToken()).expect(404);
   });
 
   it('trường lạ trong body → 400 (bề mặt quyền hẹp)', async () => {
-    await patch('bai-01', { isVip: true, status: 'published' }, adminToken()).expect(400);
+    await patch('bai-01', { isVip: true, status: 'published' }, await adminToken()).expect(400);
   });
 });

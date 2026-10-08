@@ -21,6 +21,7 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "node scripts/guard-e2e-db.mjs && vitest run --config ./vitest.config.e2e.ts",
+    "test:integration": "node scripts/guard-e2e-db.mjs && vitest run --config ./vitest.config.integration.ts",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate && prisma skills sync || exit 0"
   },
@@ -40,7 +41,6 @@
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
     "jose": "^6.2.12",
-    "jsonwebtoken": "^9.0.3",
     "keyv": "^5.6.0",
     "nodemailer": "^10.0.10",
     "pg": "^8.23.0",
@@ -55,7 +55,6 @@
     "@nestjs/testing": "^12.0.4",
     "@types/bcryptjs": "^3.0.0",
     "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.13.6",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",

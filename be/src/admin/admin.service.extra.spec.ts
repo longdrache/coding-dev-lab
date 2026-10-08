@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto';
-import jwt from 'jsonwebtoken';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SignJWT } from 'jose';
 import { AdminService } from './admin.service.ts';
 
 const OLD = { ...process.env };
@@ -37,22 +37,24 @@ describe('AdminService login + verifyJwt (RS256)', () => {
     });
     const svc = new AdminService({} as any);
     const { token, refreshToken } = await svc.login('admin', 'admin');
-    const payload = svc.verifyJwt(token) as { role: string; typ: string };
+    const payload = (await svc.verifyJwt(token)) as { role: string; typ: string };
     expect(payload.role).toBe('admin');
     expect(payload.typ).toBe('access');
     // Login phải trả **hai** token: chỉ access token 30 phút thì admin bị đá
     // khỏi app mỗi nửa tiếng và không có đường nào quay lại ngoài mật khẩu.
-    expect(svc.verifyJwt(refreshToken).typ).toBe('refresh');
+    expect((await svc.verifyJwt(refreshToken)).typ).toBe('refresh');
   });
 
-  it('fallback HS256 ở dev, chặn ở production', () => {
+  it('fallback HS256 ở dev, chặn ở production', async () => {
     setEnv({ NODE_ENV: 'test', VERCEL: undefined, JWT_SECRET: 'dev-secret-123', ADMIN_JWT_PUBLIC_KEY: undefined, ADMIN_PUBLIC_KEY: undefined });
     const svc = new AdminService({} as any);
-    const legacy = jwt.sign({ sub: 'admin', role: 'admin' }, 'dev-secret-123');
-    expect((svc.verifyJwt(legacy) as { role: string }).role).toBe('admin');
+    const legacy = await new SignJWT({ sub: 'admin', role: 'admin' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .sign(new TextEncoder().encode('dev-secret-123'));
+    expect(((await svc.verifyJwt(legacy)) as { role: string }).role).toBe('admin');
 
     setEnv({ NODE_ENV: 'production', VERCEL: '1' });
-    expect(() => svc.verifyJwt(legacy)).toThrow();
+    await expect(svc.verifyJwt(legacy)).rejects.toThrow();
   });
 });
 

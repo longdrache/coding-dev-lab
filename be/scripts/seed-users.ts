@@ -2,6 +2,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.ts';
 import * as bcrypt from 'bcryptjs';
 import 'dotenv/config';
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({  connectionString: process.env.USE_DATABASE_TEST === '1'
         ? process.env.DATABASE_TEST_URL

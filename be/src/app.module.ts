@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
 import { AppController } from './app.controller.ts';
-import { AppService } from './app.service.ts';
 import { RolesGuard } from './auth/roles.guard.ts';
 import { AuthModule } from './auth/auth.module.ts';
 import { ConfigModule } from '@nestjs/config';
@@ -59,7 +58,6 @@ CacheModule.register({
   ],
   controllers: [AppController],
   providers: [
-    AppService,
     RolesGuard,
     // Tầng giới hạn tần suất duy nhất, thay cho `express-rate-limit` đã gỡ.
     //

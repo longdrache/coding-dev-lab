@@ -66,6 +66,21 @@ describe('POST /api/admin/login — cookie phải đúng theo môi trường', (
     else process.env.VERCEL = VERCEL_CU;
   });
 
+  type Fruit = 'apple' | 'banana' | 'cherry';
+
+function getFruitColor(fruit: Fruit): string {
+    switch (fruit) {
+        case 'apple':
+            return 'red';
+        case 'banana':
+            return 'yellow';
+        default:
+            // Nếu có trường hợp mới (ví dụ: 'cherry') chưa được xử lý,
+            // dòng này sẽ gây lỗi compile-time.
+            const _exhaustiveCheck: never = fruit;
+            return _exhaustiveCheck;
+    }
+}
   it('local: Lax + không Secure, và trả token trong body cho admin proxy', async () => {
     const { ctrl, svc, res } = makeController();
     const out = await ctrl.login({ email: 'a@b.c', password: 'p' }, res as never);

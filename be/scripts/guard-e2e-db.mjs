@@ -16,7 +16,6 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import "dotenv/config";
 const NEON = /neon\.tech/i;
 
 function readUrlFromEnvFile() {
@@ -33,8 +32,7 @@ function readUrlFromEnvFile() {
   return null;
 }
 
-const fromProcess = process.env.DATABASE_TEST_URL;
-console.log(fromProcess)
+const fromProcess = process.env.DATABASE_URL;
 const url = fromProcess ? { value: fromProcess, from: 'process.env' } : readUrlFromEnvFile();
 
 if (!url) {

@@ -14,7 +14,7 @@ export default defineConfig({
     // e2e; production không đọc nó.
     env: { 
       DISABLE_RATE_LIMIT: '1', 
-      DATABASE_URL:'postgresql://postgres:postgres@localhost:55432/gocode'
+      // DATABASE_URL:'postgresql://postgres:postgres@localhost:55432/gocode'
     },
     /**
      * Cùng phạm vi đo với `vitest.config.ts`: đây là **lần chạy khác**, nên số

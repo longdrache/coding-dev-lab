@@ -110,7 +110,7 @@ jobs:
           - 1025:1025
           - 8025:8025
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode
       # Trỏ mailer thật vào Mailpit thay vì Brevo (xem `AuthMailer.readConfig`:
       # có `SMTP_HOST` là đi nhánh plaintext local). `MAIL_FROM` giữ bắt buộc
       # như production — Mailpit chấp nhận mọi địa chỉ.
@@ -189,7 +189,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: gocode_test
+          POSTGRES_DB: gocode
         ports:
           - 5432:5432
         options: >-

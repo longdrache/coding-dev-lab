@@ -14,6 +14,15 @@ import { useProblems } from "@/app/hooks/useProblems";
 import { vipBadge } from "./vip-gate";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Pagination,
   PaginationContent,
   PaginationItem,
@@ -174,6 +183,8 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
   const [sortBy, setSortBy] = useState<"id" | "title">("id");
   const [view, setView] = useState<"list" | "grid">("list");
   const [page, setPage] = useState(1);
+  /** Slug đang xem nhanh (nút mắt ở bảng). `null` = không mở dialog. */
+  const [previewSlug, setPreviewSlug] = useState<string | null>(null);
   // Hợp nhất localStorage + server (SolvedProblem) để nhận diện
   // bài đã giải dù đổi trình duyệt hay mất cache
   const localSolved = useSolvedSlugs();
@@ -256,6 +267,12 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const paginated = useMemo(() => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE), [filtered, currentPage]);
+
+  // Bài đang xem nhanh. Tìm trong `problems` (toàn bộ) chứ không phải
+  // `paginated`, để đổi trang/sắp xếp giữa chừng không làm dialog mất bài.
+  const preview = previewSlug === null ? null : (problems.find((p) => p.slug === previewSlug) ?? null);
+  const previewBadge = preview === null ? "none" : vipBadge(preview.isVip === true, user?.role);
+  const previewSolved = preview !== null && solvedSlugs.includes(preview.slug);
 
   return (
     <main className="min-h-screen bg-wash px-4 py-6 sm:px-6 lg:px-8">
@@ -523,7 +540,15 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
                         </TableCell>
                         <TableCell className="text-right">
                           <span className="inline-flex items-center gap-1">
-                            <span className="hidden sm:inline-flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500"><Eye className="size-3.5" /></span>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewSlug(p.slug)}
+                              aria-label={`Xem nhanh: ${p.title}`}
+                              title="Xem nhanh"
+                              className="hidden size-7 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-900 hover:text-zinc-900 sm:inline-flex"
+                            >
+                              <Eye className="size-3.5" />
+                            </button>
                             <Link href={`/problem/${p.slug}`} className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-black">
                               Giải <span aria-hidden>→</span>
                             </Link>
@@ -570,6 +595,53 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
           </div>
         )}
       </div>
+
+      {/*
+        Dialog xem nhanh (nút mắt ở cột THAO TÁC). Chỉ vẽ những gì payload đã
+        có: bài VIP với người không quyền không kèm `description` từ BE nên
+        dialog tự hiện trạng khoá + lối nâng cấp — không có đường nào lộ đề.
+      */}
+      <Dialog open={preview !== null} onOpenChange={(o) => { if (!o) setPreviewSlug(null); }}>
+        <DialogContent className="max-w-md">
+          {preview !== null && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex flex-wrap items-center gap-2 text-left text-base font-bold">
+                  <span className="line-clamp-2">{preview.title}</span>
+                  {previewBadge !== "none" && <VipBadge kind={previewBadge} />}
+                </DialogTitle>
+                <DialogDescription className="flex flex-wrap items-center gap-2 pt-1 text-left">
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${DIFFICULTY_STYLES[preview.difficulty]}`}>{preview.difficulty}</span>
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-600">{topicTitle(preview.topic)}</span>
+                  {previewSolved && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">Đã đạt</span>}
+                </DialogDescription>
+              </DialogHeader>
+              {preview.description ? (
+                <p className="mt-2 max-h-48 overflow-y-auto text-sm leading-relaxed text-zinc-600">{preview.description}</p>
+              ) : previewBadge === "locked" ? (
+                <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-800">
+                  <Lock aria-hidden className="mt-0.5 size-4 shrink-0" />
+                  <span>Đây là bài GoCode Premium. Nâng cấp để xem đề và nộp bài.</span>
+                </p>
+              ) : null}
+              <DialogFooter className="mt-4 flex-row justify-end gap-2">
+                <DialogClose className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">
+                  Đóng
+                </DialogClose>
+                {previewBadge === "locked" ? (
+                  <Link href="/premium" className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-4 py-2 text-sm font-bold text-white hover:bg-amber-600">
+                    <Crown aria-hidden className="size-4" /> Nâng cấp
+                  </Link>
+                ) : (
+                  <Link href={`/problem/${preview.slug}`} className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-4 py-2 text-sm font-bold text-white hover:bg-black">
+                    Giải <span aria-hidden>→</span>
+                  </Link>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

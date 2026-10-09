@@ -47,6 +47,18 @@ GoCode is a full-stack algorithm practice platform for students. Users read prob
 - Auto-downgrade on expiry (sweep every 60 minutes)
 - VIP-only problems (per-problem flag)
 
+#### Test cards (Stripe sandbox)
+
+Payments run on Stripe's hosted Checkout page. In test mode (`STRIPE_SECRET_KEY=sk_test_…`, never a live key for testing), use these cards — any future expiry date, any CVC, any postal code:
+
+| Card number | Result |
+|---|---|
+| `4242 4242 4242 4242` | Payment succeeds, VIP activates after webhook |
+| `4000 0000 0000 3220` | 3D Secure challenge, then succeeds |
+| `4000 0000 0000 9995` | Declined |
+
+Local webhooks need forwarding to the BE (`stripe listen --forward-to localhost:4000/api/premium/webhook`) or VIP stays pending until the sweep/webhook arrives.
+
 ### Admin Dashboard
 
 - 30-day analytics, online count, daily charts, top problems, recent logins by country
@@ -581,7 +593,12 @@ Four layers, each with its own config, command, and database — they never shar
 # All DB-backed suites share ONE test database (never the dev/Neon DB).
 # Create it once on the compose Postgres, then migrate it:
 docker compose exec postgres psql -U postgres -c "CREATE DATABASE gocode_test;"
+# Set BOTH vars to the same URL: `prisma migrate deploy` reads
+# DATABASE_TEST_URL (prisma7.config.ts) while seeds and test DB clients read
+# DATABASE_URL — mismatched vars mean app and tests talk to two different
+# databases (same failure class as the CI "two-DB" red runs).
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gocode_test
+export DATABASE_TEST_URL=$DATABASE_URL
 pnpm --dir be exec prisma migrate deploy
 
 # BE unit + coverage gates (no infra needed)
@@ -592,14 +609,15 @@ pnpm --dir be test:cov
 # MAILPIT_URL defaults to http://localhost:8025)
 pnpm --dir be test:integration
 
-# BE API e2e (same DATABASE_URL as above; guard-e2e-db.mjs refuses Neon)
+# BE API e2e (same DATABASE_URL as above; guard-e2e-db.mjs refuses Neon;
+# problem catalog self-seeds in beforeAll)
 pnpm --dir be test:e2e
 
 # FE unit
 pnpm --dir FE test
 
-# Playwright (needs BE :4000 + FE :3000 + Postgres + Judge0 running,
-# and seed-users in the DB the BE serves — see Setup below)
+# Playwright (needs BE :4000 + FE auto-started + seed-users in the DB the BE
+# serves; problem catalog self-seeds in e2e/global-setup.ts — no manual seed)
 pnpm test:e2e
 ```
 

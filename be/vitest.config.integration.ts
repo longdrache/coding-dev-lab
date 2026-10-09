@@ -26,7 +26,7 @@ export default defineConfig({
     // (11 lần login trong test trim phiên).
     testTimeout: 120_000,
     env:{
-      // DATABASE_URL:'postgresql://postgres:postgres@localhost:55432/gocode'
+      DATABASE_URL:'postgresql://postgres:postgres@localhost:5432/gocode'
     },
     coverage: {
       provider: 'v8',

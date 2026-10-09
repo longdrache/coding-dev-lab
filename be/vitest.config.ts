@@ -15,9 +15,13 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.spec.ts'],
+    env: { 
+      DISABLE_RATE_LIMIT: '0', },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],
+      
+
       /**
        * Chỉ đo code của backend. File test loại vì chính nó là test, còn
        * `src/generated` là client Prisma sinh máy — đo nó làm tụt % vì thứ không ai
@@ -46,6 +50,7 @@ export default defineConfig({
        *
        * Chỉ `pnpm test:cov` chạy bước này — `pnpm test` giữ nguyên nhanh.
        */
+      
       thresholds: {
         lines: 80,
         branches: 75,

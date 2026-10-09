@@ -3,6 +3,9 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { generateKeyPairSync } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { PrismaClient } from './../src/generated/prisma/client.ts';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { generateKeyPair, SignJWT, importPKCS8 } from 'jose';
@@ -126,6 +129,28 @@ describe('API (e2e)', () => {
   }
 
   beforeAll(async () => {
+    // Tự seed catalog bài tập (upsert → idempotent): suite không còn phụ thuộc
+    // bước seed thủ công/CI chạy trước. Thiếu DATABASE_URL là chết ngay ở đây
+    // với lỗi rõ ràng thay vì hàng loạt 404 rời rạc ở các test dưới.
+    if (!process.env.DATABASE_URL) {
+      throw new Error(
+        'Thiếu DATABASE_URL — api.e2e cần DB test để seed + chạy, ví dụ:\n' +
+          '  DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gocode_test pnpm test:e2e',
+      );
+    }
+    // File này nằm ở be/test → seed script ở be/scripts, tính tuyệt đối từ
+    // vị trí file để không phụ thuộc cwd gọi vitest.
+    const seedScript = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'scripts',
+      'seed-problems.ts',
+    );
+    execFileSync('node', [seedScript], {
+      cwd: path.dirname(path.dirname(seedScript)),
+      stdio: 'inherit',
+      env: process.env,
+    });
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();

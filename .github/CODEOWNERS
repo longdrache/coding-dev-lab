@@ -1,0 +1,26 @@
+# Auto-review routing. First match from the bottom wins, so specific paths
+# go last. Replace @longdrache with team slugs (e.g. @org/backend-team)
+# once teams exist. Every PR touching these paths requires the owner's
+# review when the ruleset enforces it (see rulesets/protect-main.json).
+
+# Backend API — auth/premium/JWT are security-sensitive zones
+/be/src/auth/        @longdrache
+/be/src/premium/     @longdrache
+/be/src/admin/       @longdrache
+/be/prisma/          @longdrache
+/be/test/            @longdrache
+/be/scripts/        @longdrache
+
+# Frontends
+/FE/                 @longdrache
+/admin/              @longdrache
+
+# Pipeline & infra — changing CI changes how code ships; always second pair
+# of eyes. e2e specs encode release-blocking behavior.
+/.github/            @longdrache
+/e2e/                @longdrache
+/docker-compose*     @longdrache
+/be/docker-compose* @longdrache
+
+# Product docs
+*.md                 @longdrache

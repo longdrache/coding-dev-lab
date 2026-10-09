@@ -1,0 +1,28 @@
+{
+  "name": "protect-develop",
+  "enforcement": "active",
+  "target": "branch",
+  "conditions": { "ref_name": { "include": ["refs/heads/develop"], "exclude": [] } },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "require_code_owner_review": false,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "required_checks": [
+          { "context": "Code Quality" },
+          { "context": "Automated Tests" }
+        ],
+        "strict": true
+      }
+    }
+  ]
+}

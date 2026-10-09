@@ -1,0 +1,37 @@
+# SAST weekly + per-PR. Default CodeQL suite (high precision, few
+# false positives). For stricter checks use `queries: security-extended`
+# (trade-off: slower + noisier).
+name: CodeQL
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+  schedule:
+    - cron: '0 3 * * 1' # 10:00 Monday Vietnam time — scans even untouched code
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write # only this job may publish security results
+    strategy:
+      fail-fast: false # one language failing must not hide another's results
+      matrix:
+        language: [javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

@@ -1,0 +1,39 @@
+{
+  // Clone-and-code: Postgres + Mailpit run as sidecars, ports match CI and
+  // README exactly, so "green in CI" reproduces here and vice versa.
+  "name": "GoCode",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "features": {
+    // gh CLI: open PRs and watch CI without leaving the container
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    // inner Docker engine: postStartCommand boots postgres + mailpit sidecars
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Prisma.prisma",
+        "bradlc.vscode-tailwindcss",
+        "vitest.explorer",
+        "ms-playwright.playwright"
+      ]
+    }
+  },
+  "portsAttributes": {
+    "3000": { "label": "FE", "onAutoForward": "openPreview" },
+    "3001": { "label": "Admin" },
+    "4000": { "label": "BE API" },
+    "8025": { "label": "Mailpit UI" }
+  },
+  "remoteEnv": {
+    // Same URLs as CI: a green run here means a green run there.
+    "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/gocode_test",
+    "DATABASE_TEST_URL": "postgresql://postgres:postgres@localhost:5432/gocode_test",
+    "MAILPIT_URL": "http://localhost:8025"
+  },
+  // NOTE: Judge0 is deliberately absent (multi-GB image, needs --privileged,
+  // which Codespaces forbids). Submit paths are covered by stubbed tests;
+  // real Judge0 exists only in CI and staging.
+  "postCreateCommand": "pnpm --dir be install && pnpm --dir FE install && pnpm --dir admin install && pnpm install",
+  "postStartCommand": "docker compose -f be/docker-compose.yml up -d postgres mailpit"
+}

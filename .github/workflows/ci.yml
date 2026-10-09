@@ -1,3 +1,25 @@
+# =============================================================================
+# GoCode CI
+#
+# What runs here (all jobs in parallel unless noted):
+#   frontend   — Next.js app:      lint + typecheck + unit tests + build
+#   admin      — Admin dashboard:  typegen + lint + typecheck + build
+#   backend    — NestJS API:       lint + unit (coverage gates) + migrations +
+#                                  seeds + API e2e + DB/SMTP integration + build
+#   playwright — Browser e2e:      real FE + real BE + Postgres + Judge0
+#   notify     — Telegram summary of the four jobs above (always runs)
+#
+# Required repository secrets (Settings → Secrets → Actions):
+#   JUDGE0_URL, JUDGE0_API_TOKEN       — real Judge0 for the submit test
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID — build notifications
+#
+# Conventions used in this file:
+# - Shared constants live in top-level `env:`; per-job values stay on the job.
+# - Every job has `timeout-minutes` so a hung step fails loudly instead of
+#   burning the 6h runner default.
+# - Comments explain WHY a step exists, never WHAT the command does.
+# =============================================================================
+
 name: CI
 
 on:
@@ -8,10 +30,27 @@ on:
 permissions:
   contents: read
 
+# A newer push supersedes older runs on the same branch/PR instead of queueing
+# behind them. Main-branch runs are also cancelled: nothing here deploys, so
+# there is no half-released state to protect.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  POSTGRES_IMAGE: postgres:16-alpine
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+
 jobs:
+  # ===========================================================================
+  # Frontend checks
+  # ===========================================================================
   frontend:
     name: Frontend checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: FE
@@ -25,7 +64,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: FE/pnpm-lock.yaml
 
@@ -38,17 +77,20 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit
 
-      # Trước đây job này không chạy test, nên 79 unit test của FE chưa bao giờ
-      # được canh trong CI.
+      # This job used to skip tests, so the FE unit suite ran nowhere.
       - name: Test
         run: pnpm test
 
       - name: Build
         run: pnpm build
 
+  # ===========================================================================
+  # Admin checks
+  # ===========================================================================
   admin:
     name: Admin checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: admin
@@ -62,15 +104,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: admin/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Next 16 sinh kiểu `LayoutProps`/`PageProps` vào `.next/types/`. Checkout
-      # sạch chưa có thư mục này nên `tsc` sẽ báo TS2304 nếu typecheck chạy trước.
+      # Next 16 generates `LayoutProps`/`PageProps` types into `.next/types/`.
+      # A clean checkout lacks that directory, so `tsc` reports TS2304 unless
+      # typegen runs first.
       - name: Generate route types
         run: pnpm exec next typegen
 
@@ -83,16 +126,21 @@ jobs:
       - name: Build
         run: pnpm build
 
+  # ===========================================================================
+  # Backend checks
+  # ===========================================================================
   backend:
     name: Backend checks
     runs-on: ubuntu-latest
-    # e2e cần Postgres that. Khong dung Neon production: test ghi vao DB that.
+    timeout-minutes: 30
+    # The e2e suites need a real Postgres. Never the Neon production database:
+    # tests write into it for real.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: ${{ env.POSTGRES_IMAGE }}
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
           POSTGRES_DB: gocode_test
         ports:
           - 5432:5432
@@ -101,9 +149,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      # SMTP catcher cho integration test (`be/test/*.integration.ts` gửi mail
-      # thật qua `AuthMailer` vào đây). Mặc định Mailpit: SMTP :1025 không auth
-      # không TLS, API đọc mail :8025. Ảnh nhẹ (~tens MB), khởi động tức thì.
+      # SMTP catcher for the integration suite (`be/test/*.integration.ts`
+      # sends real mail through `AuthMailer` into Mailpit). Defaults: SMTP :1025
+      # with no auth and no TLS, read API on :8025. Lightweight image, instant boot.
       mailpit:
         image: axllent/mailpit
         ports:
@@ -111,9 +159,10 @@ jobs:
           - 8025:8025
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode
-      # Trỏ mailer thật vào Mailpit thay vì Brevo (xem `AuthMailer.readConfig`:
-      # có `SMTP_HOST` là đi nhánh plaintext local). `MAIL_FROM` giữ bắt buộc
-      # như production — Mailpit chấp nhận mọi địa chỉ.
+      # Point the real mailer at Mailpit instead of Brevo (see
+      # `AuthMailer.readConfig`: a set `SMTP_HOST` selects the plaintext local
+      # branch). `MAIL_FROM` stays required, same as production — Mailpit
+      # accepts any address.
       SMTP_HOST: localhost
       SMTP_PORT: '1025'
       MAIL_FROM: no-reply@gocode.local
@@ -130,7 +179,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: be/pnpm-lock.yaml
 
@@ -143,52 +192,59 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # `test:cov` chính là `test` cộng thêm đo coverage — thay chứ không thêm một
-      # lần chạy nữa, nên ngưỡng trong `vitest.config.ts` được canh thật mà CI không
-      # chậm thêm. Xem `be/vitest.config.ts` (thresholds lines 80 / branches 75).
+      # `test:cov` is `test` plus coverage measurement — one run instead of two,
+      # so the thresholds in `vitest.config.ts` (lines 80 / branches 75) are
+      # enforced for real without slowing CI down. See `be/vitest.config.ts`.
       - name: Test
         run: pnpm test:cov
 
-      # e2e: migration nen tao du 13 bang, can seed de co du lieu de test.
-      # Spec tu sinh cap khoa RSA nen khong can ADMIN_JWT_* o day.
+      # Migrations must create every table before seeds/tests touch the DB.
+      # The API e2e spec generates its own RSA keypair in-process, so no
+      # ADMIN_JWT_* is needed here.
       - name: Apply migrations
         run: pnpm exec prisma migrate deploy
 
       - name: Seed problems
         run: node scripts/seed-problems.ts
 
-      # KHÔNG phải Playwright. `be/package.json` khai `test:e2e` =
-      # `guard-e2e-db.mjs && vitest run --config ./vitest.config.e2e.ts` — tức là
-      # suite e2e của NestJS (bắn HTTP vào app thật), không có trình duyệt nào.
-      # Playwright nằm ở `e2e/` thư mục gốc, nên có job riêng (`playwright`).
-      # Trước đây job này lại chạy `npx playwright install` trong khi `be` không
-      # hề có dependency Playwright: tải thêm trình duyệt rồi không ai dùng, và
-      # tệ hơn là 42 test trình duyệt vẫn không được chạy.
+      # Not Playwright. `be/package.json` declares `test:e2e` as
+      # `guard-e2e-db.mjs && vitest run --config ./vitest.config.e2e.ts` — the
+      # NestJS HTTP suite (supertest against a real app), no browser involved.
+      # Playwright lives in repo-root `e2e/` and gets its own job below. This
+      # job used to run `npx playwright install` even though `be` has no
+      # Playwright dependency: browsers downloaded for nobody, while the 40+
+      # real browser tests never ran.
       - name: Test (API e2e)
         run: pnpm test:e2e
 
-      # Integration (DB thật): service thật + Postgres thật, chỉ mock mailer
-      # (`be/test/*.integration.ts`). Chạy sau API e2e; spec tự truncate và dọn
-      # bảng auth (User, UserToken, ActivityDay...) nên không dẫm dữ liệu seed.
-      # `DATABASE_URL` lấy từ env job; `guard-e2e-db.mjs` chặn trỏ nhầm Neon.
+      # Integration (real DB): real services + real Postgres, real SMTP into
+      # Mailpit (`be/test/*.integration.ts`). Runs after the API e2e; specs
+      # truncate and clean up their own auth tables (User, UserToken,
+      # ActivityDay, …), so they never clash with seeded data.
+      # `DATABASE_URL` comes from the job env; `guard-e2e-db.mjs` refuses to
+      # point at Neon by accident.
       - name: Test (integration)
         run: pnpm test:integration
 
       - name: Build
         run: pnpm build
 
+  # ===========================================================================
+  # Playwright e2e
+  # ===========================================================================
   playwright:
     name: Playwright e2e
     runs-on: ubuntu-latest
-    # Postgres service không dùng chung được giữa các job, nên khai lại y hệt job
-    # `backend` (cùng image, cùng health-cmd) thay vì bịa cách khác. Chỉ là
-    # Postgres thật trong container, không đụng Neon production.
+    timeout-minutes: 30
+    # Service containers can't be shared between jobs, so Postgres is declared
+    # again exactly like the `backend` job (same image, same health check).
+    # A real Postgres in a container — never the Neon production database.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: ${{ env.POSTGRES_IMAGE }}
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
           POSTGRES_DB: gocode
         ports:
           - 5432:5432
@@ -198,27 +254,25 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # CẢ HAI biến bắt buộc cùng trỏ một DB. App dùng `DATABASE_URL` (pool),
-      # Prisma client/test dùng `DATABASE_URL_UNPOOLED`; thiếu hoặc lệch một biến
-      # là app và test nói chuyện với hai DB khác nhau — đã gây 13 test đỏ giả.
+      # BOTH variables must point at the same database. The app reads
+      # `DATABASE_URL` (pool), Prisma clients/tests read `DATABASE_URL_UNPOOLED`;
+      # one missing or pointing elsewhere means app and tests talk to two
+      # different databases — which once caused 13 false-red tests.
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode
       DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/gocode
-      # FE không có `.env` trong repo, nên API base phải cấp ở đây. Bắt buộc
-      # đúng cổng: `e2e/account-menu.spec.ts` và `e2e/vip-problems.spec.ts` chặn
-      # route ở `http://localhost:4000`, và `vip-problems.spec.ts` còn đòi header
-      # CORS trả `Access-Control-Allow-Origin: http://localhost:3000`.
+      # FE has no committed `.env`, so the API base URL is provided here. The
+      # ports are load-bearing: specs intercept routes at `http://localhost:4000`,
+      # and CORS assertions expect `Access-Control-Allow-Origin: http://localhost:3000`.
       NEXT_PUBLIC_API_URL: http://localhost:4000
       FRONTEND_URL: http://localhost:3000
       NEXT_TELEMETRY_DISABLED: '1'
       DISABLE_RATE_LIMIT: '1'
       USE_DATABASE_TEST: '10'
-      # Judge0 chấm bài thật cho test "nộp bài": thiếu là `POST
-      # :slug/submit` ném 502 (không kết nối được localhost:2358) và
-      # Playwright timeout ở `waitForResponse` 201. Hai secrets này lấy từ
-      # Settings → Secrets → Actions của repo.
+      # Real Judge0 grades the submit test: without it, `POST :slug/submit`
+      # throws 502 (nothing on localhost:2358) and Playwright times out waiting
+      # for the 201 response. Both secrets come from repo Settings → Secrets.
       JUDGE0_URL: ${{ secrets.JUDGE0_URL }}
       JUDGE0_API_TOKEN: ${{ secrets.JUDGE0_API_TOKEN }}
-      
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -229,15 +283,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-          # Ba bộ cài độc lập, ba lockfile riêng (không có pnpm-workspace.yaml).
+          # Three independent installs with three separate lockfiles
+          # (there is no pnpm-workspace.yaml).
           cache-dependency-path: |
             pnpm-lock.yaml
             be/pnpm-lock.yaml
             FE/pnpm-lock.yaml
 
-      # `@playwright/test` nằm ở package gốc, nên root phải có node_modules riêng.
+      # `@playwright/test` lives in the root package, so root needs its own
+      # node_modules.
       - name: Install root dependencies
         run: pnpm install --frozen-lockfile
 
@@ -245,9 +301,9 @@ jobs:
         working-directory: be
         run: pnpm install --frozen-lockfile
 
-      # `webServer` trong `playwright.config.ts` chạy `pnpm --dir FE dev`, nên FE
-      # phải cài sẵn — không cài thì job chết ở bước Playwright chứ không phải ở
-      # bước cài, khó đọc lỗi hơn.
+      # The `webServer` entry in `playwright.config.ts` runs `pnpm --dir FE dev`,
+      # so FE must be installed first — otherwise the job dies inside the
+      # Playwright step instead of the install step, which is harder to read.
       - name: Install frontend dependencies
         working-directory: FE
         run: pnpm install --frozen-lockfile
@@ -259,32 +315,38 @@ jobs:
       - name: Seed problems
         working-directory: be
         run: node scripts/seed-problems.ts
+
       - name: Seed users
         working-directory: be
         run: node scripts/seed-users.ts
 
-      # Server thật ký access token bằng `ADMIN_JWT_PRIVATE_KEY`
-      # (`be/src/auth/tokens.ts` — thiếu là `POST /api/auth/login` trả 500,
-      # Playwright rớt ở `signIn`). Suite BE e2e tự sinh khóa trong tiến trình
-      # nên không cần, còn ở đây phải cấp qua env. Sinh mới mỗi lần chạy: key
-      # chỉ sống trong một job, token hết hạn sau 15 phút nên không cần secret
-      # cố định. Ghi vào `$GITHUB_ENV` để step `Start backend` phía dưới dùng.
+      # The real server signs access tokens with `ADMIN_JWT_PRIVATE_KEY`
+      # (`be/src/auth/tokens.ts` — missing it turns `POST /api/auth/login` into
+      # a 500 and Playwright fails inside `signIn`). The BE e2e suite generates
+      # its own keypair in-process, but this server needs one from the env.
+      # Generated fresh per run and written to `$GITHUB_ENV` for the backend
+      # start below: keys live for one job, tokens expire in 15 minutes, so no
+      # long-lived secret is required.
       - name: Generate ephemeral JWT keys
         working-directory: be
         run: node scripts/gen-ci-jwt-keys.mjs >> "$GITHUB_ENV"
 
-      # Backend chạy thật vì spec cần dữ liệu thật: `/problem` render SSR từ
-      # `GET /api/problems`, và `vip-problems.spec.ts` cần BE trả 403
-      # `problem_vip_only` cho khách — đó mới là bằng chứng chính sách VIP có
-      # chạy. `main.ts` đọc `process.env.PORT ?? 4000`, nên ghim cổng ở đây.
+      # The backend runs for real because specs need real data: `/problem`
+      # server-renders from `GET /api/problems`, and `vip-problems.spec.ts`
+      # needs a real 403 `problem_vip_only` for guests — the actual proof the
+      # VIP policy runs. `main.ts` reads `process.env.PORT ?? 4000`, so the
+      # port is pinned here. No step-level `env:`: the backend intentionally
+      # inherits the job env (DATABASE_URL → `gocode`, same DB as migrate/seed
+      # above). Pinning another URL here would split BE and seed data across
+      # two databases.
       - name: Start backend
         working-directory: be
         run: |
           nohup pnpm start > "$RUNNER_TEMP/backend.log" 2>&1 &
           echo "started backend, log: $RUNNER_TEMP/backend.log"
 
-      # Chờ BE thật sự trả lời, không chỉ "cổng đã mở": endpoint này đi qua
-      # Prisma nên nó cũng chứng minh migrate + seed đã xong.
+      # Wait until the BE truly answers, not just "port is open": this endpoint
+      # goes through Prisma, so it also proves migrations + seeds completed.
       - name: Wait for backend
         run: |
           for i in $(seq 1 60); do
@@ -294,18 +356,19 @@ jobs:
             fi
             sleep 5
           done
-          echo "::error::backend khong len trong 300s"
+          echo "::error::backend did not start within 300s"
           tail -n 80 "$RUNNER_TEMP/backend.log" || true
           exit 1
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      # `next dev` đọc `PORT` (`.default(3000).env('PORT')`), nên ghim cổng FE ở
-      # đây. Cổng này khớp `baseURL` + `webServer.url` của `playwright.config.ts`
-      # và khớp `ORIGIN_FE` mà `vip-problems.spec.ts` dùng để kỳ vọng CORS.
-      # `reuseExistingServer: !process.env.CI` nên trong CI Playwright tự dựng
-      # FE; tuyệt đối không tự `next dev` thêm ở step này, sẽ tranh cổng 3000.
+      # `next dev` reads `PORT` (`.default(3000).env('PORT')`), so the FE port is
+      # pinned here. It must match `baseURL` + `webServer.url` in
+      # `playwright.config.ts` and the `ORIGIN_FE` that `vip-problems.spec.ts`
+      # asserts for CORS. `reuseExistingServer: !process.env.CI` lets Playwright
+      # boot FE itself in CI — never start a second `next dev` here or the two
+      # servers fight over port 3000.
       - name: Test (Playwright)
         env:
           PORT: '3000'
@@ -322,21 +385,23 @@ jobs:
             test-results/
           retention-days: 7
 
-  # Job 6: Telegram Notification
+  # ===========================================================================
+  # Notify — Telegram build summary (always runs)
+  # ===========================================================================
   notify:
     name: Telegram Notification
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [frontend, admin, backend, playwright]
     if: always()
-
     steps:
       - name: Check results
         id: check
         run: |
           if [ "${{ needs.frontend.result }}" != "success" ] || \
-           [ "${{ needs.admin.result }}" != "success" ] || \
-           [ "${{ needs.backend.result }}" != "success" ] || \
-           [ "${{ needs.playwright.result }}" != "success" ]; then
+             [ "${{ needs.admin.result }}" != "success" ] || \
+             [ "${{ needs.backend.result }}" != "success" ] || \
+             [ "${{ needs.playwright.result }}" != "success" ]; then
             echo "status=failure" >> $GITHUB_OUTPUT
           else
             echo "status=success" >> $GITHUB_OUTPUT

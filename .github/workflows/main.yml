@@ -1,0 +1,228 @@
+# ============================================================================
+# Main Pipeline — checks only (no deploys: Vercel Git integration deploys
+# automatically on push, so CI never touches Vercel).
+#
+# develop/main/tags/PR → quality → tests (+playwright, build in parallel)
+# ============================================================================
+name: Main Pipeline
+
+on:
+  push:
+    branches: [develop, main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read # least privilege: nothing here writes to the repo
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # --------------------------------------------------------------------------
+  # 1. Code Quality: lint + typecheck + dependency audit (fast, no infra)
+  # --------------------------------------------------------------------------
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            be/pnpm-lock.yaml
+            FE/pnpm-lock.yaml
+            admin/pnpm-lock.yaml
+      - name: Install (root, for shared tooling)
+        run: pnpm install --frozen-lockfile
+      - name: Lint all packages
+        # One step per package (not a loop): a failure names the package.
+        run: |
+          pnpm --dir FE exec next lint
+          pnpm --dir admin exec next lint
+          pnpm --dir be exec oxlint src/ test/ scripts/
+      - name: Typecheck all packages
+        run: |
+          pnpm --dir FE exec tsc --noEmit
+          pnpm --dir admin exec next typegen && pnpm --dir admin exec tsc --noEmit
+      - name: Dependency audit (fail on high+)
+        # Audit is advisory by nature; failing only on high/critical keeps the
+        # signal real. Review the output before tightening the threshold.
+        run: |
+          pnpm --dir be audit --audit-level=high
+          pnpm --dir FE audit --audit-level=high
+          pnpm --dir admin audit --audit-level=high
+
+  # --------------------------------------------------------------------------
+  # 2. Automated Tests: unit + API e2e + DB/SMTP integration (needs Postgres)
+  # --------------------------------------------------------------------------
+  tests:
+    name: Automated Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [quality] # don't burn DB minutes on code that doesn't lint
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gocode_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+      mailpit:
+        image: axllent/mailpit
+        ports: [1025:1025, 8025:8025]
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode_test
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      MAIL_FROM: no-reply@gocode.local
+      DISABLE_RATE_LIMIT: '1' # tests assert behavior, not throttling
+    defaults:
+      run:
+        working-directory: be
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          # FE tests run in this job too (override working-directory below),
+          # so both stores must be cached.
+          cache-dependency-path: |
+            be/pnpm-lock.yaml
+            FE/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma migrate deploy
+      - run: node scripts/seed-problems.ts
+      - run: node scripts/seed-users.ts
+      - name: Unit tests + coverage gates
+        run: pnpm test:cov # gates: lines 80 / branches 75 (vitest.config.ts)
+      - name: API e2e
+        run: pnpm test:e2e # guard-e2e-db.mjs refuses Neon; self-seeds catalog
+      - name: DB/SMTP integration
+        run: pnpm test:integration
+      - name: FE unit tests
+        working-directory: FE # overrides job default: FE suite needs no DB
+        run: pnpm install --frozen-lockfile && pnpm test
+
+  # --------------------------------------------------------------------------
+  # 3. Browser e2e (full stack: FE + BE + Postgres + Judge0)
+  # --------------------------------------------------------------------------
+  playwright:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [quality] # parallel with `tests`, not after it
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gocode
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/gocode
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      FRONTEND_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: '1'
+      DISABLE_RATE_LIMIT: '1'
+      USE_DATABASE_TEST: '10'
+      JUDGE0_URL: ${{ secrets.JUDGE0_URL }}
+      JUDGE0_API_TOKEN: ${{ secrets.JUDGE0_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            be/pnpm-lock.yaml
+            FE/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - working-directory: be
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec prisma migrate deploy
+          node scripts/seed-problems.ts
+          node scripts/seed-users.ts
+          node scripts/gen-ci-jwt-keys.mjs >> "$GITHUB_ENV"
+      - working-directory: FE
+        run: pnpm install --frozen-lockfile
+      # Backend runs with nohup (not a service container) so its stdout is
+      # capturable on failure; JWT keys come from $GITHUB_ENV above.
+      - name: Start backend
+        working-directory: be
+        run: |
+          nohup pnpm start > "$RUNNER_TEMP/backend.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS "http://localhost:4000/api/problems?limit=1" > /dev/null \
+              && { echo "backend ready"; exit 0; }
+            sleep 5
+          done
+          tail -n 80 "$RUNNER_TEMP/backend.log" || true
+          exit 1
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test --reporter="line,html" --trace=retain-on-failure
+        env:
+          PORT: '3000'
+          PLAYWRIGHT_HTML_OPEN: 'never'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # 4. Build Artifacts (compile proof + downloadable dists for audit)
+  # --------------------------------------------------------------------------
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [quality]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            be/pnpm-lock.yaml
+            FE/pnpm-lock.yaml
+            admin/pnpm-lock.yaml
+      - run: pnpm --dir be install --frozen-lockfile && pnpm --dir be build
+      - run: pnpm --dir FE install --frozen-lockfile && pnpm --dir FE build
+      - run: pnpm --dir admin install --frozen-lockfile && pnpm --dir admin exec next typegen && pnpm --dir admin build
+      # Vercel rebuilds on deploy; these artifacts exist for audit/download,
+      # not for deployment. Short retention: reproducible from git anytime.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-be
+          path: be/dist/
+          retention-days: 7

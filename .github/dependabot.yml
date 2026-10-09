@@ -1,0 +1,24 @@
+# Four independent lockfiles (no pnpm-workspace.yaml) → four pnpm entries.
+# Grouped + capped so Mondays bring at most a handful of PRs, not twenty.
+version: 2
+updates:
+  - package-ecosystem: "pnpm"
+    directories: ["/", "/be", "/FE", "/admin"]
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    reviewers: ["longdrache"] # TODO: replace with your team slug
+    labels: ["type/chore", "area/deps"]
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        # dev-deps merge into one PR; majors still arrive one by one each.
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["type/ci"]

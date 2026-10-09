@@ -140,17 +140,6 @@ describe('API (e2e)', () => {
     }
     // File này nằm ở be/test → seed script ở be/scripts, tính tuyệt đối từ
     // vị trí file để không phụ thuộc cwd gọi vitest.
-    const seedScript = path.join(
-      path.dirname(fileURLToPath(import.meta.url)),
-      '..',
-      'scripts',
-      'seed-problems.ts',
-    );
-    execFileSync('node', [seedScript], {
-      cwd: path.dirname(path.dirname(seedScript)),
-      stdio: 'inherit',
-      env: process.env,
-    });
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();

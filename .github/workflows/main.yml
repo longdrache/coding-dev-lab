@@ -45,6 +45,11 @@ jobs:
             admin/pnpm-lock.yaml
       - name: Install (root, for shared tooling)
         run: pnpm install --frozen-lockfile
+      - name: Install packages (lint/typecheck/audit run each package's own binaries)
+        run: |
+          pnpm --dir be install --frozen-lockfile
+          pnpm --dir FE install --frozen-lockfile
+          pnpm --dir admin install --frozen-lockfile
       - name: Lint all packages
         # One step per package (not a loop): a failure names the package.
         run: |
@@ -77,7 +82,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: gocode_test
+          POSTGRES_DB: gocode
         ports: [5432:5432]
         options: >-
           --health-cmd pg_isready --health-interval 10s
@@ -86,7 +91,7 @@ jobs:
         image: axllent/mailpit
         ports: [1025:1025, 8025:8025]
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gocode_
       SMTP_HOST: localhost
       SMTP_PORT: '1025'
       MAIL_FROM: no-reply@gocode.local

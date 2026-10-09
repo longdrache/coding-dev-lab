@@ -39,9 +39,10 @@ concurrency:
 
 env:
   NODE_VERSION: '22'
-  POSTGRES_IMAGE: postgres:16-alpine
-  POSTGRES_USER: postgres
-  POSTGRES_PASSWORD: postgres
+  # NOTE: keep only values usable in step/run/with contexts here. The `env`
+  # context does not exist when service containers are provisioned, so service
+  # image/ports/options/env must stay literal (centralizing them broke CI with
+  # a 0s workflow-level failure).
 
 jobs:
   # ===========================================================================
@@ -137,11 +138,11 @@ jobs:
     # tests write into it for real.
     services:
       postgres:
-        image: ${{ env.POSTGRES_IMAGE }}
+        image: postgres:16-alpine
         env:
-          POSTGRES_USER: ${{ env.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
-          POSTGRES_DB: gocode_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gocode
         ports:
           - 5432:5432
         options: >-
@@ -241,10 +242,10 @@ jobs:
     # A real Postgres in a container — never the Neon production database.
     services:
       postgres:
-        image: ${{ env.POSTGRES_IMAGE }}
+        image: postgres:16-alpine
         env:
-          POSTGRES_USER: ${{ env.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: gocode
         ports:
           - 5432:5432

@@ -616,8 +616,8 @@ pnpm --dir be test:e2e
 # FE unit
 pnpm --dir FE test
 
-# Playwright (needs BE :4000 + FE auto-started + seed-users in the DB the BE
-# serves; problem catalog self-seeds in e2e/global-setup.ts — no manual seed)
+# Playwright (needs BE :4000 + FE auto-started + seeded problems AND seed-users
+# in the DB the BE serves)
 pnpm test:e2e
 ```
 

@@ -256,10 +256,9 @@ jobs:
         working-directory: be
         run: pnpm exec prisma migrate deploy
 
-      # Không seed problems ở đây nữa: `e2e/global-setup.ts` tự seed (upsert)
-      # trước khi test nào chạy — local và CI cùng một đường, seed hỏng thì cả
-      # run rớt ngay ở setup. Seed users vẫn giữ (tài khoản sign-in cho e2e,
-      # không thuộc catalog bài tập).
+      - name: Seed problems
+        working-directory: be
+        run: node scripts/seed-problems.ts
       - name: Seed users
         working-directory: be
         run: node scripts/seed-users.ts

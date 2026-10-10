@@ -2,7 +2,9 @@
 # Grouped + capped so Mondays bring at most a handful of PRs, not twenty.
 version: 2
 updates:
-  - package-ecosystem: "pnpm"
+  # NOTE: dùng ecosystem `npm` (không phải `pnpm`): validator của GitHub từ
+  # chối key `pnpm`, còn updater npm vẫn đọc pnpm-lock.yaml ở các dir dưới.
+  - package-ecosystem: "npm"
     directories: ["/", "/be", "/FE", "/admin"]
     schedule:
       interval: "weekly"

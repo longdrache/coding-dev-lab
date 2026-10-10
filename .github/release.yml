@@ -1,0 +1,20 @@
+# Release-notes template for `gh release create --generate-notes`.
+# PRs are bucketed by OUR labels (type/*); unlabeled PRs fall into
+# "Other Changes". Keep PR titles in the form `area: what changed`
+# and the notes stay readable without hand-editing.
+changelog:
+  exclude:
+    # Dependency noise stays out of the highlights; still visible in
+    # the full compare link GitHub appends automatically.
+    authors: [dependabot]
+  categories:
+    - title: '🔒 Security'
+      labels: ['type/security']
+    - title: '🚀 Features'
+      labels: ['type/feature']
+    - title: '🐛 Bug Fixes'
+      labels: ['type/bug']
+    - title: '🧹 Chores, Refactors & CI'
+      labels: ['type/chore', 'type/refactor', 'type/ci', 'type/test', 'type/docs']
+    - title: '📦 Other Changes'
+      labels: ['*']

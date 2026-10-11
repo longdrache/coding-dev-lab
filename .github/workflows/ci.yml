@@ -7,7 +7,8 @@
 #   backend    — NestJS API:       lint + unit (coverage gates) + migrations +
 #                                  seeds + API e2e + DB/SMTP integration + build
 #   playwright — Browser e2e:      real FE + real BE + Postgres + Judge0
-#   notify     — Telegram summary of the four jobs above (always runs)
+#   sonar      — SonarQube SAST + coverage (needs lcov from frontend+backend)
+#   notify     — Telegram summary of the jobs above (always runs)
 #
 # Required repository secrets (Settings → Secrets → Actions):
 #   JUDGE0_URL, JUDGE0_API_TOKEN       — real Judge0 for the submit test
@@ -81,6 +82,18 @@ jobs:
       # This job used to skip tests, so the FE unit suite ran nowhere.
       - name: Test
         run: pnpm test
+
+      # lcov for SonarQube (downloaded by the `sonar` job below). Local
+      # `pnpm test` stays coverage-free on purpose; coverage runs only here.
+      - name: Coverage for Sonar
+        run: pnpm exec vitest run --coverage
+
+      - name: Upload coverage for Sonar
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: FE/coverage/lcov.info
+          retention-days: 3
 
       - name: Build
         run: pnpm build
@@ -226,6 +239,15 @@ jobs:
       # point at Neon by accident.
       - name: Test (integration)
         run: pnpm test:integration
+
+      # lcov for SonarQube (same `coverage` artifact the frontend job adds
+      # FE/coverage/lcov.info to — same name merges into one artifact).
+      - name: Upload coverage for Sonar
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: be/coverage/lcov.info
+          retention-days: 3
 
       - name: Build
         run: pnpm build
@@ -387,13 +409,47 @@ jobs:
           retention-days: 7
 
   # ===========================================================================
+  # SonarQube analysis (needs coverage lcov files from `frontend` + `backend`)
+  # ===========================================================================
+  sonar:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [backend, frontend]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history: Sonar attributes issues to authors via blame.
+          fetch-depth: 0
+
+      - name: Download coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: .
+
+      - name: Scan
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # Self-hosted SonarQube instead of SonarCloud? Add:
+          # SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: Quality Gate check
+        uses: sonarsource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ===========================================================================
   # Notify — Telegram build summary (always runs)
   # ===========================================================================
   notify:
     name: Telegram Notification
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, admin, backend, playwright]
+    needs: [frontend, admin, backend, playwright, sonar]
     if: always()
     steps:
       - name: Check results
@@ -402,6 +458,7 @@ jobs:
           if [ "${{ needs.frontend.result }}" != "success" ] || \
              [ "${{ needs.admin.result }}" != "success" ] || \
              [ "${{ needs.backend.result }}" != "success" ] || \
+             [ "${{ needs.sonar.result }}" != "success" ] || \
              [ "${{ needs.playwright.result }}" != "success" ]; then
             echo "status=failure" >> $GITHUB_OUTPUT
           else

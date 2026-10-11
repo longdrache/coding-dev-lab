@@ -19,7 +19,9 @@ export default defineConfig({
       DISABLE_RATE_LIMIT: '0', },
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json-summary', 'html'],
+      // `lcov` cho SonarQube (`sonar.javascript.lcov.reportPaths` trỏ
+      // `be/coverage/lcov.info`). Các reporter còn lại giữ nguyên cho dev.
+      reporter: ['text', 'json-summary', 'html', 'lcov'],
       
 
       /**

@@ -83,21 +83,6 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # lcov for SonarQube (downloaded by the `sonar` job below). Local
-      # `pnpm test` stays coverage-free on purpose; coverage runs only here.
-      - name: Coverage for Sonar
-        run: pnpm exec vitest run --coverage
-
-      - name: Upload coverage for Sonar
-        uses: actions/upload-artifact@v4
-        with:
-          # Riêng artifact `coverage-fe` (không dùng chung tên `coverage):
-          # upload-artifact v4 bẹt file lẻ về root, hai job cùng tên là file
-          # sau ghi đè file trước — từng mất lcov của BE đúng kiểu này.
-          name: coverage-fe
-          path: FE/coverage/lcov.info
-          retention-days: 3
-
       - name: Build
         run: pnpm build
 
@@ -431,12 +416,6 @@ jobs:
         with:
           name: coverage-be
           path: be/coverage
-
-      - name: Download coverage (FE)
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-fe
-          path: FE/coverage
 
       - name: Scan
         uses: SonarSource/sonarqube-scan-action@v8

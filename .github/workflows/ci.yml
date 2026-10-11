@@ -27,6 +27,13 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  schedule:
+    # Nightly full run at 03:00 Vietnam time (20:00 UTC, previous day).
+    # Catches drift in EXTERNAL infra (Judge0 VM asleep, Neon unreachable)
+    # that no code change would ever reveal — the suite is green on code the
+    # team didn't touch, then red at 9am with no suspect commit. Scheduled runs
+    # only fire on the default branch; Telegram notify reports failures as usual.
+    - cron: '0 20 * * *'
 
 permissions:
   contents: read

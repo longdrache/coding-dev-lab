@@ -91,7 +91,10 @@ jobs:
       - name: Upload coverage for Sonar
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
+          # Riêng artifact `coverage-fe` (không dùng chung tên `coverage):
+          # upload-artifact v4 bẹt file lẻ về root, hai job cùng tên là file
+          # sau ghi đè file trước — từng mất lcov của BE đúng kiểu này.
+          name: coverage-fe
           path: FE/coverage/lcov.info
           retention-days: 3
 
@@ -240,12 +243,12 @@ jobs:
       - name: Test (integration)
         run: pnpm test:integration
 
-      # lcov for SonarQube (same `coverage` artifact the frontend job adds
-      # FE/coverage/lcov.info to — same name merges into one artifact).
+      # lcov cho SonarQube: artifact riêng `coverage-be` (xem comment ở job
+      # frontend: chung tên là mất file).
       - name: Upload coverage for Sonar
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
+          name: coverage-be
           path: be/coverage/lcov.info
           retention-days: 3
 
@@ -426,8 +429,14 @@ jobs:
       - name: Download coverage
         uses: actions/download-artifact@v4
         with:
-          name: coverage
-          path: .
+          name: coverage-be
+          path: be/coverage
+
+      - name: Download coverage (FE)
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-fe
+          path: FE/coverage
 
       - name: Scan
         uses: SonarSource/sonarqube-scan-action@v8

@@ -403,7 +403,7 @@ jobs:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [backend, frontend]
+    needs: [backend]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -147,10 +147,10 @@ Local webhooks need forwarding to the BE (`stripe listen --forward-to localhost:
 
 ### Infrastructure
 
-- **Package Manager:** pnpm 10.15 (workspace)
+- **Package Manager:** pnpm 10.15 (3 independent installs — root, `be`, `FE`, `admin` — no workspace file)
 - **Deployment:** Vercel (3 separate projects: FE, Admin, BE)
 - **Containerization:** Docker Compose (PostgreSQL + Judge0 + Mailpit)
-- **Testing:** Vitest 4, Supertest, Playwright 16, Mailpit (local SMTP catcher), k6
+- **Testing:** Vitest 4, Supertest, Playwright 1.63, Mailpit (local SMTP catcher), k6
 - **Linting:** oxlint
 
 ---

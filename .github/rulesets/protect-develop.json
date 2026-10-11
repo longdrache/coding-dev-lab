@@ -2,10 +2,21 @@
   "name": "protect-develop",
   "enforcement": "active",
   "target": "branch",
-  "conditions": { "ref_name": { "include": ["refs/heads/develop"], "exclude": [] } },
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/develop"
+      ],
+      "exclude": []
+    }
+  },
   "rules": [
-    { "type": "deletion" },
-    { "type": "non_fast_forward" },
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
     {
       "type": "pull_request",
       "parameters": {
@@ -18,10 +29,16 @@
       "type": "required_status_checks",
       "parameters": {
         "required_checks": [
-          { "context": "Code Quality" },
-          { "context": "Automated Tests" }
+          {
+            "context": "Code Quality",
+            "integration_id": 15368
+          },
+          {
+            "context": "Automated Tests",
+            "integration_id": 15368
+          }
         ],
-        "strict": true
+        "strict_required_status_checks_policy": true
       }
     }
   ]

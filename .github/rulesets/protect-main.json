@@ -2,11 +2,24 @@
   "name": "protect-main",
   "enforcement": "active",
   "target": "branch",
-  "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main"
+      ],
+      "exclude": []
+    }
+  },
   "rules": [
-    { "type": "deletion" },
-    { "type": "non_fast_forward" },
-    { "type": "required_linear_history" },
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "required_linear_history"
+    },
     {
       "type": "pull_request",
       "parameters": {
@@ -21,12 +34,24 @@
       "type": "required_status_checks",
       "parameters": {
         "required_checks": [
-          { "context": "Code Quality" },
-          { "context": "Automated Tests" },
-          { "context": "Playwright e2e" },
-          { "context": "Build Artifacts" }
+          {
+            "context": "Code Quality",
+            "integration_id": 15368
+          },
+          {
+            "context": "Automated Tests",
+            "integration_id": 15368
+          },
+          {
+            "context": "Playwright e2e",
+            "integration_id": 15368
+          },
+          {
+            "context": "Build Artifacts",
+            "integration_id": 15368
+          }
         ],
-        "strict": true
+        "strict_required_status_checks_policy": true
       }
     }
   ]

@@ -231,7 +231,7 @@ jobs:
       # lcov cho SonarQube: artifact riêng `coverage-be` (xem comment ở job
       # frontend: chung tên là mất file).
       - name: Upload coverage for Sonar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-be
           path: be/coverage/lcov.info
@@ -388,7 +388,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: |

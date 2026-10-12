@@ -265,7 +265,7 @@ jobs:
       # CVE chưa có fix mà fail thì team không làm gì được ngoài gắn ignore —
       # chỉ gây noise và dạy team bơ cảnh báo bảo mật.
       - name: Scan dependencies
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .

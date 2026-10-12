@@ -7,6 +7,7 @@
 #   backend    — NestJS API:       lint + unit (coverage gates) + migrations +
 #                                  seeds + API e2e + DB/SMTP integration + build
 #   playwright — Browser e2e:      real FE + real BE + Postgres + Judge0
+#   trivy      — Dependency CVEs:   Trivy fs scan over all pnpm lockfiles
 #   sonar      — SonarQube SAST + coverage (needs lcov from frontend+backend)
 #   notify     — Telegram summary of the jobs above (always runs)
 #
@@ -248,6 +249,33 @@ jobs:
         run: pnpm build
 
   # ===========================================================================
+  # Trivy dependency scan (fails on HIGH/CRITICAL CVEs that have a fix)
+  # ===========================================================================
+  trivy:
+    name: Trivy dependency scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Quét CVE trong dependencies qua mọi pnpm-lock.yaml (root + be + FE +
+      # admin). Không cần install trước: Trivy đọc lockfile trực tiếp.
+      # `ignore-unfixed`: chỉ fail khi CVE đã có bản vá mà team chưa nâng cấp.
+      # CVE chưa có fix mà fail thì team không làm gì được ngoài gắn ignore —
+      # chỉ gây noise và dạy team bơ cảnh báo bảo mật.
+      - name: Scan dependencies
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: '1'
+
+  # ===========================================================================
   # Playwright e2e
   # ===========================================================================
   playwright:
@@ -444,7 +472,7 @@ jobs:
     name: Telegram Notification
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, admin, backend, playwright, sonar]
+    needs: [frontend, admin, backend, playwright, trivy, sonar]
     if: always()
     steps:
       - name: Check results
@@ -454,6 +482,7 @@ jobs:
              [ "${{ needs.admin.result }}" != "success" ] || \
              [ "${{ needs.backend.result }}" != "success" ] || \
              [ "${{ needs.sonar.result }}" != "success" ] || \
+             [ "${{ needs.trivy.result }}" != "success" ] || \
              [ "${{ needs.playwright.result }}" != "success" ]; then
             echo "status=failure" >> $GITHUB_OUTPUT
           else

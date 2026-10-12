@@ -1,14 +1,21 @@
 import { Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
 import { ActivityService } from './activity.service.ts';
 
+@ApiTags('activity')
+@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller('api/activity')
 @UseGuards(AuthGuard)
 export class ActivityController {
   constructor(private readonly activity: ActivityService) {}
 
   @Post('login')
+  @ApiOperation({ summary: 'Ghi nhận lượt đăng nhập + điểm danh ngày (kèm IP/quốc gia)' })
+  @ApiResponse({ status: 201, description: 'Trả bản đồ hoạt động `{ map }` sau khi ghi.' })
+  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
   async login(@Req() req: AuthenticatedRequest) {
     const userId = Number(req.user!.userId);
     const headers = (req as unknown as { headers?: Record<string, string | string[] | undefined> }).headers ?? {};
@@ -24,6 +31,9 @@ export class ActivityController {
   }
 
   @Post('run')
+  @ApiOperation({ summary: 'Ghi nhận một lượt chạy code (tăng count hôm nay)' })
+  @ApiResponse({ status: 201, description: 'Trả bản đồ hoạt động `{ map }` sau khi ghi.' })
+  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
   async run(@Req() req: AuthenticatedRequest) {
     const userId = Number(req.user!.userId);
     const map = await this.activity.recordRun(userId);
@@ -31,6 +41,9 @@ export class ActivityController {
   }
 
   @Get('me')
+  @ApiOperation({ summary: 'Lấy bản đồ hoạt động của chính mình (heatmap/streak)' })
+  @ApiResponse({ status: 200, description: 'Bản đồ `{ ngày: số lượt }`.' })
+  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
   async me(@Req() req: AuthenticatedRequest) {
     const userId = Number(req.user!.userId);
     const map = await this.activity.getMap(userId);

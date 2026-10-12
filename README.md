@@ -388,6 +388,12 @@ erDiagram
 
 ## API
 
+> **Interactive docs:** [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs)
+> (Swagger UI, 40 public endpoints — auth, problems, submissions, progress,
+> premium, judge0, views, presence, activity, Q&A). Admin endpoints are
+> intentionally excluded. Click **Authorize** and paste an access token as
+> Bearer to try authenticated calls (most routes also accept the session cookie).
+
 ### Authentication (`/api/auth`)
 
 | Method | Endpoint                   | Auth   | Description                   |
@@ -620,6 +626,65 @@ pnpm --dir FE test
 # in the DB the BE serves)
 pnpm test:e2e
 ```
+
+---
+
+## Security
+
+- **Trivy gate (CI `trivy` job):** `fs` scan over every lockfile on each push/PR. Fails on HIGH/CRITICAL **with a fix available** (`ignore-unfixed: true` — a CVE with no fix can't be acted on; failing on it only teaches the team to ignore red CI).
+- **Dependabot security updates** stay enabled at repo level (PRs that patch a CVE). Scheduled version-bump PRs are disabled — they produced failing noise instead of fixes.
+- **Overrides live in `be/package.json` (`pnpm.overrides`)**, each documented for removal at Prisma 8. No `.trivyignore` baseline: every current HIGH/CRITICAL has a real fix, so nothing is waived.
+
+### Dependency CVEs fixed (2026-10-13, commit `dc7ee3b`)
+
+24 findings across 4 lockfiles (+ 2 phantom `package-lock.json` ghosts, deleted — the repo is pnpm-only) → **0**. Nine unique CVEs, three of them CRITICAL:
+
+| CVE | Severity | Package (via) | Fix | How fixed |
+|---|---|---|---|---|
+| GHSA-vcvr-r3jv-pc5j — Next.js RCE (`next/og` ImageResponse) | CRITICAL | `next` 16.3.4 / 16.3.5 | 16.3.8 | direct bump (FE + admin) |
+| CVE-2026-94483 — Next.js SSRF (Image) | HIGH | `next` | 16.3.8 | same bump |
+| CVE-2026-90711 — proxy-addr IP spoofing | CRITICAL | `proxy-addr` 2.0.7 (via express) | 2.0.8 | `pnpm update` (FE) |
+| CVE-2026-102422 — shell-quote command execution | CRITICAL | `shell-quote` 1.10.0 (via react-devtools-core) | 1.12.0 | `pnpm update` (FE) |
+| GHSA-wq5f-xc86-pv6w — sharp/librsvg | HIGH | `sharp` 0.35.4 (via next) | 0.35.5 | `pnpm update` (FE + admin) |
+| CVE-2026-93749 — source-map-js DoS | HIGH | `source-map-js` 1.2.1 | 1.2.2 | `pnpm update` (FE + admin) |
+| CVE-2026-104850 — MCP client | HIGH | `@modelcontextprotocol/sdk` 1.30.0 (via shadcn CLI) | 1.32.1 | `pnpm update` (FE + admin) |
+| CVE-2026-40345 — deepmerge-ts stack exhaustion | HIGH | `deepmerge-ts` 7.1.5 (via `@prisma/config`) | 8.0.0 | `pnpm.overrides` — 7.10.0 is the newest Prisma v7, no compatible path |
+| GHSA-3f6p-5ww8-9rcr — mysql2 auth-plugin downgrade | HIGH | `mysql2` 3.15.3 (via `prisma` CLI/Studio) | 3.22.0 | same overrides block, same reason |
+
+Side effect worth knowing: the proxy-addr fix normalizes IPv4-mapped IPv6 (`::ffff:127.0.0.1` → `127.0.0.1`), so `be/src/proxy.spec.ts` CONTROL now asserts the normalized form. Intent unchanged — still socket IP, XFF still ignored.
+
+### Production hardening (Oracle Cloud VPS)
+
+CI scanning (Trivy) covers **code dependencies pre-merge**; the running VPS needs its own layer. Threat → remediation mapping for this project's production box:
+
+| Threat | Remediation in place |
+|---|---|
+| Judge0 exposed publicly (anyone burns your CPU grading their code) | nginx reverse proxy in front of Judge0 `:2358`; firewall/security list blocks direct port access — only 80/443 reach the VPS. BE sends `JUDGE0_API_TOKEN` as `X-Auth-Token` (`be/src/judge0/judge0.service.ts:144`), nginx rejects requests without it. ⚠️ Empty token = fail-open public Judge0 (by design, for local dev) — production must always set it |
+| Traffic sniffing / credential theft on login, Stripe, JWT cookies | TLS terminates at nginx, certificates from Let's Encrypt (certbot + auto-renew). HTTP → HTTPS redirect; HSTS after confirming renewals are stable |
+| Unknown open ports / outdated host services / weak TLS config | Periodic **OpenVAS** scans against the VPS. Findings flow back as work items: fix → commit → Trivy gate + full CI must stay green |
+| New CVEs in dependencies after deploy | Trivy CI gate (above) blocks merging new vulnerable deps; Dependabot security updates propose patches for newly published CVEs |
+
+Example nginx guard for Judge0 (adapt hostnames — this is a template, not the live config):
+
+```nginx
+# Only loopback/upstream may talk to Judge0 directly; everyone else goes
+# through this proxy, which demands the shared token.
+server {
+  listen 443 ssl;
+  server_name judge0.example.com;
+
+  ssl_certificate     /etc/letsencrypt/live/judge0.example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/judge0.example.com/privkey.pem;
+
+  location / {
+    if ($http_x_auth_token != "replace-me-with-JUDGE0_API_TOKEN") { return 403; }
+    proxy_pass http://127.0.0.1:2358;
+    proxy_set_header Host $host;
+  }
+}
+```
+
+Operational checklist after each OpenVAS run: close what shouldn't listen, upgrade what the scan flags, re-scan to confirm, record residual risk with a review date (same discipline as the `.trivyignore`-free policy above — accepted risks are written down, never silent).
 
 ---
 

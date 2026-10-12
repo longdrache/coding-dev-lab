@@ -1,24 +1,12 @@
-# Four independent lockfiles (no pnpm-workspace.yaml) → four pnpm entries.
-# Grouped + capped so Mondays bring at most a handful of PRs, not twenty.
+# Security-only mode: NO version-update entries on purpose. Dependabot then
+# opens PRs only for CVEs (repo Settings → Code security → Dependabot security
+# updates, already enabled) instead of bumping every package weekly.
+#
+# The `github-actions` entry below is the exception: Actions have no
+# security-update channel, so without it CI actions (checkout, trivy-action,
+# …) would rot forever. Weekly, capped, labelled `type/ci` — cheap to review.
 version: 2
 updates:
-  # NOTE: dùng ecosystem `npm` (không phải `pnpm`): validator của GitHub từ
-  # chối key `pnpm`, còn updater npm vẫn đọc pnpm-lock.yaml ở các dir dưới.
-  - package-ecosystem: "npm"
-    directories: ["/", "/be", "/FE", "/admin"]
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "04:00"
-      timezone: "Asia/Ho_Chi_Minh"
-    open-pull-requests-limit: 5
-    reviewers: ["longdrache"] # TODO: replace with your team slug
-    labels: ["type/chore", "area/deps"]
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        # dev-deps merge into one PR; majors still arrive one by one each.
-        update-types: ["minor", "patch"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

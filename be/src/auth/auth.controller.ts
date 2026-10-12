@@ -13,6 +13,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiCookieAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '../common/throttle.guard.ts';
 import { AuthService, REFRESH_TTL_MS } from './auth.service.ts';
 import { AuthGuard } from './auth.guard.ts';
@@ -183,6 +192,7 @@ async function signedInUserId(req: CookieRequest, auth: AuthService): Promise<nu
  * nằm ở xác minh email + bcrypt + giới hạn 10 phiên (`MAX_SESSIONS`), không nằm ở
  * con số này.
  */
+@ApiTags('auth')
 @Controller('api/auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -192,6 +202,21 @@ export class AuthController {
   /** Chỉ tạo tài khoản chưa xác minh và gửi mã, **không** cấp phiên. */
   @Post('register')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Đăng ký: tạo tài khoản + gửi link xác nhận (không cấp phiên)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email', 'password'],
+      properties: {
+        email: { type: 'string', format: 'email', example: 'hs@gocode.vn' },
+        password: { type: 'string', minLength: 8, example: 'matkhau123' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: '`{ message }` — link đã gửi, kiểm tra hộp thư.' })
+  @ApiResponse({ status: 400, description: 'Email sai dạng hoặc mật khẩu dưới 8 ký tự.' })
+  @ApiResponse({ status: 409, description: 'Email đã có tài khoản (thử đăng nhập hoặc gửi lại link).' })
+  @ApiResponse({ status: 429, description: 'Quá 20 req/giờ/IP.' })
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   register(@Req() req: AuthenticatedRequest, @Body() b: { email?: unknown; password?: unknown }) {
     return this.auth.register(
@@ -208,6 +233,11 @@ export class AuthController {
    * luôn ra `undefined` và không mã xác nhận nào xác minh được.
    */
   @Get('verify')
+  @ApiOperation({ summary: 'Mở link xác minh email (link trong mail trỏ tới FE, FE gọi vào đây)' })
+  @ApiQuery({ name: 'token', type: String, description: 'Mã 64 hex trong link mail, hạn 24 giờ, dùng một lần.' })
+  @ApiResponse({ status: 200, description: '`{ user, expiresIn }` + set cookie phiên — mở link là vào được luôn.' })
+  @ApiResponse({ status: 400, description: 'Mã sai, hết hạn hoặc đã dùng.' })
+  @ApiResponse({ status: 429, description: 'Quá 20 req/phút/IP.' })
   @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
   async verify(
     @Query('token') token: unknown,
@@ -224,6 +254,20 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Đăng nhập email + mật khẩu, cấp cookie phiên' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email', 'password'],
+      properties: {
+        email: { type: 'string', format: 'email', example: 'hs@gocode.vn' },
+        password: { type: 'string', example: 'matkhau123' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: '`{ user, expiresIn }` + set cookie `session`/`refresh`.' })
+  @ApiResponse({ status: 401, description: 'Sai email/mật khẩu, hoặc email chưa xác minh (câu riêng để hiện nút gửi lại link).' })
+  @ApiResponse({ status: 429, description: 'Quá 30 req/15 phút/IP.' })
   @Throttle({ default: { limit: 30, ttl: 15 * 60 * 1000 } })
   async login(
     @Req() req: AuthenticatedRequest,
@@ -245,6 +289,11 @@ export class AuthController {
    */
   @Post('refresh')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Làm mới phiên bằng cookie `refresh` (không cần access token còn hạn)' })
+  @ApiCookieAuth()
+  @ApiResponse({ status: 200, description: '`{ user, expiresIn }` + cookie mới; token chết thì trả câu mời đăng nhập lại.' })
+  @ApiResponse({ status: 401, description: 'Không có phiên để làm mới.' })
+  @ApiResponse({ status: 429, description: 'Quá 100 req/phút.' })
   // Trước đây khai 120/phút nhưng đó là **code chết**: `express-rate-limit` chặn
   // cả dựng ở 100/phút cho mọi route nên 120 không bao giờ có tác dụng. Gỡ
   // middleware rồi thì con số này sẽ thành số thật và **nới** ngưỡng so với hành vi
@@ -278,6 +327,9 @@ export class AuthController {
    */
   @Post('logout')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Đăng xuất thiết bị hiện tại (xoá phiên + cookie)' })
+  @ApiCookieAuth()
+  @ApiResponse({ status: 200, description: '`{ ok: true }` — không có phiên cũng vẫn 200.' })
   async logout(@Req() req: CookieRequest, @Res({ passthrough: true }) res: CookieResponse) {
     const token = req.refreshToken ?? readRefresh(req);
     if (token) await this.auth.logout(token);
@@ -287,6 +339,11 @@ export class AuthController {
 
   @Post('logout-all')
   @HttpCode(200)
+  @ApiBearerAuth()
+  @ApiCookieAuth()
+  @ApiOperation({ summary: 'Đăng xuất mọi thiết bị (xoá hết phiên, tối đa 10)' })
+  @ApiResponse({ status: 200, description: '`{ ok: true }`.' })
+  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
   @UseGuards(AuthGuard)
   async logoutAll(@Req() req: AuthenticatedRequest) {
     // `AuthenticatedUser.userId` là **chuỗi** còn `logoutAll` nhận `number`.
@@ -305,6 +362,16 @@ export class AuthController {
    */
   @Post('forgot-password')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Xin link đặt lại mật khẩu (trả cùng một câu cho mọi email để chống dò)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email'],
+      properties: { email: { type: 'string', format: 'email', example: 'hs@gocode.vn' } },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Câu xác nhận chung — không tiết lộ email có tồn tại không.' })
+  @ApiResponse({ status: 429, description: 'Quá 20 req/giờ/IP (+ cooldown 1 giờ/tài khoản ở service).' })
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   forgot(@Body() b: { email?: unknown }) {
     // Chuyển tiếp nguyên văn: mọi quyết định về việc có tồn tại hay không nằm ở
@@ -323,6 +390,16 @@ export class AuthController {
    */
   @Post('resend-verification')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Gửi lại link xác nhận (trả cùng một câu cho mọi email để chống dò)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email'],
+      properties: { email: { type: 'string', format: 'email', example: 'hs@gocode.vn' } },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Câu xác nhận chung — kể cả email không tồn tại hay đã xác minh.' })
+  @ApiResponse({ status: 429, description: 'Quá 20 req/giờ/IP (+ cooldown 1 giờ/tài khoản ở service).' })
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   resend(@Req() req: AuthenticatedRequest, @Body() b: { email?: unknown }) {
     return this.auth.resendVerification(
@@ -339,6 +416,20 @@ export class AuthController {
    */
   @Post('reset-password')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Đặt mật khẩu mới bằng mã trong mail (mã 1 giờ, dùng một lần)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['token', 'password'],
+      properties: {
+        token: { type: 'string', description: 'Mã 64 hex trong link mail.' },
+        password: { type: 'string', minLength: 8, example: 'matkhaumoi123' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Đã đổi mật khẩu — đăng nhập lại.' })
+  @ApiResponse({ status: 400, description: 'Mật khẩu ngắn, hoặc mã sai/hết hạn/đã dùng.' })
+  @ApiResponse({ status: 429, description: 'Quá 20 req/giờ/IP.' })
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   async reset(@Body() b: { token?: unknown; password?: unknown }) {
     const ok = await this.auth.resetPassword(String(b?.token ?? ''), String(b?.password ?? ''));
@@ -355,6 +446,10 @@ export class AuthController {
    * cần nhất. `ThrottleGuard` thì có: đây là cửa để bị dùng để spam Google.
    */
   @Get('oauth/google/start')
+  @ApiOperation({ summary: 'Bắt đầu đăng nhập Google: phát state + PKCE rồi đẩy sang Google' })
+  @ApiQuery({ name: 'redirect_to', required: false, type: String, description: 'Đích sau login (chỉ đường nội bộ, ngoài bị ép về /).' })
+  @ApiResponse({ status: 302, description: 'Redirect sang accounts.google.com (kèm set cookie state chống CSRF).' })
+  @ApiResponse({ status: 429, description: 'Quá 20 req/giờ/IP.' })
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   async googleStart(@Query('redirect_to') redirectTo: unknown, @Res() res: CookieResponse) {
     // Chưa cấu hình thì đừng đẩy người dùng sang trang lỗi của Google với
@@ -424,6 +519,11 @@ export class AuthController {
    * — `needs-password` và `conflict` không được gộp vào nhau.
    */
   @Get('oauth/google/callback')
+  @ApiOperation({ summary: 'Google gọi về sau khi user đồng ý: đổi code lấy phiên (mọi nhánh đều 302)' })
+  @ApiQuery({ name: 'code', required: false, type: String, description: 'Authorization code một lần của Google.' })
+  @ApiQuery({ name: 'state', required: false, type: String, description: 'Nonce 64 hex phải khớp cookie state (chống login CSRF).' })
+  @ApiQuery({ name: 'error', required: false, type: String, description: 'Google báo user bấm Hủy.' })
+  @ApiResponse({ status: 302, description: 'Về FE: đích đã lưu (ok) hoặc `/sign-in?oauth=<cancelled|expired|failed|conflict|unverified|needs-password>`.' })
   @Throttle({ default: { limit: 20, ttl: 60 * 60 * 1000 } })
   async googleCallback(
     @Req() req: CookieRequest,
@@ -514,6 +614,11 @@ export class AuthController {
   }
 
   @Get('me')
+  @ApiBearerAuth()
+  @ApiCookieAuth()
+  @ApiOperation({ summary: 'Lấy profile của chính mình từ phiên' })
+  @ApiResponse({ status: 200, description: '`{ user, expiresIn }`.' })
+  @ApiResponse({ status: 401, description: 'Phiên không hợp lệ.' })
   @UseGuards(AuthGuard)
   async me(@Req() req: AuthenticatedRequest) {
     const user = await this.auth.me(Number(req.user!.userId));

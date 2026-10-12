@@ -9,6 +9,15 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiCookieAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '../common/throttle.guard.ts';
 import { ProblemsService } from './problems.service.ts';
 import { AuthGuard } from '../auth/auth.guard.ts';
@@ -34,6 +43,9 @@ const PUBLIC_LIST_CACHE = 'public, max-age=0, s-maxage=60, stale-while-revalidat
  */
 const PRIVATE_CACHE = 'private, no-store';
 
+@ApiTags('problems')
+@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller('api/problems')
 export class ProblemsController {
   constructor(private readonly problems: ProblemsService) {}
@@ -59,6 +71,8 @@ export class ProblemsController {
    * nhánh có mô tả vốn đã không nằm trong cache chung.
    */
   @Get()
+  @ApiOperation({ summary: 'Danh sách bài đã publish (bài VIP chỉ hiện tiêu đề + cờ khóa với người không quyền)' })
+  @ApiResponse({ status: 200, description: 'Mảng bài; mô tả đầy đủ chỉ có với người mở được bài VIP.' })
   @UseGuards(OptionalAuthGuard)
   async list(
     @Req() request: AuthenticatedRequest,
@@ -82,6 +96,11 @@ export class ProblemsController {
    * hành vi cũ (Nest ghi header trước khi gọi handler).
    */
   @Get(':slug')
+  @ApiOperation({ summary: 'Chi tiết một bài (kèm đề + test mẫu; bài VIP cần role, test ẩn không bao giờ trả)' })
+  @ApiParam({ name: 'slug', type: String, example: 'two-sum' })
+  @ApiResponse({ status: 200, description: 'Đề đầy đủ (đã cắt test ẩn).' })
+  @ApiResponse({ status: 403, description: 'Bài VIP mà role không đủ (`problem_vip_only`).' })
+  @ApiResponse({ status: 404, description: 'Slug không tồn tại hoặc chưa publish.' })
   @UseGuards(OptionalAuthGuard)
   async get(
     @Param('slug') slug: string,
@@ -102,6 +121,24 @@ export class ProblemsController {
   }
 
   @Post(':slug/submit')
+  @ApiOperation({ summary: 'Chấm bài trên test ẩn (tối đa 10 test, fail-fast, lưu lịch sử + solved)' })
+  @ApiParam({ name: 'slug', type: String, example: 'two-sum' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['languageId', 'sourceCode'],
+      properties: {
+        languageId: { type: 'number', example: 71, description: '71 = Python 3.' },
+        sourceCode: { type: 'string', example: 'print(1)' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: '`{ passed, passedCount, totalCount, failedIndex, status }`.' })
+  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiResponse({ status: 403, description: 'Bài VIP mà role không đủ (chặn trước khi gọi Judge0).' })
+  @ApiResponse({ status: 404, description: 'Slug không tồn tại, thiếu languageId/sourceCode, hoặc bài chưa có test ẩn.' })
+  @ApiResponse({ status: 429, description: 'Quá 100 req/phút.' })
+  @ApiResponse({ status: 502, description: 'Judge0 không reachable.' })
   @UseGuards(AuthGuard)
   @Throttle({ default: { limit: 100, ttl: 60_000 } })
   async submit(

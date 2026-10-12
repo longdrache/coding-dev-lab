@@ -1,14 +1,32 @@
 import { BadRequestException, Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '../common/throttle.guard.ts';
 import { QnaService } from './qna.service.ts';
 import { AuthGuard } from '../auth/auth.guard.ts';
 import type { AuthenticatedRequest } from '../auth/auth.types.ts';
 
+@ApiTags('qna')
 @Controller('api/qna')
 export class QnaController {
   constructor(private readonly qna: QnaService) {}
 
   @Post()
+  @ApiOperation({ summary: 'Gửi câu hỏi hỗ trợ (khách vãng lai được, 5 req/phút)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['name', 'email', 'question'],
+      properties: {
+        name: { type: 'string', maxLength: 100, example: 'An' },
+        email: { type: 'string', format: 'email', maxLength: 254, example: 'an@example.com' },
+        question: { type: 'string', maxLength: 2000, example: 'Làm sao nộp bài Python?' },
+        message: { type: 'string', description: 'Bí danh của `question` (client cũ).' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: '`{ ok: true, id }`.' })
+  @ApiResponse({ status: 400, description: 'Thiếu tên/email/câu hỏi hoặc email sai dạng.' })
+  @ApiResponse({ status: 429, description: 'Quá 5 req/phút.' })
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async create(
     @Body() body: { name: string; email: string; question: string; message?: string },
@@ -39,6 +57,11 @@ export class QnaController {
   }
 
   @Get()
+  @ApiBearerAuth()
+  @ApiCookieAuth()
+  @ApiOperation({ summary: 'Liệt kê câu hỏi (cần đăng nhập — dùng cho admin)' })
+  @ApiResponse({ status: 200, description: 'Danh sách câu hỏi.' })
+  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
   @UseGuards(AuthGuard)
   async list() {
     return this.qna.findAll();

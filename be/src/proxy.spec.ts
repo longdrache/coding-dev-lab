@@ -56,7 +56,11 @@ describe('trust proxy', () => {
       .get('/ip')
       .set('X-Forwarded-For', '203.0.113.9, 70.41.3.18');
     expect(res.body.ip).not.toBe('203.0.113.9');
-    expect(res.body.ip).toBe('::ffff:127.0.0.1');
+    // `proxy-addr@2.0.8` (vá CVE-2026-90711 IP spoofing) chuẩn
+    // hóa IPv4-map (`::ffff:127.0.0.1` → `127.0.0.1`) để so sánh trust không
+    // lách được bằng dạng tương đương. Vẫn là IP socket, XFF vẫn bị bỏ qua —
+    // ý định của CONTROL không đổi, chỉ dạng chuỗi đổi theo bản vá bảo mật.
+    expect(res.body.ip).toBe('127.0.0.1');
   });
 
   it('chỉ một X-Forwarded-For cũng ra IP client', async () => {

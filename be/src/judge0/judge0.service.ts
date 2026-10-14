@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
@@ -75,6 +76,8 @@ dotenv.config();
 
 @Injectable()
 export class Judge0Service {
+  private readonly logger = new Logger(Judge0Service.name);
+
   private get baseUrl() {
     return (process.env.JUDGE0_URL || 'http://localhost:2358').replace(
       /\/$/,
@@ -143,6 +146,11 @@ export class Judge0Service {
     // Không có token = Judge0 public, ai cũng chấm ké được.
     const apiToken = process.env.JUDGE0_API_TOKEN?.trim();
 
+    // Đo latency từng cuộc gọi BE→Judge0: submit treo/timeout là chỗ đau
+    // nhất của hệ thống (VM Judge0 yếu), có ms trong log mới biết chậm ở
+    // đâu thay vì đoán. Thành công log `debug` (tránh spam), thất bại log
+    // `warn` kèm ms để phân biệt "Judge0 chết" với "Judge0 chậm".
+    const startedAt = Date.now();
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
         ...options,
@@ -154,7 +162,9 @@ export class Judge0Service {
           ...options?.headers,
         },
       });
+      this.logger.debug(`Judge0 ${path} ${response.status} ${Date.now() - startedAt}ms`);
     } catch {
+      this.logger.warn(`Judge0 ${path} unreachable sau ${Date.now() - startedAt}ms`);
       throw new BadGatewayException(
         `Không thể kết nối tới Judge0 tại ${this.baseUrl}`,
       );

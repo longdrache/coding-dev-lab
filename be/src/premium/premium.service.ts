@@ -272,9 +272,8 @@ export class PremiumService implements OnModuleInit {
         webhookSecret,
       );
     } catch (err) {
-      console.error(
-        '❌ Lỗi xác thực Stripe signature:',
-        err instanceof Error ? err.message : err,
+      this.logger.error(
+        `Lỗi xác thực Stripe signature: ${err instanceof Error ? err.message : String(err)}`,
       );
       throw new BadRequestException(
         `Webhook signature verification failed: ${
@@ -283,7 +282,7 @@ export class PremiumService implements OnModuleInit {
       );
     }
 
-    console.log(`🔔 Stripe event nhận được: ${event.type}`);
+    this.logger.log(`Stripe event nhận được: ${event.type} (${event.id})`);
 
     // Idempotency: Stripe retry cùng event.id khi timeout — bỏ qua nếu đã xử lý
     try {
@@ -302,8 +301,8 @@ export class PremiumService implements OnModuleInit {
         session.metadata?.userId ?? session.client_reference_id,
       );
       if (!userId) {
-        console.warn(
-          '⚠️ Checkout session hoàn tất nhưng không có userId hợp lệ (có thể là event test từ stripe trigger)',
+        this.logger.warn(
+          'Checkout session hoàn tất nhưng không có userId hợp lệ (có thể là event test từ stripe trigger)',
         );
         return { received: true, warning: 'Thiếu userId' };
       }
@@ -314,9 +313,7 @@ export class PremiumService implements OnModuleInit {
       const customerId =
         typeof session.customer === 'string' ? session.customer : undefined;
       await this.setUserToVip(userId, plan, { stripeCustomerId: customerId });
-      console.log(
-        `✅ Đã nâng VIP thành công cho user: ${userId}, gói: ${plan}`,
-      );
+      this.logger.log(`Đã nâng VIP thành công cho user: ${userId}, gói: ${plan}`);
     }
 
     if (event.type === 'invoice.payment_failed') {

@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Headers,
+  Logger,
   Post,
   Req,
   UseGuards,
@@ -45,6 +46,8 @@ function toUserId(raw: unknown): number {
 @ApiCookieAuth()
 @Controller('api/premium')
 export class PremiumController {
+  private readonly logger = new Logger(PremiumController.name);
+
   constructor(private readonly premiumService: PremiumService) {}
 
   @Post('checkout')
@@ -137,12 +140,11 @@ export class PremiumController {
     @Req() request: RawBodyRequest,
     @Headers('stripe-signature') signature?: string,
   ) {
-    console.log('⚡ Nhận request POST /api/premium/webhook');
+    this.logger.log('Nhận request POST /api/premium/webhook');
     if (!signature || !request.rawBody) {
-      console.error('❌ Thiếu stripe-signature hoặc rawBody:', {
-        hasSignature: !!signature,
-        hasRawBody: !!request.rawBody,
-      });
+      this.logger.error(
+        `Thiếu stripe-signature hoặc rawBody (có signature: ${!!signature}, có rawBody: ${!!request.rawBody})`,
+      );
       throw new BadRequestException('Thiếu Stripe signature hoặc raw body');
     }
     return this.premiumService.handleWebhook(request.rawBody, signature);

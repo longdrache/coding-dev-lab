@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import type { MiddlewareConsumer } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
 import { AppController } from './app.controller.ts';
@@ -17,6 +18,7 @@ import { AdminModule } from './admin/admin.module.ts';
 import { Judge0Module } from './judge0/judge0.module.ts';
 import { PremiumModule } from './premium/premium.module.ts';
 import { ThrottleGuard } from './common/throttle.guard.ts';
+import { RequestIdMiddleware } from './common/request-id.middleware.ts';
 import { DEFAULT_CACHE_TTL_MS, cacheStoreTtl } from './common/cache.config.ts';
 
 @Module({
@@ -71,4 +73,11 @@ CacheModule.register({
     { provide: APP_GUARD, useClass: ThrottleGuard },
   ],
 })
-export class AppModule {}
+export class AppModule {
+  // Request-id + access log cho MỌI route (kể cả 401/429: middleware chạy
+  // trước guards). Đăng ký ở đây thay vì main.ts để e2e build từ AppModule
+  // cũng có log giống production.
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}

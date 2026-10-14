@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '../generated/prisma/client.ts';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -8,6 +8,8 @@ export class DatabaseService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  private readonly logger = new Logger(DatabaseService.name);
+
   constructor() {
     // Ưu tiên direct connection (DATABASE_URL_UNPOOLED) để tránh các
     // hành vi treo/kill của Neon pooler; fallback pooler URL nếu thiếu.
@@ -29,7 +31,7 @@ export class DatabaseService
       keepAlive: true,
     });
     pool.on('error', (err) => {
-      console.error('[pg pool] idle client error, pool sẽ thay thế:', err.message);
+      this.logger.error(`[pg pool] idle client error, pool sẽ thay thế: ${err.message}`);
     });
     const adapter = new PrismaPg(pool);
     super({ adapter });

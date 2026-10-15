@@ -48,3 +48,6 @@ playwright-report/
 **/.claude/
 **/.windsurf/
 .superpowers/
+# AI instruction files (kept on disk, not in the product repo)
+**/AGENTS.md
+**/CLAUDE.md

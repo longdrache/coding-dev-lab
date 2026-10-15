@@ -40,3 +40,5 @@ Thumbs.db
 # Playwright
 test-results/
 playwright-report/
+# AI assistant skills (local workflow guides — personal, not part of the product)
+.agents/

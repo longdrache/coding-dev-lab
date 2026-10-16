@@ -65,7 +65,7 @@ jobs:
         working-directory: FE
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -105,7 +105,7 @@ jobs:
         working-directory: admin
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -180,7 +180,7 @@ jobs:
         working-directory: be
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -247,7 +247,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Quét CVE trong dependencies qua mọi pnpm-lock.yaml (root + be + FE +
       # admin). Không cần install trước: Trivy đọc lockfile trực tiếp.
@@ -311,7 +311,7 @@ jobs:
       JUDGE0_API_TOKEN: ${{ secrets.JUDGE0_API_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

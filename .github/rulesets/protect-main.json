@@ -33,13 +33,17 @@
     {
       "type": "required_status_checks",
       "parameters": {
-        "required_checks": [
+        "required_status_checks": [
           {
-            "context": "Code Quality",
+            "context": "Frontend checks",
             "integration_id": 15368
           },
           {
-            "context": "Automated Tests",
+            "context": "Admin checks",
+            "integration_id": 15368
+          },
+          {
+            "context": "Backend checks",
             "integration_id": 15368
           },
           {
@@ -47,7 +51,7 @@
             "integration_id": 15368
           },
           {
-            "context": "Build Artifacts",
+            "context": "Trivy dependency scan",
             "integration_id": 15368
           }
         ],

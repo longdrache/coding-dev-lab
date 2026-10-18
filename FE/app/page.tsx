@@ -171,9 +171,9 @@ export default function Home() {
               <motion.div variants={copyContainer} initial="hidden" animate="show">
               {/* Minimalist Top Eyebrow Tag */}
               <motion.div variants={copyItem} className="flex justify-center mb-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-zinc-300 text-[11px] font-mono font-medium text-zinc-700 shadow-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  <span>Local Native Engine</span>
+                <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 px-3 py-1.5 rounded-full bg-white border border-zinc-300 text-center text-[11px] font-mono font-medium text-zinc-700 shadow-sm">
+                  <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-emerald-500"></span>
+                  <span className="whitespace-nowrap">Local Native Engine</span>
                   <span className="text-zinc-300">/</span>
                   <span>
                     Python 3 • JavaScript • TypeScript • C++ 17 • PHP • Java • C# • Go

@@ -58,4 +58,4 @@ Chúng tôi có thể cập nhật chính sách này. Thay đổi quan trọng s
 ## 7. Liên hệ
 
 - Email: **privacy@gocode.vn**
-- Trang web: https://go-code-vn.vercel.app/
+- Trang web: https://gocode.appofme.click

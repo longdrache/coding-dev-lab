@@ -95,7 +95,7 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold text-zinc-900">7. Liên hệ</h2>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>Email: <a href="mailto:privacy@gocode.vn" className="text-blue-600 underline">privacy@gocode.vn</a></li>
-            <li>Trang web: <a href="https://go-code-vn.vercel.app/" className="text-blue-600 underline">https://go-code-vn.vercel.app/</a></li>
+            <li>Trang web: <a href="https://gocode.appofme.click" className="text-blue-600 underline">https://gocode.appofme.click</a></li>
           </ul>
         </section>
       </div>

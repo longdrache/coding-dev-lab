@@ -388,7 +388,7 @@ erDiagram
 
 ## API
 
-> **Interactive docs:** [`https://api.gocode.appofme.click`](https://api.gocode.appofme.click)
+> **Interactive docs:** [https://api.gocode.appofme.click/api/docs](https://api.gocode.appofme.click/api/docs)
 > (Swagger UI, 40 public endpoints — auth, problems, submissions, progress,
 > premium, judge0, views, presence, activity, Q&A). Admin endpoints are
 > intentionally excluded. Click **Authorize** and paste an access token as

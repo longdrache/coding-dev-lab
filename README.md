@@ -8,7 +8,7 @@
 
 GoCode is a full-stack algorithm practice platform for students. Users read problem statements, write code in a Monaco editor, submit solutions, and receive instant judging results from Judge0. The platform gamifies learning with streaks, heatmaps, and badges, and monetizes via a Premium/VIP subscription tier (Stripe).
 
-**Demo:** [https://go-code-vn.vercel.app/](https://go-code-vn.vercel.app/)
+**Demo:** [https://gocode.appofme.click](https://gocode.appofme.click) &nbsp;·&nbsp; **API:** [https://api.gocode.appofme.click](https://api.gocode.appofme.click)
 
 ---
 
@@ -869,9 +869,9 @@ coding-dev-lab/
 
 The app is deployed on Vercel as 3 separate projects:
 
-- **Frontend:** [https://go-code-vn.vercel.app/](https://go-code-vn.vercel.app/)
+- **Frontend:** [https://gocode.appofme.click](https://gocode.appofme.click)
+- **Backend API:** [https://api.gocode.appofme.click](https://api.gocode.appofme.click)
 - **Admin:** Separate Vercel deployment
-- **Backend:** Separate Vercel deployment
 
 Infrastructure:
 

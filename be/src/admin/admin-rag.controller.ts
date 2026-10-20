@@ -21,7 +21,7 @@ export class AdminRagController {
     }
     if (!text.trim()) throw new BadRequestException('Tài liệu rỗng');
     if (Buffer.byteLength(text, 'utf8') > MAX_INGEST_BYTES) {
-      throw new BadRequestException('Tài liệu tối đa 5MB');
+      throw new BadRequestException(`Tài liệu tối đa ${MAX_INGEST_BYTES / (1024 * 1024)}MB`);
     }
 
     await this.bot.post('/ingest', { source, text }, 60_000);

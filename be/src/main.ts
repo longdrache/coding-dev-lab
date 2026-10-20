@@ -1,5 +1,4 @@
 import dotenv from 'dotenv';
-import { json } from 'express';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -16,6 +15,7 @@ import { Judge0Module } from './judge0/judge0.module.ts';
 import { PremiumModule } from './premium/premium.module.ts';
 import { RagModule } from './rag/rag.module.ts';
 import { getCorsOrigins } from './cors.ts';
+import { RAG_INGEST_PATH, ragIngestBodyParser } from './common/large-json-body.ts';
 import { trustProxy } from './proxy.ts';
 
 dotenv.config();
@@ -94,10 +94,9 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   trustProxy(app);
   app.enableCors({ origin: getCorsOrigins(), credentials: true });
-  // Parser mặc định của Nest chỉ nhận JSON tối đa 100KB. Route ingest tài liệu RAG
-  // là chỗ duy nhất gửi payload lớn (tối đa 5MB), nên nâng riêng cho route này;
-  // các route khác vẫn giữ mức 100KB. Đăng ký trước `listen` để chạy trước parser mặc định.
-  app.use('/api/admin/rag/ingest', json({ limit: '6mb' }));
+  // Route ingest tài liệu RAG là chỗ duy nhất gửi payload lớn (tối đa 5MB);
+  // parser bọc riêng để Nest vẫn giữ parser JSON mặc định cho các route còn lại.
+  app.use(RAG_INGEST_PATH, ragIngestBodyParser);
   setupPublicDocs(app);
   await app.listen(process.env.PORT ?? 4000);
 }

@@ -57,6 +57,7 @@ export function ProblemAssistant({ slug }: { slug: string }) {
         setHistory(previous);
         if (res.status === 401) setError("Phiên đã hết hạn, hãy đăng nhập lại.");
         else if (res.status === 429) setError("Bạn hỏi hơi nhanh, thử lại sau một phút.");
+        else if (res.status >= 500) setError("Trợ lý đang bận, thử lại sau.");
         else setError(data?.message ?? "Trợ lý đang bận, thử lại sau.");
         return;
       }
@@ -120,11 +121,13 @@ export function ProblemAssistant({ slug }: { slug: string }) {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   void send();
                 }
               }}
+              disabled={busy}
               rows={2}
               maxLength={2000}
               placeholder="Nhập câu hỏi..."

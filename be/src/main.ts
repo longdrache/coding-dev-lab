@@ -13,6 +13,7 @@ import { ViewsModule } from './views/views.module.ts';
 import { QnaModule } from './qna/qna.module.ts';
 import { Judge0Module } from './judge0/judge0.module.ts';
 import { PremiumModule } from './premium/premium.module.ts';
+import { RagModule } from './rag/rag.module.ts';
 import { getCorsOrigins } from './cors.ts';
 import { trustProxy } from './proxy.ts';
 
@@ -57,6 +58,7 @@ const PUBLIC_API_MODULES = [
   QnaModule,
   Judge0Module,
   PremiumModule,
+  RagModule,
 ];
 
 /**

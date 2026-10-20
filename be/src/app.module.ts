@@ -17,6 +17,7 @@ import { QnaModule } from './qna/qna.module.ts';
 import { AdminModule } from './admin/admin.module.ts';
 import { Judge0Module } from './judge0/judge0.module.ts';
 import { PremiumModule } from './premium/premium.module.ts';
+import { RagModule } from './rag/rag.module.ts';
 import { ThrottleGuard } from './common/throttle.guard.ts';
 import { RequestIdMiddleware } from './common/request-id.middleware.ts';
 import { DEFAULT_CACHE_TTL_MS, cacheStoreTtl } from './common/cache.config.ts';
@@ -57,6 +58,7 @@ CacheModule.register({
     QnaModule,
     Judge0Module,
     PremiumModule,
+    RagModule,
   ],
   controllers: [AppController],
   providers: [

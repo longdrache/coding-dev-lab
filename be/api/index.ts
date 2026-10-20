@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import express, { type Request, type Response } from 'express';
 import { AppModule } from '../src/app.module.ts';
 import { getCorsOrigins } from '../src/cors.ts';
+import { RAG_INGEST_PATH, ragIngestBodyParser } from '../src/common/large-json-body.ts';
 import { trustProxy } from '../src/proxy.ts';
 
 dotenv.config();
@@ -20,6 +21,9 @@ async function bootstrap() {
   // chung một bucket rate-limit. Phải có ở CẢ `src/main.ts` và `api/index.ts`.
   trustProxy(app);
   app.enableCors({ origin: getCorsOrigins(), credentials: true });
+  // Route ingest tài liệu RAG cần payload lớn; parser bọc riêng để Nest vẫn giữ
+  // parser JSON mặc định cho các route còn lại.
+  app.use(RAG_INGEST_PATH, ragIngestBodyParser);
   await app.init();
   return server;
 }

@@ -6,13 +6,15 @@ import { DatabaseModule } from '../database/database.module.ts';
 import { PresenceModule } from '../presence/presence.module.ts';
 import { ViewsModule } from '../views/views.module.ts';
 import { ProblemsModule } from '../problems/problems.module.ts';
+import { RagModule } from '../rag/rag.module.ts';
+import { AdminRagController } from './admin-rag.controller.ts';
 
 @Module({
   // `ProblemsModule` vào vì `AdminService` cần xoá cache sau khi đổi cờ VIP:
   // không xoá thì khoá có hiệu lực muộn tới hết TTL và đề bài vẫn lọt.
-  imports: [DatabaseModule, PresenceModule, ViewsModule, ProblemsModule],
+  imports: [DatabaseModule, PresenceModule, ViewsModule, ProblemsModule, RagModule],
   providers: [AdminService, AdminGuard],
-  controllers: [AdminController],
+  controllers: [AdminController, AdminRagController],
   exports: [AdminService, AdminGuard],
 })
 export class AdminModule {}

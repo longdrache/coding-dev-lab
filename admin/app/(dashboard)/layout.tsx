@@ -12,6 +12,7 @@ import {
   ScrollText,
   MessageSquare,
   Users,
+  BookOpen,
   LogOut,
   Menu,
   X,
@@ -23,6 +24,7 @@ const NAV = [
   { href: "/submissions", label: "Bài nộp", icon: ScrollText },
   { href: "/qna", label: "Hỏi đáp", icon: MessageSquare },
   { href: "/users", label: "Học viên", icon: Users },
+  { href: "/rag", label: "Tài liệu RAG", icon: BookOpen },
 ];
 
 function SystemStatus() {

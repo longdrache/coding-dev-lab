@@ -1,0 +1,587 @@
+GoCode — Tài liệu tri thức cho RAG
+==================================
+
+Mục đích: cung cấp cho trợ lý ảo (chatbot) kiến thức về NGHIỆP VỤ HIỆN TẠI của
+website GoCode và HƯỚNG DẪN CÁCH LÀM từng bài tập — theo hướng gợi mở tư duy,
+KHÔNG đưa sẵn lời giải, KHÔNG dán code giải, KHÔNG tiết lộ đáp án của test ẩn.
+
+Quy ước:
+- Mỗi mục bài tập có nhãn [PROBLEM:<slug>] để dễ truy xuất.
+- "Ràng buộc" và "Định dạng vào/ra" là bắt buộc; sai định dạng sẽ bị chấm Sai.
+- Tài liệu mô tả kỹ thuật gợi ý và độ phức tạp mục tiêu, không mô tả code cụ thể.
+- Khi người dùng hỏi "cho tôi đáp án/code", trợ lý chỉ gợi ý bước tiếp theo,
+  đặt câu hỏi dẫn dắt, và khuyến khích tự viết.
+
+Cách trợ lý nên trả lời:
+1) Xác định người dùng đang hỏi bài nào (theo slug/tên).
+2) Nhắc lại ngắn gọn yêu cầu + định dạng vào/ra nếu người dùng hiểu sai.
+3) Gợi ý hướng tiếp cận bằng ngôn ngữ tự nhiên, không code.
+4) Gợi ý độ phức tạp mục tiêu và vài trường hợp biên để tự kiểm.
+5) Nếu người dùng bí, đưa gợi ý nhỏ hơn (một bước), không đưa cả lời giải.
+
+
+============================================================
+PHẦN A — NGHIỆP VỤ NỀN TẢNG CỦA GOGCODE
+============================================================
+
+A1. Tổng quan sản phẩm
+----------------------
+GoCode là nền tảng luyện giải thuật bằng tiếng Việt. Người dùng đọc đề, viết
+code trong trình soạn thảo (Monaco), chạy thử và nộp bài; hệ thống chấm tự động
+bằng Judge0 (chạy trong Docker container trên máy ảo) và trả kết quả từng test.
+Nền tảng có gamification (streak, heatmap, huy hiệu) và gói VIP trả phí qua
+Stripe.
+
+Thành phần:
+- FE (Next.js): trang chủ, danh sách bài, trang làm bài, tài khoản, bảng giá,
+  chính sách, FAQ.
+- Admin (Next.js): quản trị nội dung/người dùng.
+- BE (NestJS): API, xác thực, chấm bài, tiến độ, thanh toán, Q&A.
+- Judge0: dịch và chạy code; BE gọi Judge0 bằng token nội bộ (X-Auth-Token).
+
+A2. Tài khoản và xác thực
+-------------------------
+- Đăng ký bằng email/mật khẩu; email xác thực có hạn 24 giờ.
+- Đăng nhập khi email chưa xác thực trả lỗi riêng (401 phân biệt), màn hình
+  đăng nhập có nút gửi lại email xác thực (giới hạn tần suất).
+- Đăng nhập bằng Google (OAuth 2.0 + PKCE S256); chống login CSRF bằng state
+  gắn với cookie httpOnly, state lưu dạng hash trong DB và chỉ dùng một lần.
+- Phiên: access token JWT RS256 hạn 15 phút; refresh token hạn 30 ngày, xoay
+  theo từng thiết bị, tối đa 10 phiên/người dùng.
+- Quên mật khẩu: gửi email, token đặt lại hạn 1 giờ.
+- Chống dò tài khoản: dùng hash giả để thời gian phản hồi không lộ user tồn tại.
+
+A3. Kho bài tập và chủ đề
+-------------------------
+Có 56 bài, chia 8 chủ đề:
+- Mảng & Con trỏ (array): 18 bài — two pointers, sliding window, prefix sum.
+- Chuỗi (string): 5 bài — palindrome, anagram, prefix, sliding window.
+- Danh sách liên kết (linked-list): 2 bài — đảo list, xóa trùng.
+- Stack & Hàng đợi (stack-queue): 5 bài — ngoặc, min-stack, monotonic stack.
+- Cây & Đồ thị (tree-graph): 2 bài — flood fill lưới, duyệt cây theo tầng.
+- Quy hoạch động (dp): 6 bài — Fibonacci, knapsack, DP chuỗi/lưới.
+- Sắp xếp & Tìm kiếm (sorting-searching): 6 bài — binary search, sort.
+- Hàm băm & Tập hợp (hashing): 12 bài — frequency map, set, bijection.
+
+Độ khó: "Dễ", "Trung bình", "Khó".
+
+A4. Quy trình làm bài và chấm bài
+---------------------------------
+1) Mở bài: đọc đề, định dạng vào/ra, ràng buộc, ví dụ mẫu (ví dụ mẫu là công
+   khai và có thể thử).
+2) Viết code trong editor; có starter code theo ngôn ngữ.
+3) Chạy thử với test mẫu để xem kết quả tức thì.
+4) Nộp bài: hệ thống chấm bằng Judge0 trên tập test công khai + test ẩn
+   (test ẩn không hiển thị input/expected cho người dùng).
+5) Nhận kết quả: Accepted (đúng hết), Wrong Answer, Time Limit Exceeded,
+   Memory Limit Exceeded, Compilation Error, Runtime Error.
+
+Ngôn ngữ hỗ trợ trên editor (8): Python 3.10, JavaScript (Node 22),
+TypeScript 5.x, C++ 17 (GCC), PHP 8.x, Java (JDK), C# (Mono), Go 1.2x.
+
+Giới hạn thực tế do BE áp đặt (nguồn chân lý là code BE):
+- CPU tối đa 5 giây/lần chấm; giá trị mặc định 2 giây.
+- Bộ nhớ 128 MB (128000 KB).
+- Chấm theo lô (batch) tối đa 10 test/lần, FE poll kết quả mỗi 2 giây.
+Lưu tiên: nếu tài liệu marketing ghi khác, ưu tiên các con số trên.
+
+A5. Tiến độ và gamification
+---------------------------
+- Bài đã giải (solved) và bài yêu thích (favorites) lưu phía server, đồng bộ
+  nhiều thiết bị.
+- Streak: chuỗi ngày có hoạt động liên tiếp, tính theo múi giờ Việt Nam (UTC+7).
+- Heatmap: biểu đồ hoạt động 35 ngày gần nhất.
+- 12 huy hiệu mở theo độ dài streak, số bài giải và mốc độ khó.
+- Lịch sử nộp bài: hiển thị tối đa 50 lần gần nhất cho mỗi bài (khi đã đăng nhập).
+
+A6. Gói VIP / Premium
+---------------------
+Ba gói, thanh toán một lần qua Stripe, KHÔNG tự động gia hạn:
+- Gói Theo Ngày: 200 ₫ / 1 ngày (dùng thử).
+- Gói 1 Tháng: 1.000 ₫ / 30 ngày.
+- Gói 1 Năm: 2.000 ₫ / 365 ngày (tiết kiệm nhất).
+Quyền lợi: huy hiệu VIP + khung avatar, mở 20 bài VIP, chấm batch 10 test,
+10 test mẫu tùy chỉnh, lịch sử nộp bài. Hết hạn tự động hạ về tài khoản thường.
+
+A7. Cộng đồng và nội dung khác
+-------------------------------
+- Q&A/thảo luận theo bài (hỏi đáp, bình luận) — có kiểm duyệt nội dung.
+- Cuộc thi (contests) và bảng xếp hạng theo chủ đề.
+- Theo dõi lượt xem bài và trạng thái online (presence) để hiển thị số người
+  đang hoạt động.
+
+A8. Giới hạn tần suất (rate limit) đáng chú ý
+---------------------------------------------
+- Gửi lại email xác thực: 20 lần/phút mỗi IP.
+- Bắt đầu OAuth Google và callback Google: 20 lần/giờ mỗi IP.
+- Các API ghi dữ liệu (nộp bài, bình luận...) có giới hạn riêng để chống spam.
+Trợ lý nên nhắc người dùng chờ khi gặp lỗi 429 (Too Many Requests).
+
+A9. Thuật ngữ
+-------------
+- Độ phức tạp thời gian: Big-O, ước lượng số phép tính theo kích thước input.
+- Two pointers: hai chỉ số di chuyển trên mảng/chuỗi.
+- Sliding window: cửa sổ liên tiếp mở rộng/thu hẹp.
+- Prefix sum: mảng cộng dồn để tính tổng đoạn nhanh.
+- Monotonic stack: ngăn xếp giữ thứ tự đơn điệu.
+- DP (quy hoạch động): lưu kết quả bài toán con để tránh tính lại.
+- Bijection (ánh xạ một-một): mỗi phần tử bên này ứng đúng một bên kia.
+
+
+============================================================
+PHẦN B — HƯỚNG DẪN LÀM TỪNG BÀI (GỢI MỞ, KHÔNG LỜI GIẢI)
+============================================================
+
+Nhóm 1 — MẢNG & CON TRỎ (array)
+------------------------------
+
+[PROBLEM:two-sum] Hai số có tổng bằng mục tiêu — Dễ — array
+Yêu cầu: tìm 2 chỉ số (0-based) có tổng bằng target; mỗi test đúng 1 nghiệm,
+không dùng lại cùng một phần tử. Vào: dòng 1 "n target", dòng 2 gồm n số.
+Ra: "i j".
+Gợi ý hướng: duyệt một lượt và ghi nhớ các giá trị đã gặp bằng bảng băm
+(giá trị -> chỉ số). Với mỗi phần tử, kiểm tra phần bù (target - a[i]) đã xuất
+hiện chưa TRƯỚC khi ghi phần tử hiện tại vào bảng. Mục tiêu O(n) thời gian.
+Cạm bẫy: không tự cộng một phần tử với chính nó; in chỉ số theo thứ tự tăng
+dần; target có thể âm. Tự kiểm: n = 2; có số trùng nhưng nghiệm vẫn duy nhất.
+
+[PROBLEM:merge-intervals] Gộp các khoảng — Trung bình — array
+Yêu cầu: các khoảng [l, r] đã sắp theo l tăng dần; gộp các khoảng giao nhau
+(kể cả chạm nhau) và in mỗi khoảng một dòng "l r".
+Gợi ý hướng: duyệt tuần tự, giữ khoảng hiện tại; nếu l của khoảng sau <= r của
+khoảng đang gộp thì mở rộng r = max(r, r_sau), ngược lại in khoảng cũ và bắt
+đầu khoảng mới. Mục tiêu O(n).
+Cạm bẫy: khoảng lồng nhau (r_sau nhỏ hơn r hiện tại); khoảng chạm đúng mép
+(ví dụ [1,4] và [4,5] phải gộp). Tự kiểm: n = 1; một khoảng chứa khoảng khác.
+
+[PROBLEM:sum-array] Tổng các phần tử — Dễ — array
+Yêu cầu: tính tổng n số. Vào: n và dãy. Ra: tổng.
+Gợi ý hướng: một vòng lặp cộng dồn; dùng kiểu số đủ lớn (64-bit) vì tổng có
+thể vượt 32-bit. Mục tiêu O(n), O(1) bộ nhớ.
+Cạm bẫy: tổng tràn số ở C++/Java/C# nếu dùng int; số âm. Tự kiểm: n = 1; toàn
+số âm.
+
+[PROBLEM:find-max] Giá trị lớn nhất — Dễ — array
+Yêu cầu: tìm max trong dãy. Ra: giá trị lớn nhất.
+Gợi ý hướng: khởi tạo max bằng phần tử đầu, duyệt và cập nhật. O(n).
+Cạm bẫy: toàn số âm (đừng khởi tạo max = 0). Tự kiểm: mọi phần tử bằng nhau.
+
+[PROBLEM:reverse-array] Đảo ngược mảng — Dễ — array
+Yêu cầu: in mảng theo thứ tự đảo ngược.
+Gợi ý hướng: hai con trỏ ở hai đầu, đổi chỗ rồi tiến vào giữa; hoặc duyệt
+ngược khi in. O(n).
+Cạm bẫy: n lẻ (phần tử giữa giữ nguyên); khoảng trắng thừa ở cuối dòng.
+Tự kiểm: n = 1.
+
+[PROBLEM:count-even] Đếm số chẵn — Dễ — array
+Yêu cầu: đếm phần tử chẵn. Ra: số lượng.
+Gợi ý hướng: duyệt và kiểm tra chia hết cho 2. O(n).
+Cạm bẫy: số 0 là số chẵn; số âm chẵn (ví dụ -2). Tự kiểm: dãy toàn lẻ.
+
+[PROBLEM:fizz-buzz] FizzBuzz — Dễ — array
+Yêu cầu: với i = 1..n in Fizz (chia hết 3), Buzz (chia hết 5), FizzBuzz (cả
+hai), ngược lại in i; mỗi kết quả một dòng.
+Gợi ý hướng: kiểm tra điều kiện chia hết cho 15 TRƯỚC, rồi 3, rồi 5. O(n).
+Cạm bẫy: thứ tự kiểm tra sai sẽ in "Fizz" thay vì "FizzBuzz" ở bội của 15;
+đảm bảo in đúng n dòng. Tự kiểm: n = 1; n = 15.
+
+[PROBLEM:best-time-stock] Mua bán cổ phiếu — Dễ — array
+Yêu cầu: mua một lần, bán một lần sau đó, tối đa lợi nhuận; không có lãi thì 0.
+Gợi ý hướng: duyệt một lượt, giữ giá mua nhỏ nhất đã thấy; lợi nhuận tốt nhất
+= max(giá hiện tại - giá mua nhỏ nhất). O(n).
+Cạm bẫy: giá giảm dần (kết quả 0); chỉ được bán SAU khi mua. Tự kiểm: n = 1.
+
+[PROBLEM:maximum-subarray] Dãy con tổng lớn nhất — Trung bình — array
+Yêu cầu: tổng lớn nhất của dãy con liên tiếp, ít nhất một phần tử.
+Gợi ý hướng: quy hoạch động kiểu Kadane — tại mỗi vị trí chọn "nối tiếp dãy
+trước" hay "bắt đầu lại từ đây". O(n), O(1) bộ nhớ.
+Cạm bẫy: toàn số âm (phải chọn phần tử lớn nhất, không trả 0). Tự kiểm: một
+phần tử; dãy âm toàn bộ.
+
+[PROBLEM:two-sum-ii] Hai số trong mảng đã sắp xếp — Dễ — array
+Yêu cầu: mảng đã sắp tăng, tìm 2 chỉ số (1-based) có tổng = target.
+Gợi ý hướng: hai con trỏ hai đầu; tổng nhỏ hơn target thì tăng trái, lớn hơn
+thì giảm phải. O(n), O(1) bộ nhớ.
+Cạm bẫy: chỉ số đánh từ 1 (khác bài two-sum); không in theo thứ tự giảm.
+Tự kiểm: nghiệm ở hai đầu; n = 2.
+
+[PROBLEM:move-zeroes] Dồn số 0 về cuối — Dễ — array
+Yêu cầu: dồn các số 0 về cuối, giữ thứ tự tương đối của số khác 0.
+Gợi ý hướng: dùng một con trỏ "vị trí ghi"; duyệt mảng, gặp số khác 0 thì ghi
+vào vị trí ghi rồi tăng; cuối cùng điền 0 cho phần còn lại. O(n).
+Cạm bẫy: không được đổi thứ tự các số khác 0; nhiều số 0 liên tiếp. Tự kiểm:
+toàn 0; không có 0.
+
+[PROBLEM:product-except-self] Tích trừ chính nó — Trung bình — array
+Yêu cầu: mảng kết quả b[i] = tích mọi a[j] với j != i; KHÔNG dùng phép chia.
+Gợi ý hướng: tính tích tiền tố (bên trái) và tích hậu tố (bên phải) rồi nhân
+lại; có thể làm O(1) bộ nhớ phụ bằng cách tận dụng mảng kết quả. O(n).
+Cạm bẫy: có số 0 (một hoặc nhiều) khiến cách "chia tổng tích" sai — đây chính
+là lý do đề cấm chia; tràn số với tích lớn. Tự kiểm: một số 0; hai số 0.
+
+[PROBLEM:container-most-water] Bể chứa nhiều nước nhất — Trung bình — array
+Yêu cầu: chọn 2 cột để diện tích = (khoảng cách) x (chiều cao cột thấp hơn) lớn
+nhất.
+Gợi ý hướng: hai con trỏ hai đầu; mỗi bước di chuyển con trỏ đang thấp hơn
+(giữ cột cao lại), cập nhật diện tích lớn nhất. O(n).
+Cạm bẫy: di chuyển sai phía (di chuyển cột cao sẽ không bao giờ tốt hơn).
+Tự kiểm: hai cột; chiều cao bằng nhau.
+
+[PROBLEM:rotate-array] Xoay mảng — Trung bình — array
+Yêu cầu: xoay phải k bước; k có thể rất lớn (tới 10^9).
+Gợi ý hướng: lấy k = k % n trước; có thể đảo cả mảng, đảo k phần đầu, đảo phần
+còn lại (hoặc cắt/nối). O(n).
+Cạm bẫy: quên chia dư k (k lớn hơn n); k = 0 hoặc k chia hết n thì giữ nguyên.
+Tự kiểm: k = 0; k = n; k > n.
+
+[PROBLEM:jump-game] Nhảy tới đích — Trung bình — array
+Yêu cầu: từ vị trí 0, a[i] là bước nhảy tối đa; hỏi có tới được vị trí cuối.
+Gợi ý hướng: tham lam — duyệt và giữ "tầm với xa nhất" hiện tại; nếu tại một
+vị trí không thể vượt qua thì thất bại. O(n).
+Cạm bẫy: có ô bằng 0 chặn giữa đường; n = 1 luôn tới đích. Tự kiểm: mảng toàn
+0 (n>1); bước nhảy lớn ở đầu.
+
+[PROBLEM:trapping-rain-water] Hứng nước mưa — Khó — array
+Yêu cầu: tính tổng nước đọng giữa các cột.
+Gợi ý hướng: lượng nước tại i = min(max trái, max phải) - a[i] (không âm).
+Có thể dùng mảng max trái/phải, hoặc tối ưu hai con trỏ O(1) bộ nhớ phụ. O(n).
+Cạm bẫy: cột hai đầu không đọng nước; mảng tăng/giảm đơn điệu (kết quả 0).
+Tự kiểm: mảng một cột; mảng đơn điệu.
+
+[PROBLEM:gas-station] Trạm xăng vòng tròn — Trung bình — array
+Yêu cầu: tìm trạm xuất phát đi hết vòng với bình rỗng ban đầu; không được thì -1.
+Gợi ý hướng: nếu tổng gas < tổng cost thì chắc chắn -1. Ngược lại, duyệt và
+cộng dồn chênh lệch; khi âm thì đặt lại điểm xuất phát ở trạm kế tiếp. O(n).
+Cạm bẫy: chỉ có một nghiệm; không thử từng trạm (O(n^2) dễ TLE). Tự kiểm:
+tổng gas < cost; nghiệm ở trạm cuối.
+
+[PROBLEM:spiral-matrix] Ma trận xoắn ốc — Trung bình — array
+Yêu cầu: đọc ma trận n x m theo xoắn ốc từ góc trái trên sang phải.
+Gợi ý hướng: duy trì 4 biên (trên, dưới, trái, phải); đi lần lượt theo 4 cạnh
+rồi thu hẹp biên. O(n*m).
+Cạm bẫy: ma trận một hàng/một cột; điều kiện biên để không lặp phần tử.
+Tự kiểm: n = 1; m = 1; ma trận vuông.
+
+Nhóm 2 — CHUỖI (string)
+-----------------------
+
+[PROBLEM:valid-palindrome] Kiểm tra chuỗi đối xứng — Dễ — string
+Yêu cầu: kiểm tra chuỗi đọc xuôi ngược giống nhau; in "true"/"false".
+Gợi ý hướng: hai con trỏ hai đầu so từng cặp; hoặc so chuỗi với bản đảo. O(n).
+Cạm bẫy: chuỗi rỗng/1 ký tự; phân biệt hoa-thường theo đúng đề (đề không yêu
+cầu chuẩn hóa). Tự kiểm: "a"; "ab".
+
+[PROBLEM:count-vowels] Đếm nguyên âm — Dễ — string
+Yêu cầu: đếm a, e, i, o, u trong chuỗi thường.
+Gợi ý hướng: duyệt ký tự, kiểm tra thuộc tập nguyên âm; dùng tập/bảng tra để
+tra nhanh. O(n).
+Cạm bẫy: chỉ chữ thường theo đề; không đếm 'y'. Tự kiểm: không có nguyên âm.
+
+[PROBLEM:check-anagram] Kiểm tra anagram — Trung bình — string
+Yêu cầu: hai chuỗi có phải hoán vị ký tự của nhau.
+Gợi ý hướng: nếu độ dài khác nhau thì false; đếm tần suất ký tự ở chuỗi thứ
+nhất, trừ dần ở chuỗi thứ hai, cuối cùng mọi tần suất phải bằng 0. O(n).
+Cạm bẫy: cùng độ dài nhưng khác ký tự; ký tự lặp. Tự kiểm: hai chuỗi rỗng;
+cùng chữ khác thứ tự.
+
+[PROBLEM:longest-common-prefix] Tiền tố chung dài nhất — Dễ — string
+Yêu cầu: tiền tố chung của tất cả n chuỗi; không có thì in dòng trống.
+Gợi ý hướng: lấy chuỗi đầu làm mốc, so từng ký tự với các chuỗi còn lại và cắt
+ngắn dần; hoặc sắp xếp rồi so chuỗi đầu với chuỗi cuối. O(n * độ dài ngắn nhất).
+Cạm bẫy: phải in dòng trống (không phải chuỗi "rỗng" có ngoặc); một chuỗi rỗng
+=> tiền tố rỗng. Tự kiểm: n = 1; các chuỗi không chung ký tự đầu.
+
+[PROBLEM:longest-substring] Chuỗi con không lặp dài nhất — Trung bình — string
+Yêu cầu: độ dài chuỗi con liên tiếp dài nhất không có ký tự lặp.
+Gợi ý hướng: cửa sổ trượt + bảng tra vị trí xuất hiện gần nhất; khi gặp ký tự
+lặp trong cửa sổ, nhảy biên trái tới sau vị trí cũ. O(n).
+Cạm bẫy: không lùi biên trái về trước (vị trí cũ ngoài cửa sổ thì bỏ qua);
+chuỗi toàn ký tự giống nhau. Tự kiểm: chuỗi rỗng; "abba".
+
+Nhóm 3 — DANH SÁCH LIÊN KẾT (linked-list)
+-----------------------------------------
+
+[PROBLEM:remove-duplicates] Xóa phần tử trùng trong dãy đã sắp xếp — Dễ — linked-list
+Yêu cầu: dãy đã sắp tăng (mô phỏng list đã sắp), mỗi giá trị chỉ giữ một lần.
+Gợi ý hướng: so phần tử hiện tại với phần tử trước; chỉ in khi khác. Hoặc dùng
+hai con trỏ đọc/ghi. O(n).
+Cạm bẫy: nhiều bản sao liên tiếp; n = 1; in đúng khoảng trắng. Tự kiểm: toàn
+phần tử giống nhau.
+
+[PROBLEM:reverse-linked-list] Đảo danh sách liên kết — Dễ — linked-list
+Yêu cầu: in các giá trị theo thứ tự đảo ngược.
+Gợi ý hướng: có thể dùng ngăn xếp hoặc đảo tại chỗ bằng ba con trỏ
+(trước, hiện tại, kế tiếp). O(n).
+Cạm bẫy: n = 1; không in thừa khoảng trắng cuối. Tự kiểm: hai phần tử.
+
+Nhóm 4 — STACK & HÀNG ĐỢI (stack-queue)
+---------------------------------------
+
+[PROBLEM:valid-parentheses] Ngoặc hợp lệ — Dễ — stack-queue
+Yêu cầu: chuỗi chỉ gồm (), [], {}; kiểm tra đóng/mở đúng loại và đúng thứ tự.
+Gợi ý hướng: ngăn xếp — gặp ngoặc mở thì đẩy, gặp ngoặc đóng thì phải khớp
+đỉnh; cuối cùng ngăn xếp phải rỗng. O(n).
+Cạm bẫy: chuỗi đóng trước khi mở; chỉ có ngoặc mở; độ dài lẻ. Tự kiểm: "";
+"]"; "([)]".
+
+[PROBLEM:reverse-string] Đảo chuỗi — Dễ — stack-queue
+Yêu cầu: in chuỗi đảo ngược.
+Gợi ý hướng: ngăn xếp (đẩy hết rồi lấy ra) hoặc hai con trỏ. O(n).
+Cạm bẫy: chuỗi có khoảng trắng (đọc cả dòng); chuỗi rỗng. Tự kiểm: một ký tự.
+
+[PROBLEM:baseball-game] Trận bóng chày — Dễ — stack-queue
+Yêu cầu: thao tác số nguyên (ghi điểm), C (hủy lần trước), D (gấp đôi lần
+trước), + (tổng hai lần trước); tính tổng cuối.
+Gợi ý hướng: ngăn xếp các điểm hợp lệ; C thì pop, D thì đẩy 2*đỉnh, + thì đẩy
+tổng hai đỉnh; cuối cùng cộng toàn bộ. O(n).
+Cạm bẫy: "+" cần ít nhất hai phần tử; thao tác luôn hợp lệ theo đề nhưng vẫn
+kiểm tra thứ tự. Tự kiểm: chuỗi chỉ toàn số; có C ở cuối.
+
+[PROBLEM:min-stack] Stack lấy min — Trung bình — stack-queue
+Yêu cầu: hỗ trợ push x, pop, top, getMin; top/getMin in ra kết quả.
+Gợi ý hướng: lưu thêm ngăn xếp phụ chứa min hiện tại (hoặc mã hoá cặp giá trị),
+để getMin O(1). Mỗi thao tác O(1).
+Cạm bẫy: khi pop phải cập nhật cả ngăn xếp min; giá trị âm; pop/top/getMin luôn
+gọi khi stack không rỗng (theo đề). Tự kiểm: push giảm dần rồi pop.
+
+[PROBLEM:daily-temperatures] Nhiệt độ mỗi ngày — Trung bình — stack-queue
+Yêu cầu: với mỗi ngày, số ngày chờ tới ngày ấm hơn; không có thì 0.
+Gợi ý hướng: ngăn xếp đơn điệu giảm chứa chỉ số; khi gặp nhiệt độ cao hơn đỉnh
+thì gán khoảng cách và pop. O(n).
+Cạm bẫy: dãy giảm dần (toàn 0); nhiệt độ bằng nhau không tính là ấm hơn.
+Tự kiểm: n = 1; dãy tăng dần.
+
+Nhóm 5 — CÂY & ĐỒ THỊ (tree-graph)
+----------------------------------
+
+[PROBLEM:number-of-islands] Đếm số đảo — Trung bình — tree-graph
+Yêu cầu: lưới r x c gồm '1' (đất) và '0' (nước); đếm cụm đất kề nhau 4 hướng.
+Gợi ý hướng: duyệt từng ô; gặp '1' chưa thăm thì tăng đếm và loang (DFS/BFS)
+đánh dấu toàn bộ cụm. O(r*c).
+Cạm bẫy: lưới toàn nước; đảo chạm biên; dùng mảng visited hoặc đánh dấu tại chỗ
+để tránh đếm trùng. Tự kiểm: 1 ô đất; toàn đất.
+
+[PROBLEM:max-depth-binary-tree] Chiều sâu cây nhị phân — Trung bình — tree-graph
+Yêu cầu: cho dãy level-order (null = node thiếu), tính chiều sâu lớn nhất.
+Gợi ý hướng: dựng cây bằng hàng đợi theo level-order, hoặc duyệt BFS theo tầng
+và đếm số tầng; có thể tính đệ quy nếu dựng được node. O(n).
+Cạm bẫy: nhiều null liên tiếp; cây chỉ có gốc (độ sâu 1); null ở cuối dãy.
+Tự kiểm: n = 1; cây lệch một nhánh.
+
+Nhóm 6 — QUY HOẠCH ĐỘNG (dp)
+----------------------------
+
+[PROBLEM:climbing-stairs] Leo cầu thang — Dễ — dp
+Yêu cầu: mỗi bước 1 hoặc 2 bậc; đếm số cách lên n bậc.
+Gợi ý hướng: hệ thức truy hồi kiểu Fibonacci f(n)=f(n-1)+f(n-2), cơ sở f(0)=1,
+f(1)=1; có thể tối ưu O(1) bộ nhớ. O(n).
+Cạm bẫy: n = 1; tràn số nếu n lớn (đề giới hạn 45 nên vừa 64-bit). Tự kiểm:
+n = 1, n = 2.
+
+[PROBLEM:factorial] Giai thừa — Dễ — dp
+Yêu cầu: tính n! với 0 <= n <= 10.
+Gợi ý hướng: vòng lặp nhân 1..n; quy ước 0! = 1. O(n).
+Cạm bẫy: n = 0 (phải ra 1, không phải 0); kiểu số đủ lớn (10! vừa 32-bit).
+Tự kiểm: n = 0; n = 10.
+
+[PROBLEM:house-robber] Trộm nhà — Trung bình — dp
+Yêu cầu: không trộm hai nhà kề nhau; tối đa số tiền.
+Gợi ý hướng: DP "lấy nhà i" so với "bỏ nhà i": dp[i] = max(dp[i-1], dp[i-2] +
+a[i]); tối ưu O(1) bộ nhớ. O(n).
+Cạm bẫy: n = 1; toàn số 0; số âm không có theo đề nhưng vẫn kiểm. Tự kiểm:
+hai nhà; ba nhà.
+
+[PROBLEM:min-cost-climbing-stairs] Leo cầu thang rẻ nhất — Dễ — dp
+Yêu cầu: cost[i] là chi phí bậc i; bước 1 hoặc 2; xuất phát từ bậc 0 hoặc 1;
+chi phí nhỏ nhất để vượt qua bậc n-1 (lên đỉnh).
+Gợi ý hướng: DP chi phí tối thiểu tới từng bậc: dp[i] = cost[i] + min(dp[i-1],
+dp[i-2]); đáp án là min của hai bậc cuối. O(n), O(1) bộ nhớ.
+Cạm bẫy: đích là "vượt qua" bậc cuối nên không cộng cost bậc ảo; n = 2.
+Tự kiểm: n = 2; chi phí bằng nhau.
+
+[PROBLEM:coin-change] Đổi tiền ít xu nhất — Trung bình — dp
+Yêu cầu: số xu ít nhất để đổi đúng amount với các mệnh giá dùng không giới hạn;
+không đổi được thì -1.
+Gợi ý hướng: DP unbounded knapsack: dp[x] = min(dp[x - mệnh_giá] + 1) với mọi
+mệnh giá <= x; khởi tạo dp[0]=0, còn lại vô cực. O(k*amount).
+Cạm bẫy: amount = 0 (đáp án 0); không đổi được (giữ vô cực -> -1); đừng dùng
+tham lam chọn mệnh giá lớn nhất (sai với nhiều bộ mệnh giá). Tự kiểm: amount 0;
+mệnh giá không chia hết amount.
+
+[PROBLEM:longest-increasing-subsequence] Dãy con tăng dài nhất — Trung bình — dp
+Yêu cầu: độ dài dãy con tăng chặt dài nhất, không cần liên tiếp, giữ thứ tự.
+Gợi ý hướng: DP O(n^2) với dp[i] = 1 + max(dp[j]) với j < i và a[j] < a[i];
+hoặc tối ưu O(n log n) bằng mảng "đuôi" + tìm kiếm nhị phân.
+Cạm bẫy: dãy giảm dần (đáp án 1); phần tử bằng nhau không tính là tăng (dùng
+<, không <=). Tự kiểm: n = 1; dãy toàn bằng nhau.
+
+Nhóm 7 — SẮP XẾP & TÌM KIẾM (sorting-searching)
+------------------------------------------------
+
+[PROBLEM:binary-search] Tìm kiếm nhị phân — Dễ — sorting-searching
+Yêu cầu: mảng đã sắp tăng; tìm chỉ số target hoặc -1; yêu cầu O(log n).
+Gợi ý hướng: đặt lo=0, hi=n-1; so a[mid] với target và thu hẹp nửa phù hợp;
+chú ý điều kiện dừng và tránh tràn khi tính mid. O(log n).
+Cạm bẫy: mảng rỗng; target ngoài khoảng; tính mid tràn ở mảng rất lớn.
+Tự kiểm: target ở đầu/cuối; mảng một phần tử.
+
+[PROBLEM:kth-largest] Phần tử lớn thứ k — Trung bình — sorting-searching
+Yêu cầu: tìm phần tử lớn thứ k (k=1 là lớn nhất).
+Gợi ý hướng: sắp xếp giảm dần rồi lấy vị trí k-1 (O(n log n)); hoặc dùng
+min-heap kích thước k (O(n log k)); hoặc quickselect trung bình O(n).
+Cạm bẫy: nhầm chỉ số (k-1); phần tử trùng vẫn tính theo thứ hạng; k = n.
+Tự kiểm: k = 1; k = n; có phần tử trùng.
+
+[PROBLEM:sort-array] Sắp xếp mảng — Dễ — sorting-searching
+Yêu cầu: sắp xếp tăng dần.
+Gợi ý hướng: dùng hàm sắp xếp có sẵn của ngôn ngữ; O(n log n).
+Cạm bẫy: n = 1; in đúng khoảng trắng. Tự kiểm: mảng đã sắp; mảng ngược.
+
+[PROBLEM:merge-sorted-arrays] Trộn hai mảng đã sắp xếp — Dễ — sorting-searching
+Yêu cầu: trộn hai mảng đã sắp thành một mảng tăng dần.
+Gợi ý hướng: hai con trỏ, mỗi bước chọn phần tử nhỏ hơn; cuối cùng nối phần
+còn lại. O(n+m).
+Cạm bẫy: một mảng rỗng; phần tử bằng nhau (chọn bên nào cũng được, giữ ổn
+định nếu cần). Tự kiểm: một mảng rỗng; mọi phần tử A nhỏ hơn B.
+
+[PROBLEM:integer-sqrt] Căn bậc hai nguyên — Dễ — sorting-searching
+Yêu cầu: phần nguyên của căn bậc hai x, không dùng hàm sqrt có sẵn.
+Gợi ý hướng: tìm kiếm nhị phân trong [0, x] cho số m sao cho m*m <= x <
+(m+1)*(m+1); cẩn thận tràn khi bình phương. O(log x).
+Cạm bẫy: x = 0; tràn số khi m*m với x lớn (dùng kiểu 64-bit hoặc so sánh
+m <= x/m). Tự kiểm: x = 0, 1, 8, số chính phương.
+
+[PROBLEM:intersection-two-arrays] Giao hai mảng — Dễ — sorting-searching
+Yêu cầu: các phần tử chung, mỗi phần tử một lần, sắp tăng dần; không có thì
+dòng trống.
+Gợi ý hướng: đưa một mảng vào tập hợp rồi lọc mảng kia, sau đó sắp xếp kết quả;
+hoặc sắp xếp cả hai rồi dùng hai con trỏ. O((n+m) log(n+m)).
+Cạm bẫy: phần tử trùng chỉ liệt kê một lần; kết quả rỗng phải in dòng trống.
+Tự kiểm: không giao; giao toàn bộ; phần tử trùng.
+
+Nhóm 8 — HÀM BĂM & TẬP HỢP (hashing)
+-------------------------------------
+
+[PROBLEM:first-unique-char] Ký tự đầu tiên không lặp — Dễ — hashing
+Yêu cầu: ký tự đầu tiên chỉ xuất hiện đúng một lần; không có thì -1.
+Gợi ý hướng: đếm tần suất toàn chuỗi, sau đó duyệt lại theo thứ tự để tìm ký
+tự đầu tiên có tần suất 1. O(n).
+Cạm bẫy: không có ký tự duy nhất (-1); chuỗi dài. Tự kiểm: "aabb"; "aabbc".
+
+[PROBLEM:missing-number] Số thiếu — Trung bình — hashing
+Yêu cầu: mảng n số phân biệt trong 0..n; tìm số thiếu.
+Gợi ý hướng: tổng 0..n trừ tổng mảng; hoặc XOR toàn bộ chỉ số và giá trị.
+O(n), O(1) bộ nhớ.
+Cạm bẫy: số thiếu là 0 hoặc n; tràn tổng nếu n lớn (dùng 64-bit). Tự kiểm:
+thiếu 0; thiếu n.
+
+[PROBLEM:contains-duplicate] Kiểm tra phần tử trùng lặp — Dễ — hashing
+Yêu cầu: có tồn tại hai phần tử bằng nhau không.
+Gợi ý hướng: dùng tập hợp; duyệt và kiểm tra đã có trước khi thêm. O(n).
+Cạm bẫy: n = 1 (false); số âm. Tự kiểm: toàn phần tử khác nhau; hai phần tử
+giống nhau.
+
+[PROBLEM:single-number] Số xuất hiện một lần — Dễ — hashing
+Yêu cầu: mọi phần tử xuất hiện đúng 2 lần trừ một phần tử xuất hiện 1 lần.
+Gợi ý hướng: XOR toàn bộ mảng — các cặp triệt tiêu, còn lại phần tử đơn. O(n),
+O(1) bộ nhớ.
+Cạm bẫy: n = 1; số âm (XOR vẫn đúng). Tự kiểm: n = 1; cặp ở giữa.
+
+[PROBLEM:roman-to-integer] Số La Mã thành số nguyên — Dễ — hashing
+Yêu cầu: chuyển chuỗi La Mã hợp lệ sang số nguyên, có quy tắc trừ.
+Gợi ý hướng: bảng giá trị ký tự; duyệt trái sang phải, nếu ký tự nhỏ hơn ký tự
+kế tiếp thì trừ, ngược lại cộng. O(len).
+Cạm bẫy: chuỗi một ký tự; ký tự cuối không có "kế tiếp"; áp dụng đúng quy tắc
+trừ. Tự kiểm: "IV", "MCMXCIV", "I".
+
+[PROBLEM:valid-sudoku] Bảng Sudoku hợp lệ — Trung bình — hashing
+Yêu cầu: 9x9, ô trống '.', kiểm tra mỗi hàng/cột/khối 3x3 không trùng chữ số.
+Gợi ý hướng: dùng tập hợp cho hàng, cột, khối (khối đánh số theo
+(hàng/3)*3 + cột/3); chỉ xét ô có chữ số. O(1) (81 ô).
+Cạm bẫy: bảng điền một phần vẫn hợp lệ; phân biệt trùng trong cùng khối 3x3
+(không phải toàn bảng). Tự kiểm: bảng trống toàn '.'; trùng trong một hàng.
+
+[PROBLEM:happy-number] Số hạnh phúc — Dễ — hashing
+Yêu cầu: lặp thay n bằng tổng bình phương chữ số; tới 1 thì hạnh phúc, rơi vào
+vòng lặp thì không.
+Gợi ý hướng: dùng tập hợp lưu các số đã gặp để phát hiện chu trình; hoặc thuật
+toán hai con trỏ nhanh/chậm (Floyd). O(log n) mỗi bước, tổng rất nhỏ.
+Cạm bẫy: n = 1 (true ngay); các số rơi vào vòng 4 -> 16 -> ... (false).
+Tự kiểm: 19; 2.
+
+[PROBLEM:isomorphic-strings] Chuỗi đẳng cấu — Dễ — hashing
+Yêu cầu: ánh xạ một-một giữa ký tự hai chuỗi, giữ thứ tự.
+Gợi ý hướng: dùng HAI bảng ánh xạ (s->t và t->s); khi gặp cặp ký tự, kiểm tra
+ánh xạ đã tồn tại phải khớp, nếu chưa thì tạo. O(n).
+Cạm bẫy: chỉ kiểm một chiều sẽ sai (ví dụ "ab" và "aa"); độ dài khác nhau thì
+false. Tự kiểm: "egg"/"add"; "foo"/"bar"; "ab"/"aa".
+
+[PROBLEM:word-pattern] Mẫu từ — Dễ — hashing
+Yêu cầu: mỗi ký tự pattern ứng đúng một từ và ngược lại.
+Gợi ý hướng: tách câu thành các từ; kiểm tra số từ bằng độ dài pattern; dùng
+hai bảng ánh xạ hai chiều như bài chuỗi đẳng cấu. O(n).
+Cạm bẫy: số từ khác độ dài pattern (false); từ trùng với ký tự khác (false).
+Tự kiểm: "abba"/"dog cat cat dog"; "abba"/"dog cat cat fish".
+
+[PROBLEM:longest-consecutive] Dãy liên tiếp dài nhất — Trung bình — hashing
+Yêu cầu: độ dài dãy số liên tiếp dài nhất (không cần đứng cạnh nhau).
+Gợi ý hướng: đưa toàn bộ vào tập hợp; chỉ bắt đầu đếm từ số không có "số liền
+trước" (x-1 không tồn tại), rồi tăng dần x+1. O(n).
+Cạm bẫy: phần tử trùng; sắp xếp rồi đếm cũng được nhưng O(n log n); dãy chỉ
+một phần tử. Tự kiểm: mảng rỗng theo đề không có, nhưng n = 1; dãy gián đoạn.
+
+[PROBLEM:top-k-frequent] K số xuất hiện nhiều nhất — Trung bình — hashing
+Yêu cầu: k số xuất hiện nhiều nhất; tần suất giảm dần, bằng nhau thì số nhỏ
+hơn trước.
+Gợi ý hướng: đếm tần suất bằng bảng băm; sắp xếp theo (tần suất giảm, giá trị
+tăng) rồi lấy k; hoặc dùng heap kích thước k; hoặc bucket sort theo tần suất.
+Cạm bẫy: quy tắc hoà phải đúng (số nhỏ trước); k = n; nhiều số cùng tần suất.
+Tự kiểm: k = 1; mọi số cùng tần suất.
+
+[PROBLEM:majority-element] Phần tử đa số — Dễ — hashing
+Yêu cầu: phần tử xuất hiện hơn n/2 lần (luôn tồn tại).
+Gợi ý hướng: thuật toán bầu cử Boyer-Moore (giữ ứng viên + bộ đếm) O(n), O(1)
+bộ nhớ; hoặc đếm tần suất bằng bảng băm. O(n).
+Cạm bẫy: n = 1; đừng nhầm "nhiều nhất" với "hơn n/2" (đề đảm bảo tồn tại).
+Tự kiểm: n = 1; hai phần tử khác nhau với n = 3.
+
+
+============================================================
+PHẦN C — BẢNG TRA NHANH
+============================================================
+
+Tổng: 56 bài / 8 chủ đề.
+- array (18): two-sum, merge-intervals, sum-array, find-max, reverse-array,
+  count-even, fizz-buzz, best-time-stock, maximum-subarray, two-sum-ii,
+  move-zeroes, product-except-self, container-most-water, rotate-array,
+  jump-game, trapping-rain-water, gas-station, spiral-matrix.
+- string (5): valid-palindrome, count-vowels, check-anagram,
+  longest-common-prefix, longest-substring.
+- linked-list (2): remove-duplicates, reverse-linked-list.
+- stack-queue (5): valid-parentheses, reverse-string, baseball-game, min-stack,
+  daily-temperatures.
+- tree-graph (2): number-of-islands, max-depth-binary-tree.
+- dp (6): climbing-stairs, factorial, house-robber, min-cost-climbing-stairs,
+  coin-change, longest-increasing-subsequence.
+- sorting-searching (6): binary-search, kth-largest, sort-array,
+  merge-sorted-arrays, integer-sqrt, intersection-two-arrays.
+- hashing (12): first-unique-char, missing-number, contains-duplicate,
+  single-number, roman-to-integer, valid-sudoku, happy-number,
+  isomorphic-strings, word-pattern, longest-consecutive, top-k-frequent,
+  majority-element.
+
+Phân bố độ khó: 33 Dễ, 22 Trung bình, 1 Khó.
+- Khó (1): trapping-rain-water.
+- Trung bình (22): kth-largest, merge-intervals, number-of-islands,
+  check-anagram, missing-number, maximum-subarray, valid-sudoku,
+  product-except-self, longest-substring, container-most-water, coin-change,
+  min-stack, daily-temperatures, rotate-array, jump-game, longest-consecutive,
+  top-k-frequent, max-depth-binary-tree, gas-station, spiral-matrix,
+  longest-increasing-subsequence, house-robber.
+- Dễ (33): phần còn lại (gồm two-sum-ii; lưu ý two-sum-ii đánh chỉ số từ 1).
+
+Ghi chú cuối:
+- Tài liệu này KHÔNG chứa mã nguồn lời giải và KHÔNG chứa test ẩn.
+- Khi người dùng bế tắc, hãy gợi ý từng bước nhỏ: hiểu đề -> chọn cấu trúc dữ
+  liệu -> viết giả mã -> kiểm tra độ phức tạp -> thử biên.
+- Luôn khuyến khích người dùng tự chạy thử với ví dụ mẫu trước khi nộp.

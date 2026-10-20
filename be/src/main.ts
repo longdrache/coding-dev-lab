@@ -13,7 +13,9 @@ import { ViewsModule } from './views/views.module.ts';
 import { QnaModule } from './qna/qna.module.ts';
 import { Judge0Module } from './judge0/judge0.module.ts';
 import { PremiumModule } from './premium/premium.module.ts';
+import { RagModule } from './rag/rag.module.ts';
 import { getCorsOrigins } from './cors.ts';
+import { RAG_INGEST_PATH, ragIngestBodyParser } from './common/large-json-body.ts';
 import { trustProxy } from './proxy.ts';
 
 dotenv.config();
@@ -57,6 +59,7 @@ const PUBLIC_API_MODULES = [
   QnaModule,
   Judge0Module,
   PremiumModule,
+  RagModule,
 ];
 
 /**
@@ -91,6 +94,9 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   trustProxy(app);
   app.enableCors({ origin: getCorsOrigins(), credentials: true });
+  // Route ingest tài liệu RAG là chỗ duy nhất gửi payload lớn (tối đa 5MB);
+  // parser bọc riêng để Nest vẫn giữ parser JSON mặc định cho các route còn lại.
+  app.use(RAG_INGEST_PATH, ragIngestBodyParser);
   setupPublicDocs(app);
   await app.listen(process.env.PORT ?? 4000);
 }

@@ -35,6 +35,7 @@ import { recordActivity } from "../activity";
 import { topics } from "@/app/data/topics";
 import { useProblem, useProblems } from "@/app/hooks/useProblems";
 import { VipLockedNotice } from "@/app/premium/PremiumGuard";
+import { ProblemAssistant } from "@/components/ProblemAssistant";
 import { vipBadge } from "../vip-gate";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -999,6 +1000,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
                 )}
               </div>
             )}
+            <ProblemAssistant slug={problem.slug} />
           </section>
 
           <section id="editor" className={focus === "statement" ? "hidden" : "min-w-0"}>

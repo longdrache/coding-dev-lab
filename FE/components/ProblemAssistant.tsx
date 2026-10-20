@@ -46,7 +46,7 @@ export function ProblemAssistant({ slug }: { slug: string }) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history: nextHistory, problemSlug: slug }),
+        body: JSON.stringify({ message, history: previous, problemSlug: slug }),
       });
       const data = (await res.json().catch(() => null)) as {
         answer?: string;

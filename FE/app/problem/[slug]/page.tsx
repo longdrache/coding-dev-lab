@@ -1000,7 +1000,6 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
                 )}
               </div>
             )}
-            <ProblemAssistant slug={problem.slug} />
           </section>
 
           <section id="editor" className={focus === "statement" ? "hidden" : "min-w-0"}>
@@ -1416,6 +1415,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
           </div>
           </section>
         </div>
+        <ProblemAssistant slug={problem.slug} />
       </div>
     </main>
   );

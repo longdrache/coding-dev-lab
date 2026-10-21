@@ -16,14 +16,15 @@ describe('normalizeChatInput', () => {
         { role: 'system', content: 'bỏ' },
         { role: 'assistant', content: 'chào bạn' },
       ],
-      problemSlug: 'two-sum',
+      context: { problem: 'Tìm hai số bằng mục tiêu', language: 'javascript' },
     });
     expect(out.message).toBe('tại sao sai?');
     expect(out.history).toEqual([
       { role: 'user', content: 'chào' },
       { role: 'assistant', content: 'chào bạn' },
     ]);
-    expect(out.problemSlug).toBe('two-sum');
+    expect(out.problem).toBe('Tìm hai số bằng mục tiêu');
+    expect(out.language).toBe('javascript');
   });
 
   it('chỉ giữ 10 lượt gần nhất', () => {
@@ -41,8 +42,10 @@ describe('normalizeChatInput', () => {
     expect(() => normalizeChatInput({ message: 'a'.repeat(2001) })).toThrow(/2000/);
   });
 
-  it('bỏ problemSlug sai định dạng', () => {
-    expect(normalizeChatInput({ message: 'hỏi', problemSlug: '../etc' }).problemSlug).toBeUndefined();
+  it('không có context thì problem/language undefined', () => {
+    const out = normalizeChatInput({ message: 'hỏi' });
+    expect(out.problem).toBeUndefined();
+    expect(out.language).toBeUndefined();
   });
 });
 
@@ -75,7 +78,7 @@ describe('RagService', () => {
     const out = await svc.ask({
       message: 'tối ưu thế nào?',
       history: [{ role: 'user', content: 'chào' }],
-      problemSlug: 'two-sum',
+      context: { problem: 'Tìm hai số bằng mục tiêu', language: 'javascript' },
     });
 
     expect(out).toEqual({ answer: 'dùng HashMap' });
@@ -84,7 +87,7 @@ describe('RagService', () => {
       {
         message: 'tối ưu thế nào?',
         history: [{ role: 'user', content: 'chào' }],
-        context: { problemSlug: 'two-sum' },
+        context: { problem: 'Tìm hai số bằng mục tiêu', language: 'javascript' },
       },
       30_000,
     );

@@ -14,7 +14,10 @@ const SUGGESTIONS = [
   "Vì sao code của mình bị lỗi?",
 ];
 
-export function ProblemAssistant({ slug }: { slug: string }) {
+export function ProblemAssistant({
+  problemTitle,
+  language,
+}: { problemTitle: string; language: string }) {
   const { user, loading } = useSession();
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState<ChatTurn[]>([]);
@@ -64,7 +67,11 @@ export function ProblemAssistant({ slug }: { slug: string }) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history: previous, problemSlug: slug }),
+        body: JSON.stringify({
+          message,
+          history: previous,
+          context: { problem: problemTitle, language },
+        }),
       });
       const data = (await res.json().catch(() => null)) as {
         answer?: string;

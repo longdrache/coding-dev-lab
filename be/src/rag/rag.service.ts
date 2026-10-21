@@ -3,11 +3,15 @@ import { RagBotClient } from './rag.bot-client.ts';
 
 export type ChatRole = 'user' | 'assistant';
 export type ChatTurn = { role: ChatRole; content: string };
-export type ChatInput = { message: string; history: ChatTurn[]; problemSlug?: string };
+export type ChatInput = {
+  message: string;
+  history: ChatTurn[];
+  problem?: string;
+  language?: string;
+};
 
 export const MAX_MESSAGE_LENGTH = 2000;
 export const MAX_HISTORY_TURNS = 10;
-const SLUG_RE = /^[a-z0-9-]{1,120}$/;
 
 export function normalizeChatInput(raw: Record<string, unknown>): ChatInput {
   const message = typeof raw.message === 'string' ? raw.message.trim() : '';
@@ -32,10 +36,16 @@ export function normalizeChatInput(raw: Record<string, unknown>): ChatInput {
       : []
   ).slice(-MAX_HISTORY_TURNS);
 
-  const rawSlug = typeof raw.problemSlug === 'string' ? raw.problemSlug.trim() : '';
-  const problemSlug = rawSlug && SLUG_RE.test(rawSlug) ? rawSlug : undefined;
+  const context =
+    typeof raw.context === 'object' && raw.context !== null
+      ? (raw.context as Record<string, unknown>)
+      : {};
+  const problem =
+    typeof context.problem === 'string' ? context.problem.trim() : undefined;
+  const language =
+    typeof context.language === 'string' ? context.language.trim() : undefined;
 
-  return { message, history, problemSlug };
+  return { message, history, problem, language };
 }
 
 export function extractAnswer(text: string): string {
@@ -64,7 +74,7 @@ export class RagService {
       {
         message: input.message,
         history: input.history,
-        context: { problemSlug: input.problemSlug },
+        context: { problem: input.problem, language: input.language },
       },
       30_000,
     );

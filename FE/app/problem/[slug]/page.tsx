@@ -1415,7 +1415,10 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
           </div>
           </section>
         </div>
-        <ProblemAssistant slug={problem.slug} />
+        <ProblemAssistant
+          problemTitle={problem.title}
+          language={selectedLanguage?.name ?? ""}
+        />
       </div>
     </main>
   );

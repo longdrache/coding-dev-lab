@@ -1,0 +1,13 @@
+{
+  "name": "rag-bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20261021.0",
+    "wrangler": "^3.112.0"
+  }
+}

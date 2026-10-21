@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Loader2, Send } from "lucide-react";
+import Link from "next/link";
+import { Bot, Loader2, Send, X } from "lucide-react";
 import { useSession } from "@/app/ui/AuthProvider";
 import { withTurn, type ChatTurn } from "@/app/problem/assistant";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+const SUGGESTIONS = [
+  "Gợi ý hướng làm cho bài này",
+  "Độ phức tạp mong đợi là bao nhiêu?",
+  "Vì sao code của mình bị lỗi?",
+];
 
 export function ProblemAssistant({ slug }: { slug: string }) {
   const { user, loading } = useSession();
@@ -15,24 +22,35 @@ export function ProblemAssistant({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [history, busy]);
+  }, [history, busy, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !user) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open, user]);
 
   if (loading) return null;
 
-  if (!user) {
-    return (
-      <div className="mt-5 rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500">
-        Đăng nhập để hỏi trợ lý AI về bài này.
-      </div>
-    );
-  }
+  const displayName = user?.name ?? user?.email ?? "Bạn";
+  const initial = displayName.trim().charAt(0).toUpperCase() || "?";
 
   async function send() {
     const message = input.trim();
-    if (!message || busy) return;
+    if (!message || busy || !user) return;
 
     const previous = history;
     const nextHistory = withTurn(history, { role: "user", content: message });
@@ -72,79 +90,177 @@ export function ProblemAssistant({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50/60">
+    <>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        onClick={() => setOpen(true)}
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-900/20 transition hover:bg-emerald-700"
       >
-        <span className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
-          <Bot className="size-4 text-emerald-600" /> Trợ lý AI
-        </span>
-        <span className="text-xs text-zinc-500">
-          {open ? "Thu gọn" : "Hỏi về bài này"}
-        </span>
+        <Bot className="size-4" />
+        Trợ lý AI
       </button>
 
       {open && (
-        <div className="border-t border-zinc-200 p-3">
-          <div ref={scrollRef} className="max-h-64 space-y-2 overflow-y-auto pr-1">
-            {history.length === 0 && (
-              <p className="text-xs text-zinc-500">
-                Hỏi về hướng làm, độ phức tạp, hoặc lỗi bạn đang gặp.
-              </p>
-            )}
-            {history.map((turn, index) => (
-              <div key={index} className={turn.role === "user" ? "text-right" : ""}>
-                <p
-                  className={`inline-block max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm ${
-                    turn.role === "user"
-                      ? "bg-zinc-900 text-white"
-                      : "border border-zinc-200 bg-white text-zinc-800"
-                  }`}
-                >
-                  {turn.content}
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-zinc-950/40 sm:hidden"
+            onClick={() => setOpen(false)}
+            aria-hidden="true"
+          />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Trợ lý AI"
+            className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-zinc-200 bg-white shadow-2xl sm:w-[420px]"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+                  <Bot className="size-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-zinc-900">Trợ lý AI</p>
+                  <p className="text-xs text-zinc-500">Hỏi về bài này</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Đóng trợ lý"
+                className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              {!user ? (
+                <div className="rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-600">
+                  Đăng nhập để hỏi trợ lý AI về bài này.{" "}
+                  <Link href="/sign-in" className="font-semibold text-emerald-700 hover:underline">
+                    Đăng nhập
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+                      <Bot className="size-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="mb-1 text-xs font-semibold text-zinc-700">Trợ lý</p>
+                      <p className="inline-block max-w-full whitespace-pre-wrap break-words rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+                        Chào bạn, mình có thể gợi ý hướng làm, độ phức tạp hoặc giúp tìm lỗi trong code.
+                      </p>
+                      {history.length === 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {SUGGESTIONS.map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              type="button"
+                              onClick={() => {
+                                setInput(suggestion);
+                                inputRef.current?.focus();
+                              }}
+                              className="rounded-full border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 transition hover:border-emerald-300 hover:text-emerald-700"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {history.map((turn, index) =>
+                    turn.role === "user" ? (
+                      <div key={index} className="flex items-start justify-end gap-2">
+                        <div className="min-w-0 text-right">
+                          <p className="mb-1 text-xs font-semibold text-zinc-700">{displayName}</p>
+                          <p className="inline-block max-w-full whitespace-pre-wrap break-words rounded-xl bg-zinc-900 px-3 py-2 text-left text-sm text-white">
+                            {turn.content}
+                          </p>
+                        </div>
+                        <span
+                          className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 bg-cover bg-center text-xs font-semibold text-zinc-700"
+                          style={
+                            user.avatarUrl
+                              ? { backgroundImage: `url("${user.avatarUrl}")` }
+                              : undefined
+                          }
+                        >
+                          {user.avatarUrl ? null : initial}
+                        </span>
+                      </div>
+                    ) : (
+                      <div key={index} className="flex items-start gap-2">
+                        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+                          <Bot className="size-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="mb-1 text-xs font-semibold text-zinc-700">Trợ lý</p>
+                          <p className="inline-block max-w-full whitespace-pre-wrap break-words rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+                            {turn.content}
+                          </p>
+                        </div>
+                      </div>
+                    ),
+                  )}
+
+                  {busy && (
+                    <p className="flex items-center gap-2 pl-10 text-xs text-zinc-500">
+                      <Loader2 className="size-3.5 animate-spin" /> Đang trả lời...
+                    </p>
+                  )}
+
+                  {error && (
+                    <p role="alert" className="pl-10 text-xs text-rose-600">
+                      {error}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {user && (
+              <div className="border-t border-zinc-200 p-3">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing) return;
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void send();
+                      }
+                    }}
+                    disabled={busy}
+                    rows={2}
+                    maxLength={2000}
+                    placeholder="Nhập câu hỏi..."
+                    className="min-h-[42px] flex-1 resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void send()}
+                    disabled={busy || !input.trim()}
+                    aria-label="Gửi câu hỏi"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-zinc-500">
+                  Enter để gửi · Shift+Enter để xuống dòng
                 </p>
               </div>
-            ))}
-            {busy && (
-              <p className="flex items-center gap-2 text-xs text-zinc-500">
-                <Loader2 className="size-3.5 animate-spin" /> Đang trả lời...
-              </p>
             )}
           </div>
-
-          {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
-
-          <div className="mt-2 flex gap-2">
-            <textarea
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing) return;
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void send();
-                }
-              }}
-              disabled={busy}
-              rows={2}
-              maxLength={2000}
-              placeholder="Nhập câu hỏi..."
-              className="min-h-[42px] flex-1 resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-            />
-            <button
-              type="button"
-              onClick={() => void send()}
-              disabled={busy || !input.trim()}
-              aria-label="Gửi câu hỏi"
-              className="self-end rounded-lg bg-emerald-600 px-3 py-2 text-white transition hover:bg-emerald-700 disabled:opacity-50"
-            >
-              <Send className="size-4" />
-            </button>
-          </div>
-        </div>
+        </>
       )}
-    </div>
+    </>
   );
 }

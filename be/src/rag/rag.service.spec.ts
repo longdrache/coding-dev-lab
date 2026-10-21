@@ -89,7 +89,7 @@ describe('RagService', () => {
         history: [{ role: 'user', content: 'chào' }],
         context: { problem: 'Tìm hai số bằng mục tiêu', language: 'javascript' },
       },
-      30_000,
+      60_000,
     );
   });
 

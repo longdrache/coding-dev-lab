@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bot, Send, X } from "lucide-react";
+import { Bot, Loader2, Send, X } from "lucide-react";
 import { useSession } from "@/app/ui/AuthProvider";
 import { withTurn, type ChatTurn } from "@/app/problem/assistant";
 
@@ -23,15 +23,13 @@ export function ProblemAssistant({
   const [history, setHistory] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [streaming, setStreaming] = useState(false);
-  const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [history, busy, open, streaming]);
+  }, [history, busy, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,12 +55,6 @@ export function ProblemAssistant({
     const message = input.trim();
     if (!message || busy || !user) return;
 
-    if (streaming && draft) {
-      setHistory((prev) => withTurn(prev, { role: "assistant", content: draft }));
-      setDraft("");
-      setStreaming(false);
-    }
-
     const previous = history;
     const nextHistory = withTurn(history, { role: "user", content: message });
 
@@ -70,8 +62,6 @@ export function ProblemAssistant({
     setInput("");
     setHistory(nextHistory);
     setBusy(true);
-    setStreaming(true);
-    setDraft("");
     try {
       const res = await fetch(`${API_URL}/api/rag/chat`, {
         method: "POST",
@@ -89,7 +79,6 @@ export function ProblemAssistant({
       } | null;
 
       if (!res.ok || !data?.answer) {
-        setStreaming(false);
         setHistory(previous);
         if (res.status === 401) setError("Phiên đã hết hạn, hãy đăng nhập lại.");
         else if (res.status === 429) setError("Bạn hỏi hơi nhanh, thử lại sau một phút.");
@@ -98,18 +87,8 @@ export function ProblemAssistant({
         return;
       }
 
-      const answer = data.answer as string;
-      let i = 0;
-      while (i < answer.length) {
-        setDraft((d) => d + answer[i]);
-        i += 1;
-        await new Promise((resolve) => setTimeout(resolve, 12));
-      }
-      setHistory((prev) => withTurn(prev, { role: "assistant", content: answer }));
-      setDraft("");
-      setStreaming(false);
+      setHistory((prev) => withTurn(prev, { role: "assistant", content: data.answer as string }));
     } catch {
-      setStreaming(false);
       setHistory(previous);
       setError("Không kết nối được trợ lý.");
     } finally {
@@ -201,20 +180,6 @@ export function ProblemAssistant({
                     </div>
                   </div>
 
-                  {streaming && draft && (
-                    <div className="flex items-start gap-2">
-                      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
-                        <Bot className="size-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="mb-1 text-xs font-semibold text-zinc-700">Trợ lý</p>
-                        <p className="inline-block max-w-full whitespace-pre-wrap break-words rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
-                          {draft}<span className="animate-pulse font-mono text-xs">…</span>
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
                   {history.map((turn, index) =>
                     turn.role === "user" ? (
                       <div key={index} className="flex items-start justify-end gap-2">
@@ -250,9 +215,9 @@ export function ProblemAssistant({
                     ),
                   )}
 
-                  {!streaming && busy && (
+                  {busy && (
                     <p className="flex items-center gap-2 pl-10 text-xs text-zinc-500">
-                      Đang nghĩ<span className="animate-pulse font-mono text-xs">…</span>
+                      <Loader2 className="size-3.5 animate-spin" /> Đang trả lời...
                     </p>
                   )}
 
@@ -292,7 +257,7 @@ export function ProblemAssistant({
                     aria-label="Gửi câu hỏi"
                     className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    {busy || streaming ? <span className="animate-pulse font-mono text-xs">…</span> : <Send className="size-4" />}
+                    {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                   </button>
                 </div>
                 <p className="mt-1.5 text-[11px] text-zinc-500">

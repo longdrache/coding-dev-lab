@@ -22,7 +22,7 @@ describe('RagBotClient', () => {
 
   it('gửi JSON + Bearer tới BOT_URL và trả text', async () => {
     vi.stubEnv('BOT_URL', 'http://bot.local/');
-    vi.stubEnv('ADMIN_KEY', 'secret');
+    vi.stubEnv('CHAT_KEY', 'secret');
     stubFetch({ ok: true, status: 200, text: '{"answer":"ok"}' });
 
     const res = await client.post('/chat', { message: 'hi' }, 1000);
@@ -37,14 +37,14 @@ describe('RagBotClient', () => {
 
   it('thiếu cấu hình thì báo 503', async () => {
     vi.stubEnv('BOT_URL', '');
-    vi.stubEnv('ADMIN_KEY', '');
+    vi.stubEnv('CHAT_KEY', '');
 
-    await expect(client.post('/chat', {}, 1000)).rejects.toThrow(/BOT_URL|ADMIN_KEY/);
+    await expect(client.post('/chat', {}, 1000)).rejects.toThrow(/BOT_URL|CHAT_KEY/);
   });
 
   it('bot trả lỗi thì báo 502 kèm mã', async () => {
     vi.stubEnv('BOT_URL', 'http://bot.local');
-    vi.stubEnv('ADMIN_KEY', 'secret');
+    vi.stubEnv('CHAT_KEY', 'secret');
     stubFetch({ ok: false, status: 401, text: 'no' });
 
     await expect(client.post('/chat', {}, 1000)).rejects.toThrow('401');
@@ -52,7 +52,7 @@ describe('RagBotClient', () => {
 
   it('mất kết nối thì báo 502', async () => {
     vi.stubEnv('BOT_URL', 'http://bot.local');
-    vi.stubEnv('ADMIN_KEY', 'secret');
+    vi.stubEnv('CHAT_KEY', 'secret');
     fetchMock.mockRejectedValue(new Error('down'));
     vi.stubGlobal('fetch', fetchMock);
 

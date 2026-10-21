@@ -6,9 +6,9 @@ export type BotResponse = { status: number; ok: true; text: string };
 export class RagBotClient {
   private config(): { baseUrl: string; adminKey: string } {
     const baseUrl = (process.env.BOT_URL ?? '').trim().replace(/\/+$/, '');
-    const adminKey = (process.env.ADMIN_KEY ?? '').trim();
+    const adminKey = (process.env.CHAT_KEY ?? '').trim();
     if (!baseUrl || !adminKey) {
-      throw new ServiceUnavailableException('Chưa cấu hình BOT_URL/ADMIN_KEY');
+      throw new ServiceUnavailableException('Chưa cấu hình BOT_URL/CHAT_KEY');
     }
     return { baseUrl, adminKey };
   }

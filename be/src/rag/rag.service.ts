@@ -76,7 +76,7 @@ export class RagService {
         history: input.history,
         context: { problem: input.problem, language: input.language },
       },
-      30_000,
+      60_000,
     );
     const answer = extractAnswer(res.text);
     if (!answer) throw new BadGatewayException('Bot RAG trả về nội dung rỗng');

@@ -109,8 +109,17 @@ export default {
       return json({ error: "Dữ liệu gửi lên không hợp lệ" }, 400);
     }
 
+    if (!verifyAdminKey(env, request.headers.get("authorization"))) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
     const kb = await getKnowledgeBase(env);
     const answer = buildAnswer(kb, body.message, body.context?.problem, body.context?.language);
     return json({ answer });
   },
 } satisfies ExportedHandler<Env>;
+
+export const verifyAdminKey = (env: Env, authorization: string | null): boolean => {
+  if (!env.ADMIN_KEY) return true;
+  return authorization === `Bearer ${env.ADMIN_KEY}`;
+};

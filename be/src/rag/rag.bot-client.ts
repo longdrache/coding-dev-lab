@@ -33,7 +33,7 @@ export class RagBotClient {
 
     const text = await response.text();
     if (!response.ok) {
-      throw new BadGatewayException(`Bot RAG trả lỗi ${response.status}`);
+      throw new BadGatewayException(`Bot RAG trả lỗi ${response}`);
     }
     return { status: response.status, ok: true, text };
   }

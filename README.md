@@ -8,7 +8,7 @@
 
 GoCode is a full-stack algorithm practice platform for students. Users read problem statements, write code in a Monaco editor, submit solutions, and receive instant judging results from Judge0. The platform gamifies learning with streaks, heatmaps, and badges, and monetizes via a Premium/VIP subscription tier (Stripe).
 
-**Demo:** [https://gocode.appofme.click](https://gocode.appofme.click) &nbsp;·&nbsp; **API:** [https://api.gocode.appofme.click](https://api.gocode.appofme.click)
+**Demo:** [https://gocode.appofme.click](https://gocode.appofme.click) &nbsp;·&nbsp; **API:** [https://api.gocode.appofme.click/api/docs](https://api.gocode.appofme.click/api/docs)
 
 ---
 

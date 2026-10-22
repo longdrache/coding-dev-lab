@@ -46,8 +46,7 @@ describe('RagBotClient', () => {
     vi.stubEnv('BOT_URL', 'http://bot.local');
     vi.stubEnv('CHAT_KEY', 'secret');
     stubFetch({ ok: false, status: 401, text: 'no' });
-    expect(true).toBe(true);
-    // await expect(client.post('/chat', {}, 1000)).rejects.toThrow('401');
+    await expect(client.post('/chat', {}, 1000)).rejects.toThrow('401');
   });
 
   it('mất kết nối thì báo 502', async () => {

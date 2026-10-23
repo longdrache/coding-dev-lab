@@ -26,7 +26,11 @@ name: CI
 on:
   push:
     branches: [main, master]
+    branches-ignore: [docs/**, .github/**, .vscode/**]
+
   pull_request:
+    branches-ignore: [docs/**, .github/**, .vscode/**]
+    
   schedule:
     # Nightly full run at 03:00 Vietnam time (20:00 UTC, previous day).
     # Catches drift in EXTERNAL infra (Judge0 VM asleep, Neon unreachable)

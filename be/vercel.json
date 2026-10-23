@@ -1,5 +1,13 @@
 {
   "version": 2,
-  "builds": [{ "src": "api/index.ts", "use": "@vercel/node" }],
+  "builds": [
+    {
+      "src": "api/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": "node_modules/.pnpm/swagger-ui-dist@*/node_modules/swagger-ui-dist/**"
+      }
+    }
+  ],
   "routes": [{ "src": "/(.*)", "dest": "api/index.ts" }]
 }

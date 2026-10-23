@@ -8,7 +8,9 @@
 
 GoCode is a full-stack algorithm practice platform for students. Users read problem statements, write code in a Monaco editor, submit solutions, and receive instant judging results from Judge0. The platform gamifies learning with streaks, heatmaps, and badges, and monetizes via a Premium/VIP subscription tier (Stripe).
 
-**Demo:** [https://gocode.appofme.click](https://gocode.appofme.click) &nbsp;·&nbsp; **API:** [https://api.gocode.appofme.click/api/docs](https://api.gocode.appofme.click/api/docs)
+
+**Demo:** [https://gocode.appofme.click](https://gocode.appofme.click)
+
 
 ---
 
@@ -385,14 +387,6 @@ erDiagram
 ```
 
 ---
-
-## API
-
-> **Interactive docs:** [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs)
-> (Swagger UI, 40 public endpoints — auth, problems, submissions, progress,
-> premium, judge0, views, presence, activity, Q&A). Admin endpoints are
-> intentionally excluded. Click **Authorize** and paste an access token as
-> Bearer to try authenticated calls (most routes also accept the session cookie).
 
 ### Authentication (`/api/auth`)
 
@@ -802,7 +796,7 @@ coding-dev-lab/
 │   ├── prisma/
 │   │   └── schema.prisma     # 14 database models
 │   ├── test/                 # API e2e + DB/SMTP integration tests (real Postgres + Mailpit)
-│   │   ├── api.e2e-spec.ts
+│   │   ├── api.e2e-spec.tslict 
 │   │   ├── auth.integration.ts         # register/verify/login/refresh/resend
 │   │   ├── submissions.integration.ts  # submit judging (Judge0 stubbed at fetch) + history
 │   │   ├── vip.integration.ts          # VIP read policy + VIP lifecycle

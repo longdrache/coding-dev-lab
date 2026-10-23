@@ -19,7 +19,7 @@ import { RagModule } from '../src/rag/rag.module.ts';
 import { getCorsOrigins } from '../src/cors.ts';
 import { RAG_INGEST_PATH, ragIngestBodyParser } from '../src/common/large-json-body.ts';
 import { trustProxy } from '../src/proxy.ts';
-
+import path from 'path';
 dotenv.config();
 
 const server = express();
@@ -64,7 +64,7 @@ async function bootstrap() {
   app.enableCors({ origin: getCorsOrigins(), credentials: true });
   // Route ingest tài liệu RAG cần payload lớn; parser bọc riêng để Nest vẫn giữ
   // parser JSON mặc định cho các route còn lại.
-  app.use(RAG_INGEST_PATH, ragIngestBodyParser);
+  app.use('/api/docs', express.static(path.join(__dirname, 'node_modules', '@nestjs', 'swagger-ui-dist')));
   // Swagger docs chỉ được mount ở src/main.ts; entrypoint Vercel (api/index.ts)
   // không chạy main.ts, nên phải đăng ký lại ở đây để /api/docs hoạt động.
   setupPublicDocs(app);

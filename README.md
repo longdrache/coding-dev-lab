@@ -8,7 +8,9 @@
 
 GoCode is a full-stack algorithm practice platform for students. Users read problem statements, write code in a Monaco editor, submit solutions, and receive instant judging results from Judge0. The platform gamifies learning with streaks, heatmaps, and badges, and monetizes via a Premium/VIP subscription tier (Stripe).
 
+
 **Demo:** [https://gocode.appofme.click](https://gocode.appofme.click) &nbsp;·&nbsp; 
+
 
 ---
 
@@ -794,7 +796,7 @@ coding-dev-lab/
 │   ├── prisma/
 │   │   └── schema.prisma     # 14 database models
 │   ├── test/                 # API e2e + DB/SMTP integration tests (real Postgres + Mailpit)
-│   │   ├── api.e2e-spec.ts
+│   │   ├── api.e2e-spec.tslict 
 │   │   ├── auth.integration.ts         # register/verify/login/refresh/resend
 │   │   ├── submissions.integration.ts  # submit judging (Judge0 stubbed at fetch) + history
 │   │   ├── vip.integration.ts          # VIP read policy + VIP lifecycle

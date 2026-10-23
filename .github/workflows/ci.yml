@@ -26,10 +26,16 @@ name: CI
 on:
   push:
     branches: [main, master]
-    branches-ignore: [docs/**, .github/**, .vscode/**]
-
+    paths-ignore:
+      - 'docs/**'
+      - '.github/**'
+      - '.vscode/**'
   pull_request:
-    branches-ignore: [docs/**, .github/**, .vscode/**]
+    branches: [main, master]
+    paths-ignore:
+      - 'docs/**'
+      - '.github/**'
+      - '.vscode/**'
     
   schedule:
     # Nightly full run at 03:00 Vietnam time (20:00 UTC, previous day).

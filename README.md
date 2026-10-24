@@ -10,6 +10,7 @@ GoCode is a full-stack algorithm practice platform for students. Users read prob
 
 
 **Demo:** [https://gocode.appofme.click](https://gocode.appofme.click)
+**API documentation:** [https://api.gocode.appofme.click](https://api.gocode.appofme.click)
 
 
 ---
@@ -90,9 +91,9 @@ Local webhooks need forwarding to the BE (`stripe listen --forward-to localhost:
 |---|---|
 | ![Landing](docs/images/trang-chu.png) | ![Problem list](docs/images/danh-sach-bai.png) |
 
-| Problem editor | VIP locked problem |
+| Problem editor with AI assistant open | VIP locked problem |
 |---|---|
-| ![Problem editor](docs/images/bai-tap-mon-code.png) | ![VIP locked problem](docs/images/bai-vip.png) |
+| ![Problem editor with AI assistant open](docs/images/bai-tap-mon-code.png) | ![VIP locked problem](docs/images/bai-vip.png) |
 
 | Google sign-in | Premium plans |
 |---|---|

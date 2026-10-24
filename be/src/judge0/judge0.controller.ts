@@ -53,22 +53,22 @@ export class Judge0Controller {
   constructor(private readonly judge0Service: Judge0Service) {}
 
   @Post()
-  @ApiOperation({ summary: 'Chạy thử 1 submission trên Judge0 (không lưu lịch sử)' })
+  @ApiOperation({ summary: 'Run a single submission on Judge0 without saving it to history' })
   @ApiBody({
     schema: {
       type: 'object',
       required: ['language_id', 'source_code'],
       properties: {
         language_id: { type: 'number', example: 71, description: '71 = Python 3.' },
-        source_code: { type: 'string', example: 'print(1)', description: 'Tối đa 64.000 ký tự.' },
+        source_code: { type: 'string', example: 'print(1)', description: 'Maximum 64,000 characters.' },
         stdin: { type: 'string', example: '' },
       },
     },
   })
-  @ApiResponse({ status: 201, description: '`{ token }` để poll.' })
-  @ApiResponse({ status: 400, description: 'Thiếu/sai language_id, source_code, hoặc quá dài.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
-  @ApiResponse({ status: 429, description: 'Quá 20 req/phút.' })
+  @ApiResponse({ status: 201, description: '`{ token }` to poll for the result.' })
+  @ApiResponse({ status: 400, description: 'language_id or source_code is missing or invalid, or the source code exceeds the size limit.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded: 20 requests per minute.' })
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   createSubmission(@Body() body: CreateSubmissionInput) {
     if (!body?.source_code || typeof body.language_id !== 'number') {
@@ -80,7 +80,7 @@ export class Judge0Controller {
   }
 
   @Post('batch')
-  @ApiOperation({ summary: 'Chạy thử tối đa 10 submissions một batch' })
+  @ApiOperation({ summary: 'Run up to 10 submissions in a batch' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -102,10 +102,10 @@ export class Judge0Controller {
       },
     },
   })
-  @ApiResponse({ status: 201, description: 'Mảng `{ token }` theo đúng thứ tự gửi.' })
-  @ApiResponse({ status: 400, description: 'Mảng rỗng, quá 10, hoặc item thiếu/sai trường.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
-  @ApiResponse({ status: 429, description: 'Quá 20 req/phút.' })
+  @ApiResponse({ status: 201, description: 'Array of `{ token }` values in the same order as the submitted items.' })
+  @ApiResponse({ status: 400, description: 'The array is empty, contains more than 10 items, or an item has missing or invalid fields.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded: 20 requests per minute.' })
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   createBatchSubmissions(@Body() body: { submissions?: BatchSubmissionItem[] }) {
     const submissions = body?.submissions;
@@ -125,12 +125,12 @@ export class Judge0Controller {
   }
 
   @Get('batch')
-  @ApiOperation({ summary: 'Poll kết quả batch (tối đa 10 tokens)' })
-  @ApiQuery({ name: 'tokens', type: String, example: 't1,t2', description: 'Danh sách token cách nhau bằng dấu phẩy.' })
-  @ApiResponse({ status: 200, description: '`{ submissions[] }` kèm stdout/stderr/status từng cái.' })
-  @ApiResponse({ status: 400, description: 'Thiếu tokens hoặc quá 10.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
-  @ApiResponse({ status: 429, description: 'Quá 100 req/phút.' })
+  @ApiOperation({ summary: 'Poll batch results (up to 10 tokens)' })
+  @ApiQuery({ name: 'tokens', type: String, example: 't1,t2', description: 'Comma-separated list of submission tokens.' })
+  @ApiResponse({ status: 200, description: '`{ submissions[] }` with stdout, stderr, and status for each submission.' })
+  @ApiResponse({ status: 400, description: 'The tokens parameter is missing or contains more than 10 tokens.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded: 100 requests per minute.' })
   // Xem ghi chú ở `auth.controller.ts` (`refresh`): 120/phút từng là code chết vì
   // khi tầng đó biến mất.
   @Throttle({ default: { limit: 100, ttl: 60_000 } })
@@ -152,11 +152,11 @@ export class Judge0Controller {
   }
 
   @Get(':token')
-  @ApiOperation({ summary: 'Lấy kết quả 1 submission theo token' })
+  @ApiOperation({ summary: 'Get a submission result by token' })
   @ApiParam({ name: 'token', type: String, example: 't1' })
-  @ApiResponse({ status: 200, description: 'Submission kèm stdout/stderr/status.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
-  @ApiResponse({ status: 404, description: 'Token không tồn tại trên Judge0.' })
+  @ApiResponse({ status: 200, description: 'Submission result, including stdout, stderr, and status.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
+  @ApiResponse({ status: 404, description: 'The token does not exist on Judge0.' })
   getSubmission(@Param('token') token: string) {
     return this.judge0Service.getSubmission(token);
   }

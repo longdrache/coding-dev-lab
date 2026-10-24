@@ -16,19 +16,19 @@ export class ViewsController {
   constructor(private readonly views: ViewsService) {}
 
   @Post('track')
-  @ApiOperation({ summary: 'Ghi lượt xem trang (fire-and-forget, IP được băm trước khi lưu)' })
+  @ApiOperation({ summary: 'Record a page view (fire-and-forget; the IP address is hashed before storage)' })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        path: { type: 'string', example: '/premium', description: 'Không phải chuỗi thì ghi `/`.' },
-        userId: { type: 'number', nullable: true, example: 7, description: 'Chỉ nhận số; chuỗi thì ghi null.' },
-        visitorId: { type: 'string', example: 'v-1', description: 'Dồn khách chưa đăng nhập; không phải chuỗi thì bỏ.' },
+        path: { type: 'string', example: '/premium', description: 'Non-string values are recorded as `/`.' },
+        userId: { type: 'number', nullable: true, example: 7, description: 'Only numeric values are accepted; strings are recorded as null.' },
+        visitorId: { type: 'string', example: 'v-1', description: 'Groups unauthenticated visitors; non-string values are ignored.' },
       },
     },
   })
-  @ApiResponse({ status: 201, description: '`{ ok: true }` luôn — không bao giờ ném, kể cả body rỗng.' })
-  @ApiResponse({ status: 429, description: 'Quá 30 req/phút/IP.' })
+  @ApiResponse({ status: 201, description: 'Always returns `{ ok: true }` and never throws, even for an empty request body.' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded: 30 requests per minute per IP.' })
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async track(
     @Req() req: TrackRequest,

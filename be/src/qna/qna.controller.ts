@@ -11,7 +11,7 @@ export class QnaController {
   constructor(private readonly qna: QnaService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Gửi câu hỏi hỗ trợ (khách vãng lai được, 5 req/phút)' })
+  @ApiOperation({ summary: 'Submit a support question (available to unauthenticated users; 5 requests per minute)' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -20,13 +20,13 @@ export class QnaController {
         name: { type: 'string', maxLength: 100, example: 'An' },
         email: { type: 'string', format: 'email', maxLength: 254, example: 'an@example.com' },
         question: { type: 'string', maxLength: 2000, example: 'Làm sao nộp bài Python?' },
-        message: { type: 'string', description: 'Bí danh của `question` (client cũ).' },
+        message: { type: 'string', description: 'Alias for `question`, supported for legacy clients.' },
       },
     },
   })
   @ApiResponse({ status: 201, description: '`{ ok: true, id }`.' })
-  @ApiResponse({ status: 400, description: 'Thiếu tên/email/câu hỏi hoặc email sai dạng.' })
-  @ApiResponse({ status: 429, description: 'Quá 5 req/phút.' })
+  @ApiResponse({ status: 400, description: 'Name, email, or question is missing, or the email address is invalid.' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded: 5 requests per minute.' })
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async create(
     @Body() body: { name: string; email: string; question: string; message?: string },
@@ -59,9 +59,9 @@ export class QnaController {
   @Get()
   @ApiBearerAuth()
   @ApiCookieAuth()
-  @ApiOperation({ summary: 'Liệt kê câu hỏi (cần đăng nhập — dùng cho admin)' })
-  @ApiResponse({ status: 200, description: 'Danh sách câu hỏi.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiOperation({ summary: 'List support questions (authentication required; intended for administrators)' })
+  @ApiResponse({ status: 200, description: 'List of support questions.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   @UseGuards(AuthGuard)
   async list() {
     return this.qna.findAll();

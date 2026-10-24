@@ -9,14 +9,14 @@ export class PresenceController {
   constructor(private readonly presence: PresenceService) {}
 
   @Post('heartbeat')
-  @ApiOperation({ summary: 'Nhịp tim online: giữ phiên trong bảng đếm (thiếu sessionId thì tự sinh UUID)' })
+  @ApiOperation({ summary: 'Send an online heartbeat and keep the session in the active-user count (generates a UUID if sessionId is omitted)' })
   @ApiBody({
     schema: {
       type: 'object',
       properties: { sessionId: { type: 'string', example: 'sess-1', maxLength: 128 } },
     },
   })
-  @ApiResponse({ status: 201, description: '`{ online, sessionId }` — số người đang online + phiên đang giữ.' })
+  @ApiResponse({ status: 201, description: '`{ online, sessionId }` — the current online-user count and active session ID.' })
   heartbeat(@Body() body: { sessionId?: string }) {
     const sessionId =
       typeof body?.sessionId === 'string' && body.sessionId.length > 0
@@ -27,8 +27,8 @@ export class PresenceController {
   }
 
   @Post('leave')
-  @ApiOperation({ summary: 'Rời phiên + đếm lại số online (sessionId rỗng thì chỉ đếm, không xoá)' })
-  @ApiResponse({ status: 201, description: '`{ online }` sau khi rời.' })
+  @ApiOperation({ summary: 'Leave a session and recount online users (an empty sessionId only recounts and does not remove a session)' })
+  @ApiResponse({ status: 201, description: '`{ online }` after leaving the session.' })
   leave(@Body() body: { sessionId?: string }) {
     if (typeof body?.sessionId === 'string' && body.sessionId.length > 0) {
       this.presence.leave(body.sessionId);
@@ -37,14 +37,14 @@ export class PresenceController {
   }
 
   @Delete('leave')
-  @ApiOperation({ summary: 'Beacon khi đóng tab (cùng hành vi với POST leave)' })
-  @ApiResponse({ status: 200, description: '`{ online }` sau khi rời.' })
+  @ApiOperation({ summary: 'Handle a beacon sent when a tab closes (same behavior as POST leave)' })
+  @ApiResponse({ status: 200, description: '`{ online }` after leaving the session.' })
   leaveBeacon(@Body() body: { sessionId?: string }) {
     return this.leave(body);
   }
 
   @Get('online')
-  @ApiOperation({ summary: 'Số người đang online (chỉ đếm, không sinh phiên)' })
+  @ApiOperation({ summary: 'Get the number of online users (counts only; does not create a session)' })
   @ApiResponse({ status: 200, description: '`{ online }`.' })
   online() {
     return { online: this.presence.count() };

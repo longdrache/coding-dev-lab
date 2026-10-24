@@ -51,7 +51,7 @@ export class PremiumController {
   constructor(private readonly premiumService: PremiumService) {}
 
   @Post('checkout')
-  @ApiOperation({ summary: 'Tạo phiên Stripe Checkout cho một gói (trả về URL thanh toán)' })
+  @ApiOperation({ summary: 'Create a Stripe Checkout session for a plan and return the payment URL' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -59,9 +59,9 @@ export class PremiumController {
       properties: { plan: { type: 'string', enum: ['daily', 'monthly', 'yearly'], example: 'monthly' } },
     },
   })
-  @ApiResponse({ status: 201, description: 'URL Stripe Checkout.' })
-  @ApiResponse({ status: 400, description: 'Không xác định được user.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiResponse({ status: 201, description: 'Stripe Checkout URL.' })
+  @ApiResponse({ status: 400, description: 'The user could not be identified.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   @UseGuards(AuthGuard)
   createCheckout(
     @Req() request: AuthenticatedRequest,
@@ -71,19 +71,19 @@ export class PremiumController {
   }
 
   @Post('grant-vip')
-  @ApiOperation({ summary: '[Admin] Cấp VIP cho user (mặc định chính mình, gói monthly)' })
+  @ApiOperation({ summary: '[Admin] Grant VIP access to a user (defaults to the current user and the monthly plan)' })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        userId: { type: 'string', example: '42', description: 'Bỏ trống là tự cấp cho mình.' },
+        userId: { type: 'string', example: '42', description: 'Omit to grant VIP access to yourself.' },
         plan: { type: 'string', enum: ['daily', 'monthly', 'yearly'], example: 'yearly' },
       },
     },
   })
   @ApiResponse({ status: 201, description: '`{ ok, userId, role: "vip", plan }`.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
-  @ApiResponse({ status: 403, description: 'Không phải admin.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
+  @ApiResponse({ status: 403, description: 'Administrator access is required.' })
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
   async grantVip(
@@ -104,16 +104,16 @@ export class PremiumController {
   }
 
   @Post('cancel-vip')
-  @ApiOperation({ summary: '[Admin] Hủy VIP của user' })
+  @ApiOperation({ summary: '[Admin] Revoke VIP access from a user' })
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { userId: { type: 'string', example: '42', description: 'Bỏ trống là tự hủy của mình.' } },
+      properties: { userId: { type: 'string', example: '42', description: 'Omit to revoke your own VIP access.' } },
     },
   })
   @ApiResponse({ status: 201, description: '`{ ok, userId, role: "user" }`.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
-  @ApiResponse({ status: 403, description: 'Không phải admin.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
+  @ApiResponse({ status: 403, description: 'Administrator access is required.' })
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
   async cancelVip(
@@ -132,10 +132,10 @@ export class PremiumController {
   }
 
   @Post('webhook')
-  @ApiOperation({ summary: 'Webhook Stripe (Stripe gọi, không phải client — cần chữ ký hợp lệ)' })
-  @ApiHeader({ name: 'stripe-signature', required: true, description: 'Chữ ký webhook của Stripe.' })
-  @ApiResponse({ status: 201, description: 'Đã nhận (idempotent theo StripeEvent).' })
-  @ApiResponse({ status: 400, description: 'Thiếu signature/raw body, hoặc chữ ký sai.' })
+  @ApiOperation({ summary: 'Stripe webhook (called by Stripe, not clients; requires a valid signature)' })
+  @ApiHeader({ name: 'stripe-signature', required: true, description: 'Stripe webhook signature.' })
+  @ApiResponse({ status: 201, description: 'Event accepted (idempotent by StripeEvent).' })
+  @ApiResponse({ status: 400, description: 'Signature or raw request body is missing, or the signature is invalid.' })
   handleWebhook(
     @Req() request: RawBodyRequest,
     @Headers('stripe-signature') signature?: string,
@@ -153,25 +153,25 @@ export class PremiumController {
   // ========== VIP hết hạn ==========
 
   @Get('status')
-  @ApiOperation({ summary: 'Trạng thái VIP của chính mình (role, gói, hạn, còn mấy ngày)' })
+  @ApiOperation({ summary: 'Get your VIP status (role, plan, expiration date, and days remaining)' })
   @ApiResponse({ status: 200, description: '`{ role, plan, expiresAt, isExpired, daysLeft }`.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   @UseGuards(AuthGuard)
   async getStatus(@Req() request: AuthenticatedRequest) {
     return this.premiumService.getVipStatus(toUserId(request.user?.userId));
   }
 
   @Post('check-expired')
-  @ApiOperation({ summary: 'Kiểm tra + hạ VIP hết hạn ngay (tự check mình; check người khác cần admin)' })
+  @ApiOperation({ summary: 'Check and immediately downgrade expired VIP access (users can check themselves; checking others requires an administrator)' })
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { userId: { type: 'string', example: '42', description: 'Bỏ trống là tự kiểm tra mình.' } },
+      properties: { userId: { type: 'string', example: '42', description: 'Omit to check your own account.' } },
     },
   })
   @ApiResponse({ status: 201, description: '`{ userId, downgraded, ... }`.' })
-  @ApiResponse({ status: 400, description: 'Không phải admin mà đòi kiểm tra user khác.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiResponse({ status: 400, description: 'Only an administrator can check another user.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   @UseGuards(AuthGuard)
   async checkExpired(
     @Req() request: AuthenticatedRequest,

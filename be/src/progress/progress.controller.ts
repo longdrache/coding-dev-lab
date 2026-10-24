@@ -13,31 +13,31 @@ export class ProgressController {
   constructor(private readonly progress: ProgressService) {}
 
   @Get('dashboard')
-  @ApiOperation({ summary: 'Dashboard tiến độ: streak, heatmap, solved, badges' })
-  @ApiResponse({ status: 200, description: 'Cache ngắn 200ms theo user.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiOperation({ summary: 'Get the progress dashboard: streak, heatmap, solved problems, and badges' })
+  @ApiResponse({ status: 200, description: 'Briefly cached for 200 ms per user.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   async dashboard(@Req() req: AuthenticatedRequest) {
     return this.progress.getDashboard(Number(req.user!.userId));
   }
 
   @Get('solved')
-  @ApiOperation({ summary: 'Bản đồ bài đã giải (tổng + theo độ khó + slugs)' })
+  @ApiOperation({ summary: 'Get solved-problem counts (total, by difficulty, and slugs)' })
   @ApiResponse({ status: 200, description: '`{ total, byDifficulty, slugs }`.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   async solved(@Req() req: AuthenticatedRequest) {
     return this.progress.getSolvedMap(Number(req.user!.userId));
   }
 
   @Get('badges')
-  @ApiOperation({ summary: 'Huy hiệu (đánh giá lại trước khi trả)' })
-  @ApiResponse({ status: 200, description: '`{ total, unlocked, list[] }` kèm cờ unlocked từng huy hiệu.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiOperation({ summary: 'Get badges (re-evaluated before returning)' })
+  @ApiResponse({ status: 200, description: '`{ total, unlocked, list[] }` with an unlocked flag for each badge.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   async badges(@Req() req: AuthenticatedRequest) {
     return this.progress.getBadges(Number(req.user!.userId));
   }
 
   @Post('solve')
-  @ApiOperation({ summary: 'Tự khai đã giải xong một bài (bài VIP vẫn cần role vip — chống tự khai khống)' })
+  @ApiOperation({ summary: 'Mark a problem as solved (VIP access is still required for VIP problems to prevent fabricated progress)' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -48,10 +48,10 @@ export class ProgressController {
       },
     },
   })
-  @ApiResponse({ status: 201, description: 'Dashboard mới sau khi ghi.' })
-  @ApiResponse({ status: 200, description: '`{ error: "slug required" }` khi thiếu slug — không ném.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
-  @ApiResponse({ status: 403, description: 'Bài VIP mà role không đủ.' })
+  @ApiResponse({ status: 201, description: 'Updated dashboard after recording progress.' })
+  @ApiResponse({ status: 200, description: 'Returns `{ error: "slug required" }` if the slug is missing; does not throw.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
+  @ApiResponse({ status: 403, description: 'VIP access is required for this problem.' })
   async solve(
     @Req() req: AuthenticatedRequest,
     @Body() body: { slug: string; difficulty?: string },
@@ -67,15 +67,15 @@ export class ProgressController {
   }
 
   @Get('favorites')
-  @ApiOperation({ summary: 'Danh sách bài yêu thích (mới nhất trước)' })
+  @ApiOperation({ summary: 'List favorite problems (newest first)' })
   @ApiResponse({ status: 200, description: '`{ total, slugs }`.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   async favorites(@Req() req: AuthenticatedRequest) {
     return this.progress.getFavorites(Number(req.user!.userId));
   }
 
   @Post('favorites')
-  @ApiOperation({ summary: 'Thêm bài vào yêu thích' })
+  @ApiOperation({ summary: 'Add a problem to favorites' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -83,9 +83,9 @@ export class ProgressController {
       properties: { slug: { type: 'string', example: 'two-sum' } },
     },
   })
-  @ApiResponse({ status: 201, description: 'Danh sách yêu thích sau khi thêm.' })
-  @ApiResponse({ status: 200, description: '`{ error: "slug required" }` khi thiếu slug.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiResponse({ status: 201, description: 'Favorite list after adding the problem.' })
+  @ApiResponse({ status: 200, description: 'Returns `{ error: "slug required" }` if the slug is missing.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   async addFavorite(
     @Req() req: AuthenticatedRequest,
     @Body() body: { slug: string },
@@ -96,10 +96,10 @@ export class ProgressController {
   }
 
   @Delete('favorites/:slug')
-  @ApiOperation({ summary: 'Bỏ bài khỏi yêu thích (chưa thích thì im lặng qua)' })
+  @ApiOperation({ summary: 'Remove a problem from favorites (no-op if it is not already a favorite)' })
   @ApiParam({ name: 'slug', type: String, example: 'two-sum' })
-  @ApiResponse({ status: 200, description: 'Danh sách yêu thích sau khi bỏ.' })
-  @ApiResponse({ status: 401, description: 'Thiếu/sai phiên đăng nhập.' })
+  @ApiResponse({ status: 200, description: 'Favorite list after removing the problem.' })
+  @ApiResponse({ status: 401, description: 'Session is missing or invalid.' })
   async removeFavorite(@Req() req: AuthenticatedRequest, @Param('slug') slug: string) {
     return this.progress.removeFavorite(Number(req.user!.userId), slug);
   }

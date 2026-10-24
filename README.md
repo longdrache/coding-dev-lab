@@ -10,7 +10,7 @@ GoCode is a full-stack algorithm practice platform for students. Users read prob
 
 
 **Demo:** [https://gocode.appofme.click](https://gocode.appofme.click)
-**API documentation:** [https://api.gocode.appofme.click](https://api.gocode.appofme.click)
+**API documentation:** [https://api.gocode.appofme.click/api/docs](https://api.gocode.appofme.click/api/docs)
 
 
 ---

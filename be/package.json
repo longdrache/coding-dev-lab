@@ -69,11 +69,5 @@
     "typescript": "^6.0.3",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.11"
-  },
-  "pnpm": {
-    "overrides": {
-      "deepmerge-ts": "8.0.0",
-      "mysql2": "3.22.0"
-    }
   }
 }

@@ -12,6 +12,15 @@ export type ChatInput = {
 
 export const MAX_MESSAGE_LENGTH = 2000;
 export const MAX_HISTORY_TURNS = 10;
+export const BOT_CHAT_TIMEOUT_MS = 60_000;
+
+export function extractContext(rawContext: unknown): { problem?: string; language?: string } {
+  if (!rawContext || typeof rawContext !== 'object') return {};
+  const ctx = rawContext as Record<string, unknown>;
+  const problem = typeof ctx.problem === 'string' ? ctx.problem.trim() : undefined;
+  const language = typeof ctx.language === 'string' ? ctx.language.trim() : undefined;
+  return { problem, language };
+}
 
 export function normalizeChatInput(raw: Record<string, unknown>): ChatInput {
   const message = typeof raw.message === 'string' ? raw.message.trim() : '';
@@ -36,14 +45,7 @@ export function normalizeChatInput(raw: Record<string, unknown>): ChatInput {
       : []
   ).slice(-MAX_HISTORY_TURNS);
 
-  const context =
-    typeof raw.context === 'object' && raw.context !== null
-      ? (raw.context as Record<string, unknown>)
-      : {};
-  const problem =
-    typeof context.problem === 'string' ? context.problem.trim() : undefined;
-  const language =
-    typeof context.language === 'string' ? context.language.trim() : undefined;
+  const { problem, language } = extractContext(raw.context);
 
   return { message, history, problem, language };
 }
@@ -76,7 +78,7 @@ export class RagService {
         history: input.history,
         context: { problem: input.problem, language: input.language },
       },
-      60_000,
+      BOT_CHAT_TIMEOUT_MS,
     );
     const answer = extractAnswer(res.text);
     if (!answer) throw new BadGatewayException('Bot RAG trả về nội dung rỗng');

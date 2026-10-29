@@ -13,6 +13,7 @@ overrides:
   nodemailer@>=10.0.0 <10.1.4: '>=10.1.4'
   tmp: '>=0.2.6'
   undici@>=6.0.0 <6.29.1: '>=6.29.1'
+  vite@>=8.2.0 <=8.2.3: '>=8.2.4'
 
 importers:
 
@@ -1206,7 +1207,7 @@ packages:
     resolution: {integrity: sha512-2XJVD55d1o5AZous5CCGKS74g/riOj9odEt2bQpCVZeblHyHdnMeFl4jl0XjU21stf4mbjUkew2eXQZt65g5CQ==}
     peerDependencies:
       msw: ^2.4.9
-      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
+      vite: '>=8.2.4'
     peerDependenciesMeta:
       msw:
         optional: true
@@ -2674,7 +2675,7 @@ packages:
   vite-tsconfig-paths@5.1.4:
     resolution: {integrity: sha512-cYj0LRuLV2c2sMqhqhGpaO3LretdtMn/BVX4cPLanIZuwwrkVl+lK84E/miEXkCHWXuq65rhNN4rXsBcOB3S4w==}
     peerDependencies:
-      vite: '*'
+      vite: '>=8.2.4'
     peerDependenciesMeta:
       vite:
         optional: true
@@ -2738,7 +2739,7 @@ packages:
       '@vitest/ui': 4.1.11
       happy-dom: '*'
       jsdom: '*'
-      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
+      vite: '>=8.2.4'
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true

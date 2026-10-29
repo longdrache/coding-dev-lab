@@ -66,6 +66,16 @@ describe('safeInternalPath', () => {
     expect(safeInternalPath('')).toBe('/');
     expect(safeInternalPath(undefined as any)).toBe('/');
   });
+
+  it('chặn encoded bypass và control char', () => {
+    expect(safeInternalPath('%2f%2fevil.com')).toBe('/');
+    expect(safeInternalPath('/foo%0abar')).toBe('/');
+    expect(safeInternalPath('/a'.repeat(3000))).toBe('/');
+  });
+
+  it('chấp nhận path có query/hash hợp lệ', () => {
+    expect(safeInternalPath('/premium?plan=vip#top')).toBe('/premium?plan=vip#top');
+  });
 });
 
 describe('createState / consumeState', () => {

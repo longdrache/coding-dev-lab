@@ -4,7 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bot, Loader2, Send, X } from "lucide-react";
 import { useSession } from "@/app/ui/AuthProvider";
-import { withTurn, type ChatTurn } from "@/app/problem/assistant";
+import {
+  withTurn,
+  type ChatTurn,
+  displayNameOf,
+  initialOf,
+  errorMessageFor,
+  trimMessage,
+  MAX_MESSAGE_LENGTH,
+} from "@/app/problem/assistant";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -48,11 +56,11 @@ export function ProblemAssistant({
 
   if (loading) return null;
 
-  const displayName = user?.name ?? user?.email ?? "Bạn";
-  const initial = displayName.trim().charAt(0).toUpperCase() || "?";
+  const displayName = displayNameOf(user);
+  const initial = initialOf(displayName);
 
   async function send() {
-    const message = input.trim();
+    const message = trimMessage(input);
     if (!message || busy || !user) return;
 
     const previous = history;
@@ -80,10 +88,7 @@ export function ProblemAssistant({
 
       if (!res.ok || !data?.answer) {
         setHistory(previous);
-        if (res.status === 401) setError("Phiên đã hết hạn, hãy đăng nhập lại.");
-        else if (res.status === 429) setError("Bạn hỏi hơi nhanh, thử lại sau một phút.");
-        else if (res.status >= 500) setError("Trợ lý đang bận, thử lại sau.");
-        else setError(data?.message ?? "Trợ lý đang bận, thử lại sau.");
+        setError(errorMessageFor({ status: res.status, message: data?.message }));
         return;
       }
 
@@ -246,7 +251,7 @@ export function ProblemAssistant({
                     }}
                     disabled={busy}
                     rows={2}
-                    maxLength={2000}
+                    maxLength={MAX_MESSAGE_LENGTH}
                     placeholder="Nhập câu hỏi..."
                     className="min-h-[42px] flex-1 resize-none rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
                   />

@@ -2,6 +2,14 @@
 
 import { useState } from "react";
 import { adminFetch } from "@/lib/api";
+import {
+  MAX_SOURCE_LENGTH,
+  utf8ByteLength,
+  validateIngestInput,
+  isIngestSuccess,
+  ingestErrorMessage,
+  type IngestResponse,
+} from "@/lib/rag-import";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,11 +24,6 @@ import {
   Upload,
 } from "lucide-react";
 
-type IngestResponse = {
-  ok?: boolean;
-  message?: string;
-};
-
 export default function RagImportPage() {
   const [source, setSource] = useState("tai-lieu");
   const [text, setText] = useState("");
@@ -29,7 +32,7 @@ export default function RagImportPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const bytes = new TextEncoder().encode(text).length;
+  const bytes = utf8ByteLength(text);
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,12 +50,9 @@ export default function RagImportPage() {
     setError(null);
     setSuccess(false);
 
-    if (!text.trim()) {
-      setError("Tài liệu đang rỗng.");
-      return;
-    }
-    if (!source.trim()) {
-      setError("Chưa nhập nguồn (source).");
+    const validation = validateIngestInput(source, text);
+    if (!validation.ok) {
+      setError(validation.message);
       return;
     }
 
@@ -63,8 +63,8 @@ export default function RagImportPage() {
         body: JSON.stringify({ source, text }),
       });
       const data = (await res.json().catch(() => null)) as IngestResponse | null;
-      if (!res.ok || !data?.ok) {
-        setError(data?.message ?? `Nhập thất bại (HTTP ${res.status}).`);
+      if (!isIngestSuccess(res.status, data)) {
+        setError(ingestErrorMessage(res.status, data));
       } else {
         setSuccess(true);
       }
@@ -103,7 +103,7 @@ export default function RagImportPage() {
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
                 placeholder="tai-lieu"
-                maxLength={120}
+                maxLength={MAX_SOURCE_LENGTH}
               />
             </div>
 

@@ -1,5 +1,4 @@
 import { defineConfig } from 'vitest/config';
-import tsconfigPaths from 'vite-tsconfig-paths';
 
 /**
  * Suite integration: service thật + Postgres thật (`be/test/db-integration.ts`
@@ -13,7 +12,7 @@ import tsconfigPaths from 'vite-tsconfig-paths';
  *   ngay với câu hướng dẫn chứ không lặng lẽ dùng DB khác.
  */
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  resolve: { tsconfigPaths: true },
   test: {
     globals: true,
     root: './',

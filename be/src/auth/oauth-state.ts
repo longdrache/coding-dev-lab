@@ -18,11 +18,35 @@ type DbLike = {
  * `/start?redirect_to=https://site-gia-mao.com` để đưa người dùng vừa đăng
  * nhập xong sang trang giả mạo.
  */
+const MAX_REDIRECT_PATH_LENGTH = 2048;
+
+/**
+ * Chặn mọi biến thể open-redirect:
+ * - URL tuyệt đối (`https://...`), protocol-relative (`//...`), backslash (`/\\...`).
+ * - Encoded (`%2f%2f`, `%5c`) để tránh bypass qua decode ở tầng router.
+ * - Control char / newline để tránh header injection.
+ * - Quá dài.
+ */
 export function safeInternalPath(raw: unknown): string {
   if (typeof raw !== 'string') return '/';
   const v = raw.trim();
+  if (!v || v.length > MAX_REDIRECT_PATH_LENGTH) return '/';
   if (!v.startsWith('/')) return '/';
   if (v.startsWith('//') || v.startsWith('/\\')) return '/';
+  // Chặn percent-encoded bypass
+  let decoded = v;
+  try {
+    decoded = decodeURIComponent(v);
+  } catch {
+    return '/';
+  }
+  if (decoded !== v) {
+    if (!decoded.startsWith('/') || decoded.startsWith('//') || decoded.startsWith('/\\')) return '/';
+  }
+  // Chặn control char và backslash ở bất kỳ đâu
+  if (/[\\\r\n\t\0]/.test(v) || /[\\\r\n\t\0]/.test(decoded)) return '/';
+  // Chặn scheme trong path (javascript:, data:, v.v.)
+  if (/^[a-z][a-z0-9+.-]*:/i.test(decoded.replace(/^\//, ''))) return '/';
   return v;
 }
 

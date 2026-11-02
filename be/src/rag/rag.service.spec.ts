@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RagService, extractAnswer, normalizeChatInput } from './rag.service.ts';
+import { RagService, extractAnswer, normalizeChatInput, extractContext, BOT_CHAT_TIMEOUT_MS } from './rag.service.ts';
 import type { RagBotClient } from './rag.bot-client.ts';
 
 function fakeBot(text: string) {
@@ -70,6 +70,26 @@ describe('extractAnswer', () => {
   });
 });
 
+describe('extractContext', () => {
+  it('trả {} khi không có context', () => {
+    expect(extractContext(undefined)).toEqual({});
+    expect(extractContext(null)).toEqual({});
+    expect(extractContext('x')).toEqual({});
+    expect(extractContext(42)).toEqual({});
+  });
+
+  it('trích problem và language khi là chuỗi', () => {
+    expect(extractContext({ problem: '  two-sum  ', language: 'python' })).toEqual({
+      problem: 'two-sum',
+      language: 'python',
+    });
+  });
+
+  it('bỏ qua giá trị không phải chuỗi', () => {
+    expect(extractContext({ problem: 123, language: null })).toEqual({});
+  });
+});
+
 describe('RagService', () => {
   it('gửi message + history + context và trả answer', async () => {
     const bot = fakeBot('{"answer":"dùng HashMap"}');
@@ -89,7 +109,7 @@ describe('RagService', () => {
         history: [{ role: 'user', content: 'chào' }],
         context: { problem: 'Tìm hai số bằng mục tiêu', language: 'javascript' },
       },
-      60_000,
+      BOT_CHAT_TIMEOUT_MS,
     );
   });
 

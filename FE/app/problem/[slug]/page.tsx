@@ -437,15 +437,8 @@ export default function ProblemWorkspace() {
         <div className="mx-auto max-w-xl py-16 text-center">
           <h1 className="font-display text-xl font-bold text-zinc-950">Không tải được bài toán</h1>
           <p className="mt-2.5 text-sm leading-relaxed text-zinc-600">
-            Bài này có thể vẫn ở đó — chỉ là lần tải vừa rồi thất bại. Thử lại.
+            Vui lòng kiểm tra kết nối mạng và truy cập lại trang này sau.
           </p>
-          <button
-            type="button"
-            onClick={() => retry()}
-            className="mt-6 inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800"
-          >
-            Thử lại
-          </button>
         </div>
       </main>
     );

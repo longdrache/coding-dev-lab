@@ -398,7 +398,7 @@ export default function ProblemWorkspace() {
   // Gate như trang list: lần render đầu khớp server, sau mount lấy cache có sẵn
   const loading = swrLoading;
 
-useEffect(() => {retry()}, [problem]);
+// useEffect(() => {retry()}, [problem]);
 
   if (loading) {
     return (

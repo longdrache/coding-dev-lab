@@ -589,6 +589,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
 
   const historyKey = isSignedIn ? `${API_URL}/api/history?slug=${encodeURIComponent(slug)}` : null;
   const { mutate: mutateHistory } = useSWR<HistoryItem[]>(historyKey, authedFetcher, {
+    revalidateOnMount: false,
     onSuccess: (data) => {
       if (mountedRef.current) setHistory(Array.isArray(data) ? data : []);
     },

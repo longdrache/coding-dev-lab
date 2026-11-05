@@ -35,17 +35,11 @@ export function useProblem(slug: string) {
     authedFetcher,
     {
       revalidateIfStale: false,
-      // Tự động retry khi lỗi mạng/BE chập chờn, không cần bấm nút "Thử lại".
+      // Không tự động retry khi lỗi: chỉ hiện lỗi một lần, người dùng bấm
+      // nút "Thử lại" trên màn hình nếu muốn kết nối lại.
       // 404 (bài không tồn tại), 401 (hết phiên — authedFetcher đã xử lý refresh),
       // 403 (VIP khoá) không retry vì sẽ không thay đổi kết quả.
-      onErrorRetry: (err, key, config, revalidate, revalidateOpts) => {
-        if (err instanceof ApiError && (err.status === 404 || err.status === 401 || err.status === 403)) {
-          return;
-        }
-        revalidate(revalidateOpts);
-      },
-      errorRetryCount: 3,
-      errorRetryInterval: 2000,
+      errorRetryCount: 0,
     }
   );
   console.log("useProblem", slug, data, error, isLoading);

@@ -15,14 +15,14 @@ export function useProblems(fallbackData?: Problem[]) {
   // coi là khách, và đúng cái lỗi người dùng báo ("vip thay chi thay tieu de
   // thoi") là quay lại. BE tự đổi header cache theo nhánh này
   // (`private, no-store` khi có mô tả) — xem `be/src/problems/problems.controller.ts`.
-  const { data, error, isLoading } = useSWR<Problem[]>(
+  const { data, error, isLoading, mutate } = useSWR<Problem[]>(
     `${API_URL}/api/problems`,
     authedFetcher,
     fallbackData === undefined
       ? { revalidateIfStale: true }
       : { fallbackData, revalidateIfStale: true },
   );
-  return { problems: data ?? null, loading: isLoading, error };
+  return { problems: data ?? null, loading: isLoading, error, retry: mutate };
 }
 
 export function useProblem(slug: string) {
@@ -33,7 +33,14 @@ export function useProblem(slug: string) {
   const { data, error, isLoading, mutate } = useSWR<Problem>(
     slug ? `${API_URL}/api/problems/${encodeURIComponent(slug)}` : null,
     authedFetcher,
-    { revalidateIfStale: false}
+    {
+      revalidateIfStale: false,
+      // Không tự động retry khi lỗi: chỉ hiện lỗi một lần, người dùng bấm
+      // nút "Thử lại" trên màn hình nếu muốn kết nối lại.
+      // 404 (bài không tồn tại), 401 (hết phiên — authedFetcher đã xử lý refresh),
+      // 403 (VIP khoá) không retry vì sẽ không thay đổi kết quả.
+      errorRetryCount: 0,
+    }
   );
   console.log("useProblem", slug, data, error, isLoading);
   // Chỉ coi là "không tồn tại" khi BE **thật sự** trả 404. Mọi thứ khác — mạng

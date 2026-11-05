@@ -398,7 +398,7 @@ export default function ProblemWorkspace() {
   // Gate như trang list: lần render đầu khớp server, sau mount lấy cache có sẵn
   const loading = swrLoading;
 
-useEffect(() => {retry()}, [problem]);
+// useEffect(() => {retry()}, [problem]);
 
   if (loading) {
     return (
@@ -437,15 +437,8 @@ useEffect(() => {retry()}, [problem]);
         <div className="mx-auto max-w-xl py-16 text-center">
           <h1 className="font-display text-xl font-bold text-zinc-950">Không tải được bài toán</h1>
           <p className="mt-2.5 text-sm leading-relaxed text-zinc-600">
-            Bài này có thể vẫn ở đó — chỉ là lần tải vừa rồi thất bại. Thử lại.
+            Vui lòng kiểm tra kết nối mạng và truy cập lại trang này sau.
           </p>
-          <button
-            type="button"
-            onClick={() => retry()}
-            className="mt-6 inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800"
-          >
-            Thử lại
-          </button>
         </div>
       </main>
     );
@@ -596,6 +589,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
 
   const historyKey = isSignedIn ? `${API_URL}/api/history?slug=${encodeURIComponent(slug)}` : null;
   const { mutate: mutateHistory } = useSWR<HistoryItem[]>(historyKey, authedFetcher, {
+    revalidateOnMount: false,
     onSuccess: (data) => {
       if (mountedRef.current) setHistory(Array.isArray(data) ? data : []);
     },

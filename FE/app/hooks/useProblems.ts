@@ -33,7 +33,20 @@ export function useProblem(slug: string) {
   const { data, error, isLoading, mutate } = useSWR<Problem>(
     slug ? `${API_URL}/api/problems/${encodeURIComponent(slug)}` : null,
     authedFetcher,
-    { revalidateIfStale: false}
+    {
+      revalidateIfStale: false,
+      // Tự động retry khi lỗi mạng/BE chập chờn, không cần bấm nút "Thử lại".
+      // 404 (bài không tồn tại), 401 (hết phiên — authedFetcher đã xử lý refresh),
+      // 403 (VIP khoá) không retry vì sẽ không thay đổi kết quả.
+      onErrorRetry: (err, key, config, revalidate, revalidateOpts) => {
+        if (err instanceof ApiError && (err.status === 404 || err.status === 401 || err.status === 403)) {
+          return;
+        }
+        revalidate(revalidateOpts);
+      },
+      errorRetryCount: 3,
+      errorRetryInterval: 2000,
+    }
   );
   console.log("useProblem", slug, data, error, isLoading);
   // Chỉ coi là "không tồn tại" khi BE **thật sự** trả 404. Mọi thứ khác — mạng

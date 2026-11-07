@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Search, List, LayoutGrid, ArrowUpDown, Eye, Star, CheckCircle2, Circle, Crown, Lock, Tag } from "lucide-react";
+import { ArrowLeft, Search, List, LayoutGrid, ArrowUpDown, Eye, Star, CheckCircle2, Circle, Crown, Lock, Tag, RotateCcw } from "lucide-react";
 import Logo from "@/app/ui/Logo";
 import Breadcrumbs from "@/app/ui/Breadcrumbs";
 import { useSession } from "@/app/ui/AuthProvider";
@@ -196,7 +196,7 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
   const { favs, toggle: toggleFav } = useFavorites();
   // initial là data server đã fetch sẵn (SSR) — SWR dùng làm fallback nên
   // lần render đầu đã có data, không chớp skeleton, không fetch lại.
-  const { problems: dbProblems, loading: swrLoading } = useProblems(initial ?? undefined);
+  const { problems: dbProblems, loading: swrLoading, error, retry } = useProblems(initial ?? undefined);
   // Gate data theo mounted để lần render đầu của client khớp hệt server
   // (tránh hydration mismatch do SWR cache persist). Sau mount data đã
   // có sẵn trong cache nên chỉ chớp skeleton 1 frame, không fetch mới.
@@ -434,6 +434,18 @@ export default function ProblemList({ initial }: { initial: Problem[] | null }) 
                 </div>
               ))}
             </div>
+          </div>
+        ) : error && problems.length === 0 ? (
+          <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-6 py-16 text-center">
+            <p className="font-semibold text-zinc-900">Không tải được bài tập</p>
+            <p className="mt-2 text-sm font-medium text-zinc-600">Kiểm tra kết nối mạng rồi thử lại.</p>
+            <button
+              type="button"
+              onClick={() => retry()}
+              className="mt-4 inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              <RotateCcw className="size-3.5" /> Thử lại
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="mt-3 rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-16 text-center">

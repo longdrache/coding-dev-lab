@@ -15,14 +15,14 @@ export function useProblems(fallbackData?: Problem[]) {
   // coi là khách, và đúng cái lỗi người dùng báo ("vip thay chi thay tieu de
   // thoi") là quay lại. BE tự đổi header cache theo nhánh này
   // (`private, no-store` khi có mô tả) — xem `be/src/problems/problems.controller.ts`.
-  const { data, error, isLoading } = useSWR<Problem[]>(
+  const { data, error, isLoading, mutate } = useSWR<Problem[]>(
     `${API_URL}/api/problems`,
     authedFetcher,
     fallbackData === undefined
-      ? { revalidateIfStale: true }
-      : { fallbackData, revalidateIfStale: true },
+      ? { revalidateIfStale: true, revalidateOnFocus: true, revalidateOnReconnect: true }
+      : { fallbackData, revalidateIfStale: true, revalidateOnFocus: false, revalidateOnReconnect: false },
   );
-  return { problems: data ?? null, loading: isLoading, error };
+  return { problems: data ?? null, loading: isLoading, error, retry: mutate };
 }
 
 export function useProblem(slug: string) {
@@ -33,9 +33,10 @@ export function useProblem(slug: string) {
   const { data, error, isLoading, mutate } = useSWR<Problem>(
     slug ? `${API_URL}/api/problems/${encodeURIComponent(slug)}` : null,
     authedFetcher,
-    { revalidateIfStale: false}
+    { revalidateIfStale: false, revalidateOnFocus: true, revalidateOnReconnect: true }
   );
-  console.log("useProblem", slug, data, error, isLoading);
+    console.log("useProblem", slug, data, error, isLoading);
+
   // Chỉ coi là "không tồn tại" khi BE **thật sự** trả 404. Mọi thứ khác — mạng
   // chết, CORS, 500 — là lỗi tải, và báo thành "không tìm thấy" khiến một bài có
   // thật bị hiện thành trang 404, không có nút thử lại.

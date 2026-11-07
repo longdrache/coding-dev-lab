@@ -88,8 +88,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         lastUserRef.current,
         next,
         () => {
-          // `revalidate: false` — chỉ xoá key, không gọi lại network.
-          void mutate(() => true, undefined, { revalidate: false });
+          // Xoá dữ liệu của tài khoản cũ và tải lại các key đang được dùng.
+          // Nếu chỉ xoá cache, hook đang mount sẽ nhận `data: undefined` nhưng
+          // không tự revalidate, khiến trang kẹt ở skeleton.
+          void mutate(() => true, undefined, { revalidate: true });
         },
         (u) => {
           lastUserRef.current = u;

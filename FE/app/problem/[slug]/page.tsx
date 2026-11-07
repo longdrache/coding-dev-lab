@@ -394,11 +394,25 @@ export default function ProblemWorkspace() {
   const slug = typeof params.slug === "string" ? params.slug : "";
   const { problem, loading: swrLoading, error, missing, vipLocked, retry } =
     useProblem(slug);
-//  console.log("Check SWR:", { problem, loading: swrLoading, error, missing, vipLocked, retry });
-  // Gate như trang list: lần render đầu khớp server, sau mount lấy cache có sẵn
-  const loading = swrLoading;
-
-// useEffect(() => {retry()}, [problem]);
+  // Fallback từ cache danh sách: vào từ trang list thì đã có bài trong
+  // SWR cache của `/api/problems` (chỉ có id/slug/title/difficulty/topic/
+  // isVip/description — KHÔNG có tests/examples/constraints/inputFormat).
+  // Chỉ dùng khi detail fetch đã lỗi (không phải lúc đang loading), và luôn
+  // chuẩn hoá các mảng về [] để Workspace không crash ở customTests.length.
+  const { problems: listProblems } = useProblems();
+  const listFallback =
+    !problem ? (listProblems?.find((p) => p.slug === slug) ?? null) : null;
+  const fallbackProblem = listFallback
+    ? {
+        ...listFallback,
+        inputFormat: listFallback.inputFormat ?? "",
+        outputFormat: listFallback.outputFormat ?? "",
+        constraints: listFallback.constraints ?? [],
+        examples: listFallback.examples ?? [],
+        tests: listFallback.tests ?? [],
+      }
+    : null;
+  const loading = swrLoading && !problem;
 
   if (loading) {
     return (
@@ -431,14 +445,37 @@ export default function ProblemWorkspace() {
     return <VipLockedNotice />;
   }
 
-  if (error || !problem) {
+  const displayProblem = problem ?? fallbackProblem;
+
+  if (error && !displayProblem) {
     return (
       <main className="min-h-screen bg-white px-5 py-8 sm:px-10">
         <div className="mx-auto max-w-xl py-16 text-center">
           <h1 className="font-display text-xl font-bold text-zinc-950">Không tải được bài toán</h1>
           <p className="mt-2.5 text-sm leading-relaxed text-zinc-600">
-            Vui lòng kiểm tra kết nối mạng và truy cập lại trang này sau.
+            Bài này có thể vẫn ở đó — chỉ là lần tải vừa rồi thất bại. Thử lại.
           </p>
+          <button
+            type="button"
+            onClick={() => retry()}
+            className="mt-6 inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800"
+          >
+            Thử lại
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (!displayProblem) {
+    return (
+      <main className="min-h-screen bg-white px-5 py-8 sm:px-10">
+        <div className="mx-auto max-w-6xl animate-pulse">
+          <div className="mb-8 h-12 w-72 rounded-lg bg-zinc-200" />
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className="h-[60vh] rounded-2xl bg-zinc-100" />
+            <div className="h-[60vh] rounded-2xl bg-zinc-100" />
+          </div>
         </div>
       </main>
     );
@@ -446,7 +483,7 @@ export default function ProblemWorkspace() {
 
   // key theo slug: đổi bài là mount mới, mọi state (code, test, kết quả)
   // reset sạch thay vì kẹt state bài trước.
-  return <Workspace key={slug} slug={slug} problem={problem} />;
+  return <Workspace key={slug} slug={slug} problem={displayProblem} />;
 }
 
 function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
@@ -460,7 +497,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   const [runningTests, setRunningTests] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [results, setResults] = useState<TestResult[] | null>(null);
-  const [customTests, setCustomTests] = useState<ProblemTest[]>(problem.tests);
+  const [customTests, setCustomTests] = useState<ProblemTest[]>(problem.tests ?? []);
   const [activeTest, setActiveTest] = useState(0);
   const [activeResult, setActiveResult] = useState(0);
   const resultTouchedRef = useRef(false);
@@ -589,7 +626,8 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
 
   const historyKey = isSignedIn ? `${API_URL}/api/history?slug=${encodeURIComponent(slug)}` : null;
   const { mutate: mutateHistory } = useSWR<HistoryItem[]>(historyKey, authedFetcher, {
-    revalidateOnMount: false,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
     onSuccess: (data) => {
       if (mountedRef.current) setHistory(Array.isArray(data) ? data : []);
     },
@@ -745,7 +783,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
   }
 
   function resetTests() {
-    setCustomTests(problem.tests);
+    setCustomTests(problem.tests ?? []);
     setActiveTest(0);
   }
 
@@ -891,28 +929,28 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
             {leftTab === "description" ? (
               <>
                 <p className="mt-3 text-[15px] leading-relaxed text-zinc-700">
-                  {problem.description}
+                  {problem.description ?? ""}
                 </p>
 
             <h3 className="mt-5 text-sm font-semibold text-zinc-900">
               Định dạng đầu vào
             </h3>
             <p className="mt-1.5 text-sm leading-relaxed text-zinc-600">
-              {problem.inputFormat}
+              {problem.inputFormat ?? ""}
             </p>
 
             <h3 className="mt-4 text-sm font-semibold text-zinc-900">
               Định dạng đầu ra
             </h3>
             <p className="mt-1.5 text-sm leading-relaxed text-zinc-600">
-              {problem.outputFormat}
+              {problem.outputFormat ?? ""}
             </p>
 
             <h3 className="mt-4 text-sm font-semibold text-zinc-900">
               Ràng buộc
             </h3>
             <ul className="mt-1.5 list-disc space-y-1 pl-5 font-mono text-[13px] text-zinc-600">
-              {problem.constraints.map((constraint) => (
+              {(problem.constraints ?? []).map((constraint) => (
                 <li key={constraint}>{constraint}</li>
               ))}
             </ul>
@@ -921,7 +959,7 @@ function Workspace({ slug, problem }: { slug: string; problem: Problem }) {
               Ví dụ mẫu
             </h3>
             <div className="mt-2 space-y-3">
-              {problem.examples.map((example, i) => (
+              {(problem.examples ?? []).map((example, i) => (
                 <div
                   key={i}
                   className="overflow-hidden rounded-xl border border-zinc-200/80"

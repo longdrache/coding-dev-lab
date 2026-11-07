@@ -49,14 +49,11 @@ function cacheProvider(): Cache {
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig
-      // value={{
-      //   provider: cacheProvider,
-      //   revalidateIfStale: false,
-      //   dedupingInterval: 30_000,
-      //   revalidateOnFocus: false,
-      //   revalidateOnReconnect: false,
-      //   errorRetryCount: 2,
-      // }}
+      value={{
+        revalidateOnFocus: false,
+        revalidateOnReconnect: false,
+        dedupingInterval: 30_000,
+      }}
     >
       <AuthProvider>
         {children}

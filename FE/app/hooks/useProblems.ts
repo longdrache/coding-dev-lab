@@ -19,8 +19,8 @@ export function useProblems(fallbackData?: Problem[]) {
     `${API_URL}/api/problems`,
     authedFetcher,
     fallbackData === undefined
-      ? { revalidateIfStale: true }
-      : { fallbackData, revalidateIfStale: true },
+      ? { revalidateIfStale: true, revalidateOnFocus: true, revalidateOnReconnect: true }
+      : { fallbackData, revalidateIfStale: true, revalidateOnFocus: false, revalidateOnReconnect: false },
   );
   return { problems: data ?? null, loading: isLoading, error, retry: mutate };
 }
@@ -33,16 +33,10 @@ export function useProblem(slug: string) {
   const { data, error, isLoading, mutate } = useSWR<Problem>(
     slug ? `${API_URL}/api/problems/${encodeURIComponent(slug)}` : null,
     authedFetcher,
-    {
-      revalidateIfStale: false,
-      // Không tự động retry khi lỗi: chỉ hiện lỗi một lần, người dùng bấm
-      // nút "Thử lại" trên màn hình nếu muốn kết nối lại.
-      // 404 (bài không tồn tại), 401 (hết phiên — authedFetcher đã xử lý refresh),
-      // 403 (VIP khoá) không retry vì sẽ không thay đổi kết quả.
-      errorRetryCount: 0,
-    }
+    { revalidateIfStale: false, revalidateOnFocus: true, revalidateOnReconnect: true }
   );
-  console.log("useProblem", slug, data, error, isLoading);
+    console.log("useProblem", slug, data, error, isLoading);
+
   // Chỉ coi là "không tồn tại" khi BE **thật sự** trả 404. Mọi thứ khác — mạng
   // chết, CORS, 500 — là lỗi tải, và báo thành "không tìm thấy" khiến một bài có
   // thật bị hiện thành trang 404, không có nút thử lại.

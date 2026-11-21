@@ -628,7 +628,7 @@ pnpm test:e2e
 
 - **Trivy gate (CI `trivy` job):** `fs` scan over every lockfile on each push/PR. Fails on HIGH/CRITICAL **with a fix available** (`ignore-unfixed: true` — a CVE with no fix can't be acted on; failing on it only teaches the team to ignore red CI).
 - **Dependabot security updates** stay enabled at repo level (PRs that patch a CVE). Scheduled version-bump PRs are disabled — they produced failing noise instead of fixes.
-- **Overrides live in `be/package.json` (`pnpm.overrides`)**, each documented for removal at Prisma 8. No `.trivyignore` baseline: every current HIGH/CRITICAL has a real fix, so nothing is waived.
+- **Overrides live in `be/pnpm-workspace.yaml` (`overrides`)**, each documented for removal at Prisma 8. No `.trivyignore` baseline: every current HIGH/CRITICAL has a real fix, so nothing is waived.
 
 ### Dependency CVEs fixed (2026-10-13, commit `dc7ee3b`)
 
@@ -647,6 +647,14 @@ pnpm test:e2e
 | GHSA-3f6p-5ww8-9rcr — mysql2 auth-plugin downgrade | HIGH | `mysql2` 3.15.3 (via `prisma` CLI/Studio) | 3.22.0 | same overrides block, same reason |
 
 Side effect worth knowing: the proxy-addr fix normalizes IPv4-mapped IPv6 (`::ffff:127.0.0.1` → `127.0.0.1`), so `be/src/proxy.spec.ts` CONTROL now asserts the normalized form. Intent unchanged — still socket IP, XFF still ignored.
+
+### Dependency CVE fixed (2026-11-21)
+
+The scheduled Trivy run went red after the Prisma v7 bump: `@prisma/config` pins `effect` 3.20.0.
+
+| CVE | Severity | Package (via) | Fix | How fixed |
+|---|---|---|---|---|
+| CVE-2026-121707 — Effect ReDoS in `Schema.TemplateLiteral` | HIGH | `effect` 3.20.0 (via `@prisma/config`) | 3.22.1 | `pnpm.overrides` in `be/pnpm-workspace.yaml` — Prisma 7.10.1 (newest v7) still pins 3.20.0, no upstream path |
 
 ### Production hardening (Oracle Cloud VPS)
 
